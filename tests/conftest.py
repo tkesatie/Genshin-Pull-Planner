@@ -77,3 +77,24 @@ def doc_context(doc_account, doc_roadmap) -> PlannerContext:
         current_version="7.0",
         current_phase=1,
     )
+
+
+@pytest.fixture
+def doc_plan(doc_roadmap) -> "SpendPlan":
+    """The Phase 4 running-example plan: pursue Vesna C0 with everything.
+
+    All 40 wishes are capped onto the current Vesna banner (target C0 - a
+    desired resulting constellation, not a copy count, §4.2/§12); the
+    Tsaritsa and Vodynista banners have no entries and are therefore
+    skipped, not stopped.
+    """
+    from simulation import PlannedSpend, SpendPlan
+
+    return SpendPlan(
+        entries=(
+            PlannedSpend(
+                Banner("Vesna", "7.0", 1), target_constellation=0, budget=40
+            ),
+        )
+    )
+
