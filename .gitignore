@@ -2,9 +2,11 @@
 # Genshin Pull Planner
 #
 # Python 3.12 project, tested with pytest (see tests/ and conftest.py).
+# Phase 6 exposes the engines over FastAPI (api/, run with
+# `uvicorn api.main:app --reload`); Phase 7 serves the static dashboard in
+# frontend/index.html from that same app, so there is no JavaScript build step.
 # Covers interpreter/pytest caches, virtual environments, coverage and build
-# output, editor/OS noise, and a couple of personal scratch files that live
-# at the project root.
+# output, editor/OS noise, and personal scratch files/archives at the root.
 # ---------------------------------------------------------------------------
 
 # --- Python bytecode / interpreter caches ----------------------------------
@@ -70,6 +72,49 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
+
+# --- Frontend tooling (Phase 7) --------------------------------------------
+# frontend/index.html is a plain static page today - the API serves it with no
+# build step - so nothing here is generated yet. These patterns are the usual
+# front-end debris, in case the dashboard grows a bundler.
+node_modules/
+.vite/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Local databases & runtime data (Phase 6) ------------------------------
+# api/repository.py stores accounts in memory and api/jobs.py is non-durable,
+# so nothing is written to disk today. This guards the documented drop-in
+# database behind AccountRepository: it must never keep local account data
+# (owned characters, pity, wish counts) in version control.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# --- Local snapshots & archives --------------------------------------------
+# Whole-project snapshots taken to share the tree ("Genshin Pull Planner.zip").
+# They duplicate the working tree, go stale immediately and, in this repo's
+# case, still carried committed __pycache__ bytecode. Zip them up somewhere
+# outside the checkout instead.
+/*.zip
+/*.tar.gz
+/*.tgz
+/*.7z
+/*.rar
 
 # --- Local scratch notes, logs & temp files --------------------------------
 # Root-anchored so real test modules named the same way are unaffected.
