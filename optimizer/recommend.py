@@ -1,0 +1,262 @@
+"""Strategy optimization: selection and recommendation (§13 steps 6-7, §14, §15).
+
+The decision is lexicographic - never a global "best" score (§2, §13):
+
+    1. Which outcome do I prefer?           preference rank (§15)
+    2. Can I pursue it while protecting
+       the roadmap?                          feasibility (§13 step 5)
+    3. How much may I spend on it?          largest feasible cap (§14)
+
+Outcomes are evaluated in preference order and the first feasible one
+wins; a lower-ranked outcome never displaces a higher-ranked feasible one
+no matter how its probabilities compare. Within the winning outcome, the
+candidate caps are scanned from the account's wishes down to 0 and the
+first feasible cap is recommended: the largest feasible cap (§14's safe
+spending, evaluated at roadmap level through simulation).
+
+The scan is exhaustive over the given caps and never binary-searches:
+feasibility is not monotone in the cap. Spending one more wish can lose
+the 50/50 and carry a guarantee into the next banner - a state that can
+protect a future goal more than the wish cost it (§14: pity/guarantee
+carry must count). A scan's first feasible cap is the largest feasible
+cap among the scanned caps regardless of monotonicity.
+
+Skipping is a legitimate recommendation (§1): when no outcome can be
+pursued without violating protection - or there is nothing to pursue at
+all - the planner says "do not spend" and reports the per-outcome
+diagnostics, never a fabricated strategy (§13).
+
+Provenance: every candidate is simulated with the same (runs, seed) and
+both travel on the Recommendation (§2, §11 invariant 10) so reported
+probabilities are never mistaken for exact values.
+"""
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from domain import Banner, Preference
+from planner import PlannerContext
+from planner.banners import current_banner
+from simulation import DEFAULT_SEED, SpendPlan
+
+from optimizer.evaluation import (
+    DEFAULT_RUNS,
+    CandidateStrategy,
+    GoalStanding,
+    evaluate_candidate,
+    evaluate_skip_baseline,
+)
+from optimizer.outcomes import OutcomeOption, available_outcomes
+from optimizer.protection import protected_groups
+from optimizer.stops import StopConditions, for_pursue, for_skip
+
+
+@dataclass(frozen=True)
+class RejectedOutcome:
+    """Why a more-preferred outcome was not recommended (§13 step 7).
+
+    Attributes:
+        outcome: the rejected preferred outcome.
+        best: the candidate closest to feasibility among the scanned caps:
+            the highest minimum protected-goal probability (ties broken by
+            higher outcome probability, then larger cap). With no
+            protected goals the floor is 1.0 by definition, so the outcome
+            probability decides - the honest "closest to feasible" view.
+        shortfalls: the protected goals still below the threshold at
+            `best` - the concrete "why".
+    """
+
+    outcome: OutcomeOption
+    best: CandidateStrategy
+    shortfalls: tuple[GoalStanding, ...]
+
+
+@dataclass(frozen=True)
+class Recommendation:
+    """The planner's decision at the current banner (§1, §13, §20).
+
+    Attributes:
+        banner: the current banner the decision is about.
+        action: "pursue" or "skip" (§1: "do not spend" is a legitimate
+            answer).
+        outcome: the pursued outcome - in preference order, the first
+            feasible one; None when skipping.
+        budget: the largest feasible cap for the outcome (§14); 0 when
+            skipping.
+        plan: the executable strategy for the recommendation (§12); None
+            when skipping.
+        outcome_probability: the empirical probability of achieving the
+            outcome under the recommendation.
+        protected: each protected goal's standing under the recommendation;
+            under a skip, the do-nothing baseline (§2).
+        rejected: more-preferred outcomes that failed feasibility, most
+            preferred first - the "why" behind the recommendation.
+        skip_reason: why nothing can be pursued; None when pursuing.
+        stops: the stop conditions attached to the recommendation (§1).
+        runs / seed: simulation provenance (§2).
+    """
+
+    banner: Banner
+    action: str
+    outcome: OutcomeOption | None
+    budget: int
+    plan: SpendPlan | None
+    outcome_probability: float
+    protected: tuple[GoalStanding, ...]
+    rejected: tuple[RejectedOutcome, ...]
+    skip_reason: str | None
+    stops: StopConditions
+    runs: int
+    seed: int | None
+
+
+
+def _skip(
+    context: PlannerContext,
+    reason: str,
+    runs: int,
+    seed: int | None,
+    rejected: tuple[RejectedOutcome, ...] = (),
+) -> Recommendation:
+    """A do-not-spend recommendation with the do-nothing baseline (§1, §2)."""
+    return Recommendation(
+        banner=current_banner(context),
+        action="skip",
+        outcome=None,
+        budget=0,
+        plan=None,
+        outcome_probability=0.0,
+        protected=evaluate_skip_baseline(context, runs=runs, seed=seed),
+        rejected=rejected,
+        skip_reason=reason,
+        stops=for_skip(reason),
+        runs=runs,
+        seed=seed,
+    )
+
+
+def _diagnostic_key(candidate: CandidateStrategy) -> tuple[float, float, int]:
+    """Rejection ordering: closest to feasible first (see RejectedOutcome)."""
+    floor = (
+        candidate.min_protected_probability
+        if candidate.min_protected_probability is not None
+        else 1.0
+    )
+    return (floor, candidate.outcome_probability, candidate.budget)
+
+
+def _caps(context: PlannerContext, budgets: Iterable[int] | None) -> list[int]:
+    """Candidate caps, largest first; the default is every spend 0..wishes.
+
+    A caller-provided coarse list is honored as-is: because feasibility is
+    not monotone in the cap (module docstring), a coarse list can miss
+    narrow feasible windows - pass the full range (the default) for the
+    exact boundary.
+    """
+    wishes = context.account.wishes
+    if budgets is None:
+        return list(range(wishes, -1, -1))
+    caps = sorted(set(int(budget) for budget in budgets), reverse=True)
+    if not caps:
+        raise ValueError("budgets must contain at least one cap")
+    for cap in caps:
+        if not 0 <= cap <= wishes:
+            raise ValueError(
+                f"every cap must satisfy 0 <= cap <= account wishes "
+                f"({wishes}), got {cap}"
+            )
+    return caps
+
+
+def recommend(
+    context: PlannerContext,
+    preferences: Iterable[Preference] = (),
+    *,
+    runs: int = DEFAULT_RUNS,
+    seed: int | None = DEFAULT_SEED,
+    budgets: Iterable[int] | None = None,
+) -> Recommendation:
+    """The highest-preference feasible outcome and its largest feasible
+    cap (§13, §14).
+
+    Deterministic for identical (context, preferences, runs, seed,
+    budgets). With no protected goals the scan short-circuits to the
+    largest cap: nothing future constrains spending, and a larger cap
+    never lowers the outcome's probability (§12's cap semantics).
+
+    Cost: a pursue recommendation stops at its first feasible cap, so it
+    probes only the rejected upper caps. A skip must scan every cap of
+    every outcome to report the rejections, which costs
+    `outcomes x caps x runs` histories - seconds, not milliseconds, at the
+    defaults. Pass a coarser `budgets` list when latency matters, keeping
+    in mind that a coarse list can miss a narrow feasible window
+    (module docstring).
+
+    Raises:
+        ValueError: via `_caps`, when the context has no roadmap banner
+            at its (version, phase), or for degenerate duplicate active
+            goals in the no-preference fallback (via
+            `available_outcomes`).
+    """
+    outcomes = available_outcomes(context, preferences)
+    groups = protected_groups(context)
+    caps = _caps(context, budgets)
+    if not groups:
+        caps = caps[:1]  # the largest cap dominates (see docstring)
+    if not outcomes:
+        return _skip(
+            context,
+            "no outcome to pursue on this banner: no preference chain and "
+            "no active goal for the current banner character",
+            runs,
+            seed,
+        )
+
+    rejected: list[RejectedOutcome] = []
+    for outcome in outcomes:
+        diagnostic_best: CandidateStrategy | None = None
+        for cap in caps:
+            candidate = evaluate_candidate(
+                context, outcome, cap, runs=runs, seed=seed
+            )
+            if (
+                diagnostic_best is None
+                or _diagnostic_key(candidate) > _diagnostic_key(diagnostic_best)
+            ):
+                diagnostic_best = candidate
+            if candidate.feasible:
+                # First feasible cap in a descending scan = the largest
+                # feasible cap among the scanned caps (§14).
+                return Recommendation(
+                    banner=current_banner(context),
+                    action="pursue",
+                    outcome=outcome,
+                    budget=cap,
+                    plan=candidate.plan,
+                    outcome_probability=candidate.outcome_probability,
+                    protected=candidate.protected,
+                    rejected=tuple(rejected),
+                    skip_reason=None,
+                    stops=for_pursue(outcome.label, cap),
+                    runs=runs,
+                    seed=seed,
+                )
+        shortfalls = tuple(
+            standing
+            for standing in diagnostic_best.protected
+            if not standing.meets_threshold
+        )
+        rejected.append(
+            RejectedOutcome(
+                outcome=outcome, best=diagnostic_best, shortfalls=shortfalls
+            )
+        )
+
+    return _skip(
+        context,
+        f"no preferred outcome can be pursued while keeping every protected "
+        f"goal at or above the {context.confidence:.0%} confidence threshold",
+        runs,
+        seed,
+        rejected=tuple(rejected),
+    )
