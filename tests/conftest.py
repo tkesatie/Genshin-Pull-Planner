@@ -1,8 +1,18 @@
-"""Shared Phase 1 fixtures built from the design document's running example."""
+"""Shared fixtures built from the design document's running example."""
 
 import pytest
 
-from domain import Account, Banner, Goal, Ownership, Roadmap
+from domain import (
+    Account,
+    Banner,
+    Goal,
+    IncomeEstimate,
+    IncomeForecast,
+    Ownership,
+    Roadmap,
+    VersionIncome,
+)
+from planner import PlannerContext
 
 
 @pytest.fixture
@@ -34,4 +44,36 @@ def doc_roadmap() -> Roadmap:
             Banner("Tsaritsa", "7.1", 1),
             Banner("Vodynista", "7.2", 1),
         ],
+    )
+
+
+@pytest.fixture
+def doc_income() -> IncomeForecast:
+    """Future income for the doc example (§16): ~30 expected per version.
+
+    IncomeForecast values are future income from the current account
+    state (planner.context): they arrive after the account's existing 40
+    wishes. Low/expected/high brackets at ±10.
+    """
+    return IncomeForecast(
+        versions=[
+            VersionIncome("7.0", estimate=IncomeEstimate(20, 30, 40)),
+            VersionIncome("7.1", estimate=IncomeEstimate(20, 30, 40)),
+            VersionIncome("7.2", estimate=IncomeEstimate(30, 40, 50)),
+        ]
+    )
+
+
+@pytest.fixture
+def doc_context(doc_account, doc_roadmap) -> PlannerContext:
+    """The design-document example, planner at Vesna 7.0 phase 1.
+
+    Default 90% threshold and no income forecast: the planner must be
+    able to answer "do not spend".
+    """
+    return PlannerContext(
+        account=doc_account,
+        roadmap=doc_roadmap,
+        current_version="7.0",
+        current_phase=1,
     )
