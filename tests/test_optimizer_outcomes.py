@@ -77,6 +77,18 @@ class TestPreferenceChain:
         )
         assert all(outcome.character == "Vesna" for outcome in outcomes)
 
+    def test_same_character_chain_orders_by_descending_constellation(self):
+        """Reported bug: a same-character chain is a progression (reaching
+        C2 necessarily reaches C0), so the furthest target is offered
+        first regardless of the user's stated rank order. Here C0 is
+        ranked ahead of C2 (rank 1 vs rank 3), but C2 still comes first."""
+        chain = (
+            Preference("Vesna", 1, 0),
+            Preference("Vesna", 3, 2),
+        )
+        outcomes = available_outcomes(context_with(Account(wishes=40)), chain)
+        assert [(o.label, o.rank) for o in outcomes] == [("C2", 3), ("C0", 1)]
+
     def test_no_refinement_stays_none(self, doc_context):
         outcomes = available_outcomes(doc_context, (Preference("Vesna", 1, 2),))
         assert outcomes[0].weapon_refinement is None

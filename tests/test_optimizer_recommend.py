@@ -26,7 +26,12 @@ from domain import (
     VersionIncome,
     WishMechanics,
 )
-from optimizer import constraining_goals, evaluate_skip_baseline, recommend
+from optimizer import (
+    available_outcomes,
+    constraining_goals,
+    evaluate_skip_baseline,
+    recommend,
+)
 from planner import PlannerContext, safe_spend
 
 VESNA = Banner("Vesna", "7.0", 1)
@@ -374,6 +379,172 @@ class TestFallthroughAndDiagnostics:
             min(standing.probability for standing in best.protected)
         )
         assert best.protected  # a protection-constrained outcome does show
+
+
+class TestSameCharacterProgression:
+    """Reported bug: a same-character chain is a progression, not a set of
+    mutually exclusive alternatives. Navia C0 (rank 1) and Navia C2 (rank
+    3) both name the current banner's character; since reaching C2
+    necessarily reaches C0 (§4.2, §12), pursuing C2 is never worse than
+    pursuing C0 alone, and the optimizer must not stop at the first
+    rank-ordered feasible outcome (optimizer.outcomes module docstring).
+
+    Arlecchino C0 sits at rank 2, between the two Navia targets, purely to
+    show that an unrelated character's place in the chain has no bearing
+    on this ordering: `available_outcomes` already restricts outcomes to
+    the current banner's character (Navia here), so Arlecchino never
+    becomes a competing outcome regardless of its rank.
+    """
+
+    def _context(self, wishes: int) -> PlannerContext:
+        roadmap = Roadmap(goals=[], banners=[Banner("Navia", "7.0", 1)])
+        return PlannerContext(
+            account=Account(wishes=wishes), roadmap=roadmap, current_version="7.0"
+        )
+
+    def _chain(self) -> tuple[Preference, ...]:
+        return (
+            Preference("Navia", 1, 0),  # P1: Navia C0
+            Preference("Arlecchino", 2, 0),  # P2: Arlecchino C0 (other banner)
+            Preference("Navia", 3, 2),  # P3: Navia C2
+        )
+
+    def test_the_higher_constellation_is_recommended_when_feasible(self):
+        """600 wishes: C2 is well within reach, so it is recommended over
+        C0 even though C0 outranks it in the stated preference order."""
+        rec = recommend(
+            self._context(wishes=600), self._chain(), runs=2_000, seed=7
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.character == "Navia"
+        assert rec.outcome.label == "C2"
+        assert rec.outcome_probability > 0.0
+        assert rec.plan.entries[0].target_constellation == 2
+        # C0 was never even the closest rejection - it wasn't tried, since
+        # the more-inclusive C2 outcome won outright.
+        assert rec.rejected == ()
+
+    def test_falls_back_to_the_lower_constellation_when_constrained(self):
+        """Too few wishes to safely reach C2: the optimizer falls back to
+        C0 rather than skipping outright (the required behavior to
+        preserve)."""
+        rec = recommend(
+            self._context(wishes=1), self._chain(), runs=2_000, seed=7
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C0"
+        assert rec.plan.entries[0].target_constellation == 0
+        # C2 was tried first (per the new ordering) and rejected before C0
+        # was reached.
+        assert [r.outcome.label for r in rec.rejected] == ["C2"]
+
+    def test_skips_when_neither_constellation_is_reachable(self):
+        """Zero wishes: neither Navia target can be pursued at all."""
+        rec = recommend(
+            self._context(wishes=0), self._chain(), runs=500, seed=7
+        )
+        assert rec.action == "skip"
+        assert [r.outcome.label for r in rec.rejected] == ["C2", "C0"]
+
+    def test_outcomes_are_ordered_by_descending_constellation(self):
+        """The ordering itself, independent of feasibility: C2 (rank 3)
+        precedes C0 (rank 1) because it is the more-inclusive target, and
+        Arlecchino (a different character) never appears at all."""
+        outcomes = available_outcomes(
+            self._context(wishes=600), self._chain()
+        )
+        assert [(o.character, o.label, o.rank) for o in outcomes] == [
+            ("Navia", "C2", 3),
+            ("Navia", "C0", 1),
+        ]
+
+    def test_a_preference_alone_never_protects_anything(self):
+        """Arlecchino here is only ever a Preference entry (rank 2, no
+        roadmap Goal) - exactly the original bug report's shape. Priority
+        protection is a Goals-only concept (§2, §15): with no Goal, there
+        is nothing to gate the reach to C2, at any wish count. This is
+        the reason `TestPriorityGatedProgression` below models Arlecchino
+        as an actual roadmap Goal instead."""
+        rec = recommend(
+            self._context(wishes=150), self._chain(), runs=1_500, seed=3
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C2"
+        assert rec.budget == 150
+        assert rec.rejected == ()
+
+
+class TestPriorityGatedProgression:
+    """The design document's own worked example, applied to this bug:
+
+        Priority 1 -> Navia C0
+        Priority 2 -> Arlecchino C0
+        Priority 3 -> Navia C2
+
+    Unlike `TestSameCharacterProgression`, priority here comes from actual
+    roadmap Goals (the only place priority lives, §2/§15) - not from
+    preference rank. The Navia preference chain (C0, then C2) is what
+    makes C2 an available outcome at all; the Goals are what let
+    Arlecchino's Priority 2 gate the reach to Navia's Priority 3 target
+    without gating Navia's own Priority 1 target.
+    """
+
+    MECHANICS = WishMechanics(
+        banner_type="character",
+        hard_pity=90,
+        soft_pity_start=74,
+        base_rate=0.006,
+        soft_pity_increment=0.06,
+        featured_rate=0.5,
+    )
+
+    def _context(self, wishes: int) -> PlannerContext:
+        roadmap = Roadmap(
+            goals=[
+                Goal("Navia", 0, 1),
+                Goal("Arlecchino", 0, 2),
+                Goal("Navia", 2, 3),
+            ],
+            banners=[Banner("Navia", "6.1", 1), Banner("Arlecchino", "6.3", 2)],
+        )
+        return PlannerContext(
+            account=Account(wishes=wishes),
+            roadmap=roadmap,
+            current_version="6.1",
+            current_phase=1,
+            confidence=0.9,
+            mechanics=self.MECHANICS,
+        )
+
+    def _chain(self) -> tuple[Preference, ...]:
+        return (Preference("Navia", 1, 0), Preference("Navia", 2, 2))
+
+    def test_c2_is_pursued_up_to_the_cap_that_still_protects_arlecchino(self):
+        """Plenty of wishes: C2 is reachable, and the recommended budget is
+        the largest one that still keeps Arlecchino (Priority 2, gating
+        Navia's Priority 3 target) at or above the confidence threshold -
+        not necessarily every wish in the account (§14: a cap, not a
+        commitment)."""
+        rec = recommend(self._context(wishes=600), self._chain(), runs=2_000, seed=3)
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C2"
+        assert rec.outcome_probability > 0.0
+        (arlecchino,) = [s for s in rec.protected if s.goal.character == "Arlecchino"]
+        assert arlecchino.constraining is True
+        assert arlecchino.meets_threshold is True
+
+    def test_falls_back_to_c0_when_c2_would_endanger_arlecchino(self):
+        """Tighter budget: pushing for C2 would leave Arlecchino below the
+        confidence threshold, so the optimizer falls back to Navia's own
+        Priority 1 target - which is not gated by Arlecchino at all."""
+        rec = recommend(self._context(wishes=90), self._chain(), runs=2_000, seed=3)
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C0"
+        assert [r.outcome.label for r in rec.rejected] == ["C2"]
+        (shortfall,) = rec.rejected[0].shortfalls
+        assert shortfall.goal == Goal("Arlecchino", 0, 2)
+        assert shortfall.constraining is True
+        assert shortfall.meets_threshold is False
 
 
 class TestDeterminismAndIsolation:

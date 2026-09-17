@@ -58,12 +58,18 @@ Phase 5 invariants:
    optimization only; the simulator evaluates every original Goal
    independently (§11) and feasibility scores each goal separately.
 6. Priority enters at the decision boundary, not in the classification
-   (§2): only protected goals whose priority outranks the objective the
-   current banner serves constrain spending
-   (`constraining_goals`). A lower-priority future goal is still pursued
-   and still reported, but it cannot veto spending on a higher-priority
-   current goal - and the inverse (a future Priority 1 goal constraining
-   a current Priority 2 goal) is exactly what the gate preserves.
+   (§2): only protected goals whose priority outranks the objective a
+   specific candidate outcome serves constrain spending on it
+   (`priority_for_outcome`, `constraining_goals`). A lower-priority future
+   goal is still pursued and still reported, but it cannot veto spending
+   on a higher-priority current goal - and the inverse (a future Priority 1
+   goal constraining a current Priority 2 goal) is exactly what the gate
+   preserves. The anchor is per outcome, not per decision: a preference
+   chain reaching past its roadmap-anchored goal into a deeper,
+   lower-priority constellation of the same character (§2's own example -
+   Vesna C0 at Priority 1, Vesna C2 at Priority 3) is gated by its own
+   priority, so an intervening goal (Vodynista at Priority 2) can protect
+   itself from the deeper reach without blocking the shallower one.
    `planner.protection` stays priority-independent: its Phase 3 contract
    answers "what is protected", never "what may veto this decision".
 7. Feasibility = every constraining protected goal's simulated
@@ -74,11 +80,15 @@ Phase 5 invariants:
 8. Evaluation runs the Phase 4 simulator (§14): carried pity/guarantee,
    actual spending decisions, income timing and multi-copy targets all
    count. No rate mathematics lives in this package.
-9. Selection is lexicographic, never a global score (§2, §13): preference
-   rank, then feasibility, then the largest feasible cap. The cap scan is
-   exhaustive over the given caps - feasibility is not monotone in the
-   cap (a lost 50/50 carried forward can protect a future goal), so no
-   binary search.
+9. Selection is lexicographic, never a global score (§2, §13): outcome
+   order, then feasibility, then the largest feasible cap. Outcome order
+   is descending constellation within the current character's chain, not
+   raw preference rank - a same-character chain is a progression (reaching
+   C2 necessarily reaches C0), so the most-inclusive target is tried
+   first; rank still decides which constellations are in scope and how
+   duplicates collapse (optimizer.outcomes). The cap scan is exhaustive
+   over the given caps - feasibility is not monotone in the cap (a lost
+   50/50 carried forward can protect a future goal), so no binary search.
 10. Monte Carlo results are seed-deterministic; the Recommendation carries
    runs and seed so its probabilities are never mistaken for exact values
    (§2, §11 invariant 10).
@@ -103,6 +113,7 @@ from optimizer.protection import (
     ProtectedGroup,
     constraining_goals,
     current_goal_priority,
+    priority_for_outcome,
     protected_groups,
 )
 from optimizer.recommend import (
@@ -129,6 +140,7 @@ __all__ = [
     "evaluate_skip_baseline",
     "for_pursue",
     "for_skip",
+    "priority_for_outcome",
     "protected_groups",
     "recommend",
 ]

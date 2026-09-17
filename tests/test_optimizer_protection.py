@@ -418,6 +418,68 @@ class TestCurrentGoalPriority:
         assert current_goal_priority(context) == 1
 
 
+class TestPriorityForOutcome:
+    """The per-outcome anchor a specific candidate is judged against (§2).
+
+    The design document's own example: Priority 1 -> Vesna C0, Priority 2
+    -> Vodynista C0, Priority 3 -> Vesna C2. `current_goal_priority` alone
+    would anchor every Vesna candidate to Priority 1 (the only ACTIVE
+    goal), which would let Vesna C2 ignore Vodynista's protection
+    entirely. `priority_for_outcome` fixes that by anchoring a candidate
+    to its OWN matching goal when the roadmap defines one.
+    """
+
+    def _roadmap(self) -> Roadmap:
+        return Roadmap(
+            goals=[
+                Goal("Navia", 0, 1),
+                Goal("Arlecchino", 0, 2),
+                Goal("Navia", 2, 3),
+            ],
+            banners=[Banner("Navia", "6.1", 1), Banner("Arlecchino", "6.3", 2)],
+        )
+
+    def _context(self) -> PlannerContext:
+        return PlannerContext(
+            account=Account(wishes=150), roadmap=self._roadmap(), current_version="6.1"
+        )
+
+    def test_a_deeper_outcome_anchors_to_its_own_matching_goal(self):
+        from optimizer import OutcomeOption, priority_for_outcome
+
+        context = self._context()
+        c0 = OutcomeOption(character="Navia", constellation=0, rank=1)
+        c2 = OutcomeOption(character="Navia", constellation=2, rank=2)
+        # C0 matches the Priority 1 goal; the deeper C2 matches its own
+        # Priority 3 goal instead of inheriting C0's anchor.
+        assert priority_for_outcome(context, c0) == 1
+        assert priority_for_outcome(context, c2) == 3
+
+    def test_an_intervening_goal_then_constrains_only_the_deeper_outcome(self):
+        from optimizer import OutcomeOption, constraining_goals, priority_for_outcome
+
+        context = self._context()
+        c0 = OutcomeOption(character="Navia", constellation=0, rank=1)
+        c2 = OutcomeOption(character="Navia", constellation=2, rank=2)
+        arlecchino = Goal("Arlecchino", 0, 2)
+
+        assert arlecchino not in constraining_goals(
+            context, priority=priority_for_outcome(context, c0)
+        )
+        assert arlecchino in constraining_goals(
+            context, priority=priority_for_outcome(context, c2)
+        )
+
+    def test_an_outcome_with_no_matching_goal_falls_back_to_the_context_anchor(self):
+        """A pure preference with no roadmap counterpart (e.g. a C1 nobody
+        put on the roadmap) behaves exactly as before this existed."""
+        from optimizer import OutcomeOption, current_goal_priority, priority_for_outcome
+
+        context = self._context()
+        c1 = OutcomeOption(character="Navia", constellation=1, rank=1)
+        assert priority_for_outcome(context, c1) == current_goal_priority(context)
+
+
 class TestConstrainingGoals:
     """Which protected goals may constrain the current decision (§2).
 

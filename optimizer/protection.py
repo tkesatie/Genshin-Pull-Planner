@@ -34,6 +34,8 @@ from domain import Banner, Goal
 from planner import PlannerContext, actionable_goals, evaluate_goals
 from planner.banners import current_banner
 
+from optimizer.outcomes import OutcomeOption
+
 
 @dataclass(frozen=True)
 class ProtectedGroup:
@@ -109,6 +111,10 @@ def current_goal_priority(context: PlannerContext) -> int | None:
     roadmap, and every protected goal constrains it (the conservative
     reading; §13 step 5 is not weakened by an unanchored decision).
 
+    This is the fallback anchor for a candidate whose specific outcome has
+    no roadmap counterpart; see `priority_for_outcome` for the per-outcome
+    anchor `optimizer.recommend` actually gates on.
+
     Raises:
         ValueError: via `current_banner`, when the context has no roadmap
             banner at its (version, phase).
@@ -119,17 +125,64 @@ def current_goal_priority(context: PlannerContext) -> int | None:
     return min(priorities) if priorities else None
 
 
-def constraining_goals(context: PlannerContext) -> frozenset[Goal]:
-    """The protected goals whose probability gates the current decision (§2).
+def priority_for_outcome(context: PlannerContext, outcome: OutcomeOption) -> int | None:
+    """The priority anchor one specific candidate outcome is judged against (§2).
+
+    `current_goal_priority` anchors the whole decision to a single active
+    goal, which is correct as long as every candidate outcome represents
+    the same objective. It stops being correct once a preference chain
+    reaches past that goal to a *deeper* constellation of the same
+    character (optimizer.outcomes: reaching C2 necessarily reaches C0).
+    The roadmap can legitimately rank that deeper reach as its own,
+    lower-priority objective - the design document's own example is
+    exactly this pattern:
+
+        Priority 1 -> Vesna C0
+        Priority 2 -> Vodynista C0
+        Priority 3 -> Vesna C2
+
+    Here, pursuing the C2 *outcome* should be judged against priority 3,
+    not priority 1, so that Vodynista (priority 2) can gate the reach to
+    C2 without gating the reach to C0.
+
+    When the outcome's exact (character, constellation) matches a roadmap
+    Goal, that goal's own priority is the anchor. Preferences and
+    priorities are still separate concepts (§2, §15): a preference chain
+    with no roadmap counterpart at all falls back to
+    `current_goal_priority`, unchanged from before this existed.
+    """
+    for goal in context.roadmap.goals:
+        if goal.character == outcome.character and goal.constellation == outcome.constellation:
+            return goal.priority
+    return current_goal_priority(context)
+
+
+_AUTO = object()
+
+
+def constraining_goals(
+    context: PlannerContext, priority: int | None = _AUTO  # type: ignore[assignment]
+) -> frozenset[Goal]:
+    """The protected goals whose probability gates a decision (§2).
 
     §2 frames the tradeoff precisely: "If I spend wishes pursuing Tsaritsa,
     what happens to my probability of satisfying the *higher-priority*
     future objectives?" A protected goal therefore constrains spending only
-    when its priority is higher (a lower number) than the current decision's
-    own priority (`current_goal_priority`). A goal the user ranked below the
-    current objective keeps its full place in the strategy - it is still
-    pursued by candidate plans and still reported - but its probability can
-    no longer force the current spend down to nothing.
+    when its priority is higher (a lower number) than the decision's own
+    priority. A goal the user ranked below the current objective keeps its
+    full place in the strategy - it is still pursued by candidate plans and
+    still reported - but its probability can no longer force the current
+    spend down to nothing.
+
+    `priority` is the anchor to gate against. Left unset, it is computed
+    from `current_goal_priority` (the whole-decision anchor, as before);
+    callers evaluating one specific candidate outcome should instead pass
+    `priority_for_outcome(context, outcome)`, so a deeper reach on the
+    same character can be gated by its own, lower-priority objective
+    without weakening protection for the base objective (see
+    `priority_for_outcome`). Passing `None` explicitly means "unanchored":
+    every protected goal constrains, the same conservative reading
+    `current_goal_priority` documents for its own None.
 
     This is a Phase 5 filter over `protected_groups`; the classification
     itself (and planner.protection's Phase 3 contract) is untouched, so the
@@ -139,7 +192,8 @@ def constraining_goals(context: PlannerContext) -> frozenset[Goal]:
     protected = [
         goal for group in protected_groups(context) for goal in group.goals
     ]
-    priority = current_goal_priority(context)
+    if priority is _AUTO:
+        priority = current_goal_priority(context)
     if priority is None:
         return frozenset(protected)
     return frozenset(goal for goal in protected if goal.priority < priority)

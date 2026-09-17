@@ -14,8 +14,20 @@ Resolution order (character-restricted first, §15/§2):
 
 Rules:
 
-* Outcomes are ordered by preference rank; rank 1 is pursued first (§13
-  step 7 compares preference rank, never probability).
+* All outcomes returned here share the current banner's character
+  (module docstring, resolution order). Resulting constellations for one
+  character are strictly nested - reaching C2 necessarily reaches C0
+  along the way (§4.2, §12) - so a same-character chain is never a set
+  of mutually exclusive alternatives to pick by rank. It is a menu of
+  how far to go, and outcomes are therefore ordered by DESCENDING
+  constellation (the furthest target first), not by preference rank:
+  pursuing the higher constellation subsumes every lower one the chain
+  also names, so it can never be worse than pursuing the lower one
+  alone. `rank` is retained on each `OutcomeOption` for display and
+  provenance (§15) and decides which constellations are in scope at all
+  (see the duplicate-collapse rule below), but it is not the evaluation
+  order - optimizer.recommend walks this tuple front-to-back and the
+  front must be the most-inclusive target.
 * Duplicate constellations are collapsed to their best rank: "C2R1"
   before "C2" keeps the C2R1 outcome; both express the same target
   constellation. Labels are display-only (§15).
@@ -111,8 +123,15 @@ def available_outcomes(
             )
             for preference in best_by_constellation.values()
         )
-        return tuple(
+        eligible = tuple(
             option for option in options if option.constellation > owned
+        )
+        # Descending constellation, not rank order (see module docstring):
+        # a same-character chain is a progression, and the furthest
+        # attainable target always subsumes every nearer one the chain
+        # also names.
+        return tuple(
+            sorted(eligible, key=lambda option: option.constellation, reverse=True)
         )
 
     # No preference chain for this character: fall back to the roadmap

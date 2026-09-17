@@ -2,17 +2,25 @@
 
 The decision is lexicographic - never a global "best" score (§2, §13):
 
-    1. Which outcome do I prefer?           preference rank (§15)
+    1. Which outcome do I prefer?           outcome order (§15, see below)
     2. Can I pursue it while protecting
        the roadmap?                          feasibility (§13 step 5)
     3. How much may I spend on it?          largest feasible cap (§14)
 
-Outcomes are evaluated in preference order and the first feasible one
-wins; a lower-ranked outcome never displaces a higher-ranked feasible one
-no matter how its probabilities compare. Within the winning outcome, the
-candidate caps are scanned from the account's wishes down to 0 and the
-first feasible cap is recommended: the largest feasible cap (§14's safe
-spending, evaluated at roadmap level through simulation).
+`optimizer.outcomes.available_outcomes` already restricts every outcome
+it returns to the current banner's single character, and resulting
+constellations for one character are strictly nested (reaching C2
+necessarily reaches C0). That tuple is therefore ordered by descending
+constellation - the furthest target first - not by the user's stated
+preference rank: a same-character chain is a progression of how far to
+go, never a set of mutually exclusive alternatives, so the outcome that
+subsumes the most of the chain is tried first. This function simply
+walks that order front-to-back; a nearer target never displaces a
+further one this function has already found feasible. Within the
+winning outcome, the candidate caps are scanned from the account's
+wishes down to 0 and the first feasible cap is recommended: the largest
+feasible cap (§14's safe spending, evaluated at roadmap level through
+simulation).
 
 The scan is exhaustive over the given caps and never binary-searches:
 feasibility is not monotone in the cap. Spending one more wish can lose
@@ -22,11 +30,18 @@ carry must count). A scan's first feasible cap is the largest feasible
 cap among the scanned caps regardless of monotonicity.
 
 Priority enters here, at the decision boundary (§2): only protected goals
-that outrank the objective the current banner serves gate spending
-(optimizer.protection.constraining_goals). A future goal the user ranked
-below the current one is still pursued and reported, but it cannot force
-the spend down to nothing - otherwise a Priority 2 goal sitting two
-versions away would veto a Priority 1 goal available today.
+that outrank the objective a specific candidate outcome serves gate
+spending on it (optimizer.protection.priority_for_outcome,
+constraining_goals). A future goal the user ranked below the current
+one is still pursued and reported, but it cannot force the spend down to
+nothing - otherwise a Priority 2 goal sitting two versions away would
+veto a Priority 1 goal available today. This gate is computed per
+outcome, not once for the whole decision: a same-character preference
+chain can reach past its roadmap-anchored objective into a deeper
+constellation that the roadmap itself ranks lower (§2's own worked
+example - Vesna C0 at Priority 1, Vesna C2 at Priority 3), and an
+intervening goal (Vodynista at Priority 2) can then gate that deeper
+reach without gating the shallower one.
 
 Skipping is a legitimate recommendation (§1): when no outcome can be
 pursued without violating protection - or there is nothing to pursue at
@@ -54,7 +69,7 @@ from optimizer.evaluation import (
     evaluate_skip_baseline,
 )
 from optimizer.outcomes import OutcomeOption, available_outcomes
-from optimizer.protection import constraining_goals
+from optimizer.protection import constraining_goals, priority_for_outcome
 from optimizer.stops import StopConditions, for_pursue, for_skip
 
 
@@ -87,8 +102,10 @@ class Recommendation:
         banner: the current banner the decision is about.
         action: "pursue" or "skip" (§1: "do not spend" is a legitimate
             answer).
-        outcome: the pursued outcome - in preference order, the first
-            feasible one; None when skipping.
+        outcome: the pursued outcome - in outcome order (see module
+            docstring: descending constellation for the current
+            character's chain), the first feasible one; None when
+            skipping.
         budget: the largest feasible cap for the outcome (§14); 0 when
             skipping.
         plan: the executable strategy for the recommendation (§12); None
@@ -100,8 +117,9 @@ class Recommendation:
             carries whether it gates the decision (§2's priority gate), so
             a lower-priority goal shows its probability without vetoing
             the spend.
-        rejected: more-preferred outcomes that failed feasibility, most
-            preferred first - the "why" behind the recommendation.
+        rejected: outcomes tried before the winner (or before giving up),
+            in the same order `available_outcomes` returns them - furthest
+            constellation first - the "why" behind the recommendation.
         skip_reason: why nothing can be pursued; None when pursuing.
         stops: the stop conditions attached to the recommendation (§1).
         runs / seed: simulation provenance (§2).
@@ -196,11 +214,14 @@ def recommend(
     cap (§13, §14).
 
     Deterministic for identical (context, preferences, runs, seed,
-    budgets). With no *constraining* protected goals the scan
-    short-circuits to the largest cap: nothing future outranks this
-    decision, and a larger cap never lowers the outcome's probability
-    (§12's cap semantics). Lower-priority protected goals may still exist
-    and are still reported - they simply do not gate the spend (§2).
+    budgets). For an outcome with no *constraining* protected goals the
+    scan short-circuits to the largest cap: nothing future outranks that
+    outcome's objective, and a larger cap never lowers the outcome's
+    probability (§12's cap semantics). This is decided per outcome, not
+    once for the whole call (module docstring) - a deeper same-character
+    reach can be gated even when the shallower one is not. Lower-priority
+    protected goals may still exist and are still reported - they simply
+    do not gate the spend (§2).
 
     Cost: a pursue recommendation stops at its first feasible cap, so it
     probes only the rejected upper caps. A skip must scan every cap of
@@ -217,9 +238,7 @@ def recommend(
             `available_outcomes`).
     """
     outcomes = available_outcomes(context, preferences)
-    caps = _caps(context, budgets)
-    if not constraining_goals(context):
-        caps = caps[:1]  # the largest cap dominates (see docstring)
+    all_caps = _caps(context, budgets)
     if not outcomes:
         return _skip(
             context,
@@ -231,6 +250,16 @@ def recommend(
 
     rejected: list[RejectedOutcome] = []
     for outcome in outcomes:
+        # The cap-scan shortcut is per outcome, not global (§14): a deeper
+        # reach on the same character can be its own, lower-priority
+        # objective (optimizer.protection.priority_for_outcome), so one
+        # outcome may have nothing constraining it while another does.
+        outcome_priority = priority_for_outcome(context, outcome)
+        caps = (
+            all_caps
+            if constraining_goals(context, priority=outcome_priority)
+            else all_caps[:1]  # the largest cap dominates (see docstring)
+        )
         diagnostic_best: CandidateStrategy | None = None
         for cap in caps:
             candidate = evaluate_candidate(

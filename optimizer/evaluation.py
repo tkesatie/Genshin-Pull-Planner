@@ -109,19 +109,21 @@ class CandidateStrategy:
 
 
 def _standings(
-    context: PlannerContext, result: SimulationResult
+    context: PlannerContext,
+    result: SimulationResult,
+    constraining: frozenset,
 ) -> tuple[GoalStanding, ...]:
     """Per-goal simulated standings, flagged with the §2 priority gate.
 
     Per-goal report (§11): every original roadmap Goal keeps its own
-    standing - grouping onto banners never merges goals (§13). The
-    `constraining` flag comes from optimizer.protection and is the only
-    place priority enters feasibility; the standings themselves always
-    describe every protected goal, higher- and lower-priority alike.
+    standing - grouping onto banners never merges goals (§13). `constraining`
+    is the resolved set of goals that gate THIS decision (see
+    optimizer.protection.priority_for_outcome for why that can differ per
+    candidate outcome); the standings themselves always describe every
+    protected goal, higher- and lower-priority alike.
     """
-    from optimizer.protection import constraining_goals, protected_groups
+    from optimizer.protection import protected_groups
 
-    constraining = constraining_goals(context)
     probability_by_goal = {
         probability.goal: probability.probability for probability in result.goals
     }
@@ -154,6 +156,8 @@ def evaluate_candidate(
         ValueError: if `budget` is outside [0, account wishes] (via
             `candidate_plan`).
     """
+    from optimizer.protection import constraining_goals, priority_for_outcome
+
     plan = candidate_plan(context, outcome, budget)
     result = simulate(context, plan, runs=runs, seed=seed)
 
@@ -161,7 +165,14 @@ def evaluate_candidate(
     # target_met aggregate is the outcome's probability.
     outcome_probability = result.banners[0].target_met_probability
 
-    standings = _standings(context, result)
+    # Which goals gate THIS outcome (§2): a deeper reach on the current
+    # banner's own character can be its own, lower-priority objective
+    # (optimizer.protection.priority_for_outcome), so the anchor is
+    # computed per outcome rather than once for the whole decision.
+    constraining = constraining_goals(
+        context, priority=priority_for_outcome(context, outcome)
+    )
+    standings = _standings(context, result, constraining)
 
     # Feasibility (§13 step 5): only the goals that outrank the decision
     # gate it (§2); the rest are reported and pursued but never veto.
@@ -192,10 +203,12 @@ def evaluate_skip_baseline(
     The skip baseline processes every future banner with its protected
     pursuits and no current-banner spending: "what does my roadmap look
     like if I do not spend?" - the diagnostic behind a do-not-spend
-    recommendation (§1). Standings carry the same §2 `constraining` flag
-    as a candidate's, so the diagnostic never re-labels protection.
+    recommendation (§1). There is no specific outcome being pursued here,
+    so the whole-decision anchor (`current_goal_priority`, via
+    `constraining_goals`'s default) applies, same as before this module
+    started gating per outcome.
     """
-    from optimizer.protection import protected_groups
+    from optimizer.protection import constraining_goals, protected_groups
 
     plan = SpendPlan(
         entries=tuple(
@@ -207,4 +220,5 @@ def evaluate_skip_baseline(
             for group in protected_groups(context)
         )
     )
-    return _standings(context, simulate(context, plan, runs=runs, seed=seed))
+    result = simulate(context, plan, runs=runs, seed=seed)
+    return _standings(context, result, constraining_goals(context))

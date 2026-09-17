@@ -126,3 +126,5 @@ scratch/
 *.tmp
 *.orig
 *.rej
+
+.clineignore
