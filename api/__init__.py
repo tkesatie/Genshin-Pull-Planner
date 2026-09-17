@@ -60,7 +60,7 @@ Phase 6 invariants:
 9. Every Monte Carlo response carries `runs` and `seed` (§2, §11 invariant
    10), so a sampled probability is never presented as an exact value.
 10. Stop conditions are a property of a recommendation (§13, Phase 5
-    invariant 11): `/planner/stop-conditions` returns the stops of an
+    invariant 12): `/planner/stop-conditions` returns the stops of an
     actual `recommend()` call and never composes rules of its own.
 11. Persistence sits behind a repository protocol and is in-memory for
     now; a database drops in without touching routers (§18: infrastructure

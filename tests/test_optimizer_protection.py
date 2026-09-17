@@ -12,7 +12,7 @@ from domain import (
     Roadmap,
     VersionIncome,
 )
-from optimizer import protected_groups
+from optimizer import constraining_goals, current_goal_priority, protected_groups
 from planner import PlannerContext, evaluate_goals, protected_goal_outcomes
 
 VESNA = Banner("Vesna", "7.0", 1)
@@ -178,6 +178,59 @@ def _planner_goal_banner_pairs(context):
     }
 
 
+class TestPriorityGate:
+    """Classification (what is protected) stays priority-independent; the
+    *constraint* (what may veto this decision) does not (§2)."""
+
+    def _context(self, navia_priority: int, arlecchino_priority: int):
+        roadmap = Roadmap(
+            goals=[
+                Goal("Navia", 0, navia_priority),
+                Goal("Arlecchino", 0, arlecchino_priority),
+            ],
+            banners=[Banner("Navia", "6.1", 1), Banner("Arlecchino", "6.3", 2)],
+        )
+        return PlannerContext(
+            account=Account(wishes=80), roadmap=roadmap, current_version="6.1"
+        )
+
+    def test_the_anchor_is_the_current_banners_best_active_goal(self):
+        assert current_goal_priority(self._context(1, 2)) == 1
+        assert current_goal_priority(self._context(2, 1)) == 2
+
+    def test_the_anchor_is_none_without_an_active_goal_on_this_banner(self):
+        """A decision made from a preference chain alone is not anchored to a
+        priority, so nothing is filtered out (the conservative reading)."""
+        roadmap = Roadmap(
+            goals=[Goal("Arlecchino", 0, 1)],
+            banners=[Banner("Navia", "6.1", 1), Banner("Arlecchino", "6.3", 2)],
+        )
+        context = PlannerContext(
+            account=Account(wishes=80), roadmap=roadmap, current_version="6.1"
+        )
+        assert current_goal_priority(context) is None
+        assert constraining_goals(context) == frozenset({Goal("Arlecchino", 0, 1)})
+
+    def test_a_lower_priority_future_goal_does_not_constrain(self):
+        context = self._context(1, 2)
+        assert protected_groups(context)  # still protected ...
+        assert constraining_goals(context) == frozenset()  # ... but not gating
+
+    def test_a_higher_priority_future_goal_does_constrain(self):
+        context = self._context(2, 1)
+        assert constraining_goals(context) == frozenset({Goal("Arlecchino", 0, 1)})
+
+    def test_the_doc_example_tsaritsa_is_protected_but_not_gating(self, doc_context):
+        """The classification still lists Tsaritsa - the Phase 3 agreement
+        test keeps holding - while the §2 gate excludes it, because the
+        current banner's Vesna C0 is Priority 1 and Tsaritsa C0 is Priority 4."""
+        assert _group_goal_banner_pairs(doc_context) == _planner_goal_banner_pairs(
+            doc_context
+        )
+        assert constraining_goals(doc_context) == frozenset()
+        assert current_goal_priority(doc_context) == 1  # Vesna C0, Priority 1
+
+
 class TestGroupingNeverMergesGoalsForEvaluation:
     """Review point 2: grouping goals onto one banner is a strategy-execution
     optimization only. The simulator still reports satisfaction per original
@@ -293,4 +346,162 @@ class TestClassificationAgreement:
         assert _group_goal_banner_pairs(context) == _planner_goal_banner_pairs(
             context
         )
+
+
+class TestCurrentGoalPriority:
+    """The priority the current decision is anchored to (optimizer.protection
+    §2, §9).
+
+    `current_goal_priority` is the best-ranked ACTIVE goal on the current
+    banner: the priority any future goal must beat to constrain the spend. It
+    is None when the current banner has no ACTIVE goal - an unanchored decision
+    is conservative and every protected goal constrains it.
+    """
+
+    def test_anchors_to_the_current_banner_s_active_goal(self, doc_context):
+        assert current_goal_priority(doc_context) == 1
+
+    def test_is_none_when_the_current_banner_has_no_active_goal(self, doc_account):
+        roadmap = Roadmap(
+            goals=[Goal("Tsaritsa", 0, 1)],
+            banners=[VESNA, TSARITSA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        assert current_goal_priority(context) is None
+
+    def test_ignores_future_and_satisfied_goals(self, doc_account):
+        roadmap = Roadmap(
+            goals=[
+                Goal("Vesna", 0, 2),
+                Goal("Tsaritsa", 0, 1),
+            ],
+            banners=[VESNA, TSARITSA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        assert current_goal_priority(context) == 2
+
+    def test_returns_the_lowest_priority_when_multiple_active(self, doc_account):
+        """When multiple goals on the current banner are actionable (e.g. C0 and
+        C1 both needed, both actionable because C0 is already satisfied), the
+        anchor is the best-ranked one - the lowest priority number."""
+        roadmap = Roadmap(
+            goals=[
+                Goal("Vesna", 0, 2),  # priority 2, C0 actionable
+                Goal("Vesna", 1, 1),  # priority 1, C1 actionable once C0 met
+            ],
+            banners=[VESNA, TSARITSA],
+        )
+        account = Account(
+            current_pity=0,
+            character_guarantee=False,
+            owned_characters=Ownership({"Vesna": 0}),  # C0 already owned
+            wishes=40,
+        )
+        context = PlannerContext(
+            account=account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        # Both C0 (priority 2) and C1 (priority 1) are actionable now that
+        # C0 is owned; the anchor is the best-ranked: priority 1.
+        assert current_goal_priority(context) == 1
+
+
+class TestConstrainingGoals:
+    """Which protected goals may constrain the current decision (§2).
+
+    A protected goal constrains only when its priority is higher (a lower
+    number) than the current decision's own priority. A protected goal ranked
+    below the current objective keeps its place in the strategy - it is still
+    pursued and reported - but its probability can no longer force the current
+    spend to zero.
+    """
+
+    def test_lower_priority_future_goal_does_not_constrain(
+        self, doc_account, doc_roadmap
+    ):
+        """The reported bug scenario: current Priority 1 goal, future
+        Priority 2 goal. The future goal is protected but does not gate the
+        current decision."""
+        roadmap = Roadmap(
+            goals=[
+                Goal("Vesna", 0, 1),
+                Goal("Tsaritsa", 0, 2),
+            ],
+            banners=[VESNA, TSARITSA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        constraining = constraining_goals(context)
+        assert Goal("Tsaritsa", 0, 2) not in constraining
+
+    def test_higher_priority_future_goal_does_constrain(
+        self, doc_account, doc_roadmap
+    ):
+        """Inverse: future Priority 1 goal constrains a current Priority 2
+        goal."""
+        roadmap = Roadmap(
+            goals=[
+                Goal("Vesna", 0, 2),
+                Goal("Tsaritsa", 0, 1),
+            ],
+            banners=[VESNA, TSARITSA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        constraining = constraining_goals(context)
+        assert Goal("Tsaritsa", 0, 1) in constraining
+
+    def test_unanchored_decision_is_conservative(
+        self, doc_account, doc_roadmap
+    ):
+        """When the current banner has no ACTIVE goal, every protected goal
+        constrains (the conservative reading, §2)."""
+        roadmap = Roadmap(
+            goals=[Goal("Tsaritsa", 0, 1)],
+            banners=[VESNA, TSARITSA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        constraining = constraining_goals(context)
+        assert Goal("Tsaritsa", 0, 1) in constraining
+
+    def test_no_protected_goals_yields_empty(
+        self, doc_account, doc_roadmap
+    ):
+        """With nothing left to protect, constraining is empty."""
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1)],
+            banners=[VESNA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+        )
+        assert constraining_goals(context) == frozenset()
 

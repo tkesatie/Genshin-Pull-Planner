@@ -13,14 +13,18 @@ Two views of spending coexist here on purpose, and each says which it is:
   provisional (§14);
 * `/recommendation` is the Phase 5 optimizer running the Monte Carlo
   simulator, which counts carried pity, guarantee, actual spending and
-  income timing (§14).
+  income timing (§14), and gates spending only on protected goals that
+  outrank the current banner's goal (§2).
 
 They can disagree; the recommendation is the answer, and the approximation
 is the cheap explanation. §14 warns against letting the approximation
-become a permanent assumption, so it is labelled rather than hidden.
+become a permanent assumption, so it is labelled rather than hidden. The
+priority gate is one place they diverge by design: Phase 3 answers "what is
+protected" for every future goal alike, while the optimizer answers "what
+may constrain this decision".
 
 `/stop-conditions` returns the stops of a real `recommend()` call. Stop
-conditions belong to a recommendation (Phase 5 invariant 11) - composing
+conditions belong to a recommendation (Phase 5 invariant 12) - composing
 rules here would let the two drift apart.
 """
 
@@ -186,8 +190,10 @@ def _recommendation(
     summary="The current recommendation",
     description=(
         "The highest-preference outcome that can be pursued while every "
-        "protected future goal stays at or above the confidence threshold, "
-        "and the largest feasible spend cap for it (§13, §14). Skipping is a "
+        "protected future goal that outranks this banner's goal stays at or "
+        "above the confidence threshold, and the largest feasible spend cap "
+        "for it (§13, §14). Lower-priority future goals are still pursued and "
+        "reported, but they cannot force the spend down (§2). Skipping is a "
         "legitimate recommendation and comes with per-outcome rejections "
         "(§1).\n\n"
         "This runs the Monte Carlo simulator once per candidate cap. A skip "

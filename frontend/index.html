@@ -381,13 +381,15 @@ function barRow(label, sublabel, probability, threshold, meets) {
 
 function renderRecommendation(rec) {
   const banner = bannerName(rec.banner);
+  const nonGating = rec.protected.filter((standing) => standing.constraining === false);
   if (rec.action === "pursue") {
     $("verdict").innerHTML =
       `Pursue ${rec.outcome.character} ${rec.outcome.label}, ` +
       `<span class="verdict-cap">up to ${wishWord(rec.budget)}</span>.`;
     $("verdict-detail").textContent =
       `At that cap you reach it in ${pct(rec.outcome_probability)} of simulated futures, ` +
-      `and every protected goal stays at or above ${pct(rec.confidence)}.`;
+      `and every protected goal that outranks this banner's goal stays ` +
+      `at or above ${pct(rec.confidence)}.`;
   } else {
     $("verdict").textContent = `Don't spend on ${banner}.`;
     $("verdict-detail").textContent = rec.skip_reason || "";
@@ -426,7 +428,9 @@ function renderRecommendation(rec) {
     protectedBars.append(
       barRow(
         goalName(standing.goal),
-        bannerName(standing.banner),
+        standing.constraining === false
+          ? `${bannerName(standing.banner)} · lower priority: does not cap this spend`
+          : bannerName(standing.banner),
         standing.probability,
         rec.confidence,
         standing.meets_threshold
@@ -434,9 +438,14 @@ function renderRecommendation(rec) {
     );
   }
   $("protected-caption").textContent =
-    rec.action === "pursue"
-      ? `Where your roadmap lands if you follow this recommendation. The dashed line is your ${pct(rec.confidence)} threshold.`
-      : `Where your roadmap lands if you spend nothing here. The dashed line is your ${pct(rec.confidence)} threshold.`;
+    (rec.action === "pursue"
+      ? "Where your roadmap lands if you follow this recommendation. "
+      : "Where your roadmap lands if you spend nothing here. ") +
+    (nonGating.length
+      ? "Goals the user ranked below this banner's goal are shown, but only " +
+        "higher-priority goals cap the spend. "
+      : "") +
+    `The dashed line is your ${pct(rec.confidence)} threshold.`;
   $("protected-section").hidden = rec.protected.length === 0;
 
   const stops = $("stops");

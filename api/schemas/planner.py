@@ -181,6 +181,16 @@ class GoalStandingView(BaseModel):
     banner: BannerModel
     probability: float
     meets_threshold: bool
+    constraining: bool = Field(
+        ...,
+        description=(
+            "Whether this goal's threshold gates the decision: its priority "
+            "outranks the current banner's goal (§2). A non-constraining "
+            "goal is reported, not ignored - it is still pursued, but a "
+            "lower-priority goal cannot veto spending on a higher-priority "
+            "current one."
+        ),
+    )
 
     @classmethod
     def from_domain(cls, standing: GoalStanding) -> "GoalStandingView":
@@ -189,6 +199,7 @@ class GoalStandingView(BaseModel):
             banner=BannerModel.from_domain(standing.banner),
             probability=standing.probability,
             meets_threshold=standing.meets_threshold,
+            constraining=standing.constraining,
         )
 
 
@@ -200,9 +211,18 @@ class RejectedOutcomeView(BaseModel):
         ..., description="The cap of the candidate closest to feasible."
     )
     outcome_probability: float
-    min_protected_probability: float | None
+    min_protected_probability: float | None = Field(
+        None,
+        description=(
+            "The weakest *constraining* protected standing of the closest "
+            "candidate; null when nothing outranks the decision."
+        ),
+    )
     shortfalls: list[GoalStandingView] = Field(
-        ..., description="Protected goals still below the threshold - the why."
+        ...,
+        description=(
+            "Constraining protected goals still below the threshold - the why."
+        ),
     )
 
     @classmethod

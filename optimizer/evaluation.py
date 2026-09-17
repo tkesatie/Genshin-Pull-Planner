@@ -8,9 +8,13 @@ remains its own (documented) view.
 
 Feasibility (§13 step 5) is the conjunction of:
 
-* PROTECTION: every protected goal's simulated satisfaction probability
-  meets the context's confidence threshold (§1: "pursuing this outcome
-  leaves me with a 92% probability of satisfying the protected roadmap");
+* PROTECTION: every *constraining* protected goal's simulated satisfaction
+  probability meets the context's confidence threshold (§1: "pursuing this
+  outcome leaves me with a 92% probability of satisfying the protected
+  roadmap"). Which protected goals constrain is §2's priority question and
+  lives in optimizer.protection.constraining_goals: a future goal the user
+  ranked below the current objective is still pursued and reported, but it
+  does not veto spending on the higher-priority current goal;
 * PURSUIT: the outcome's probability is empirically nonzero.
 
 The pursuit criterion is empirical by construction: `outcome_probability`
@@ -55,12 +59,19 @@ class GoalStanding:
         probability: fraction of simulated histories in which the goal
             ended satisfied.
         meets_threshold: probability >= the context's confidence threshold.
+        constraining: whether this goal gates feasibility - i.e. whether
+            its priority outranks the current decision (§2, see
+            optimizer.protection.constraining_goals). A non-constraining
+            standing is reported, not ignored: the recommendation still
+            shows where the roadmap lands, it just does not let a
+            lower-priority goal veto spending on a higher-priority one.
     """
 
     goal: Goal
     banner: Banner
     probability: float
     meets_threshold: bool
+    constraining: bool
 
 
 @dataclass(frozen=True)
@@ -77,10 +88,14 @@ class CandidateStrategy:
         outcome_probability: empirical P(the outcome's target is met on
             the current banner within the cap).
         protected: each protected goal's standing, in the protected
-            grouping's order (chronological banners, priority within).
-        min_protected_probability: the minimum protected-goal probability,
-            or None with no protected goals - the rejection diagnostic.
-        feasible: protection AND empirical pursuit (module docstring).
+            grouping's order (chronological banners, priority within),
+            each flagged with whether it gates this candidate (§2).
+        min_protected_probability: the weakest *constraining* protected
+            standing, or None when no protected goal outranks the current
+            decision - with nothing gating, the floor is vacuous and the
+            rejection diagnostic falls to the outcome probability.
+        feasible: constraining protection AND empirical pursuit (module
+            docstring).
     """
 
     outcome: OutcomeOption
@@ -92,6 +107,35 @@ class CandidateStrategy:
     min_protected_probability: float | None
     feasible: bool
 
+
+def _standings(
+    context: PlannerContext, result: SimulationResult
+) -> tuple[GoalStanding, ...]:
+    """Per-goal simulated standings, flagged with the §2 priority gate.
+
+    Per-goal report (§11): every original roadmap Goal keeps its own
+    standing - grouping onto banners never merges goals (§13). The
+    `constraining` flag comes from optimizer.protection and is the only
+    place priority enters feasibility; the standings themselves always
+    describe every protected goal, higher- and lower-priority alike.
+    """
+    from optimizer.protection import constraining_goals, protected_groups
+
+    constraining = constraining_goals(context)
+    probability_by_goal = {
+        probability.goal: probability.probability for probability in result.goals
+    }
+    return tuple(
+        GoalStanding(
+            goal=goal,
+            banner=group.banner,
+            probability=probability_by_goal[goal],
+            meets_threshold=probability_by_goal[goal] >= context.confidence,
+            constraining=goal in constraining,
+        )
+        for group in protected_groups(context)
+        for goal in group.goals
+    )
 
 
 def evaluate_candidate(
@@ -110,8 +154,6 @@ def evaluate_candidate(
         ValueError: if `budget` is outside [0, account wishes] (via
             `candidate_plan`).
     """
-    from optimizer.protection import protected_groups
-
     plan = candidate_plan(context, outcome, budget)
     result = simulate(context, plan, runs=runs, seed=seed)
 
@@ -119,25 +161,14 @@ def evaluate_candidate(
     # target_met aggregate is the outcome's probability.
     outcome_probability = result.banners[0].target_met_probability
 
-    # Per-goal report (§11): every original roadmap Goal keeps its own
-    # standing - grouping onto banners never merges goals (§13).
-    probability_by_goal = {
-        probability.goal: probability.probability for probability in result.goals
-    }
-    standings = tuple(
-        GoalStanding(
-            goal=goal,
-            banner=group.banner,
-            probability=probability_by_goal[goal],
-            meets_threshold=probability_by_goal[goal] >= context.confidence,
-        )
-        for group in protected_groups(context)
-        for goal in group.goals
-    )
+    standings = _standings(context, result)
 
-    protected_ok = all(standing.meets_threshold for standing in standings)
+    # Feasibility (§13 step 5): only the goals that outrank the decision
+    # gate it (§2); the rest are reported and pursued but never veto.
+    gating = [standing for standing in standings if standing.constraining]
+    protected_ok = all(standing.meets_threshold for standing in gating)
     min_protected = (
-        min(standing.probability for standing in standings) if standings else None
+        min(standing.probability for standing in gating) if gating else None
     )
     return CandidateStrategy(
         outcome=outcome,
@@ -161,7 +192,8 @@ def evaluate_skip_baseline(
     The skip baseline processes every future banner with its protected
     pursuits and no current-banner spending: "what does my roadmap look
     like if I do not spend?" - the diagnostic behind a do-not-spend
-    recommendation (§1).
+    recommendation (§1). Standings carry the same §2 `constraining` flag
+    as a candidate's, so the diagnostic never re-labels protection.
     """
     from optimizer.protection import protected_groups
 
@@ -175,17 +207,4 @@ def evaluate_skip_baseline(
             for group in protected_groups(context)
         )
     )
-    result = simulate(context, plan, runs=runs, seed=seed)
-    probability_by_goal = {
-        probability.goal: probability.probability for probability in result.goals
-    }
-    return tuple(
-        GoalStanding(
-            goal=goal,
-            banner=group.banner,
-            probability=probability_by_goal[goal],
-            meets_threshold=probability_by_goal[goal] >= context.confidence,
-        )
-        for group in protected_groups(context)
-        for goal in group.goals
-    )
+    return _standings(context, simulate(context, plan, runs=runs, seed=seed))

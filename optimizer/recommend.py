@@ -21,6 +21,13 @@ protect a future goal more than the wish cost it (§14: pity/guarantee
 carry must count). A scan's first feasible cap is the largest feasible
 cap among the scanned caps regardless of monotonicity.
 
+Priority enters here, at the decision boundary (§2): only protected goals
+that outrank the objective the current banner serves gate spending
+(optimizer.protection.constraining_goals). A future goal the user ranked
+below the current one is still pursued and reported, but it cannot force
+the spend down to nothing - otherwise a Priority 2 goal sitting two
+versions away would veto a Priority 1 goal available today.
+
 Skipping is a legitimate recommendation (§1): when no outcome can be
 pursued without violating protection - or there is nothing to pursue at
 all - the planner says "do not spend" and reports the per-outcome
@@ -47,7 +54,7 @@ from optimizer.evaluation import (
     evaluate_skip_baseline,
 )
 from optimizer.outcomes import OutcomeOption, available_outcomes
-from optimizer.protection import protected_groups
+from optimizer.protection import constraining_goals
 from optimizer.stops import StopConditions, for_pursue, for_skip
 
 
@@ -58,12 +65,13 @@ class RejectedOutcome:
     Attributes:
         outcome: the rejected preferred outcome.
         best: the candidate closest to feasibility among the scanned caps:
-            the highest minimum protected-goal probability (ties broken by
-            higher outcome probability, then larger cap). With no
-            protected goals the floor is 1.0 by definition, so the outcome
-            probability decides - the honest "closest to feasible" view.
-        shortfalls: the protected goals still below the threshold at
-            `best` - the concrete "why".
+            the highest minimum probability among the protected goals that
+            actually constrain the decision, ties broken by higher outcome
+            probability, then larger cap. With no constraining goals the
+            floor is 1.0 by definition, so the outcome probability decides -
+            the honest "closest to feasible" view.
+        shortfalls: the constraining protected goals still below the
+            threshold at `best` - the concrete "why".
     """
 
     outcome: OutcomeOption
@@ -88,7 +96,10 @@ class Recommendation:
         outcome_probability: the empirical probability of achieving the
             outcome under the recommendation.
         protected: each protected goal's standing under the recommendation;
-            under a skip, the do-nothing baseline (§2).
+            under a skip, the do-nothing baseline (§2). Every standing
+            carries whether it gates the decision (§2's priority gate), so
+            a lower-priority goal shows its probability without vetoing
+            the spend.
         rejected: more-preferred outcomes that failed feasibility, most
             preferred first - the "why" behind the recommendation.
         skip_reason: why nothing can be pursued; None when pursuing.
@@ -136,7 +147,12 @@ def _skip(
 
 
 def _diagnostic_key(candidate: CandidateStrategy) -> tuple[float, float, int]:
-    """Rejection ordering: closest to feasible first (see RejectedOutcome)."""
+    """Rejection ordering: closest to feasible first (see RejectedOutcome).
+
+    The floor is the weakest *constraining* protection; None means nothing
+    gates the candidate, which sorts as a vacuous 1.0 so the outcome
+    probability decides.
+    """
     floor = (
         candidate.min_protected_probability
         if candidate.min_protected_probability is not None
@@ -180,9 +196,11 @@ def recommend(
     cap (§13, §14).
 
     Deterministic for identical (context, preferences, runs, seed,
-    budgets). With no protected goals the scan short-circuits to the
-    largest cap: nothing future constrains spending, and a larger cap
-    never lowers the outcome's probability (§12's cap semantics).
+    budgets). With no *constraining* protected goals the scan
+    short-circuits to the largest cap: nothing future outranks this
+    decision, and a larger cap never lowers the outcome's probability
+    (§12's cap semantics). Lower-priority protected goals may still exist
+    and are still reported - they simply do not gate the spend (§2).
 
     Cost: a pursue recommendation stops at its first feasible cap, so it
     probes only the rejected upper caps. A skip must scan every cap of
@@ -199,9 +217,8 @@ def recommend(
             `available_outcomes`).
     """
     outcomes = available_outcomes(context, preferences)
-    groups = protected_groups(context)
     caps = _caps(context, budgets)
-    if not groups:
+    if not constraining_goals(context):
         caps = caps[:1]  # the largest cap dominates (see docstring)
     if not outcomes:
         return _skip(
@@ -244,7 +261,7 @@ def recommend(
         shortfalls = tuple(
             standing
             for standing in diagnostic_best.protected
-            if not standing.meets_threshold
+            if standing.constraining and not standing.meets_threshold
         )
         rejected.append(
             RejectedOutcome(
@@ -254,8 +271,9 @@ def recommend(
 
     return _skip(
         context,
-        f"no preferred outcome can be pursued while keeping every protected "
-        f"goal at or above the {context.confidence:.0%} confidence threshold",
+        f"no preferred outcome can be pursued while keeping every "
+        f"higher-priority protected goal at or above the "
+        f"{context.confidence:.0%} confidence threshold",
         runs,
         seed,
         rejected=tuple(rejected),

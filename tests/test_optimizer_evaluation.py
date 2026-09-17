@@ -180,11 +180,16 @@ class TestGuaranteeCarry:
        guarantee only by consuming wishes and resetting pity, which is why
        the carry matters between states of EQUAL wishes and as the
        non-interval feasibility of fact 2 - not as a free lunch.
+
+    B is Priority 1 and A (the current banner's goal) is Priority 2: only a
+    future goal that *outranks* the current decision constrains it (§2, see
+    optimizer.protection.constraining_goals). The protection story below is
+    therefore the higher-priority-future-goal story.
     """
 
     def _scenario(self) -> PlannerContext:
         roadmap = Roadmap(
-            goals=[Goal("A", 0, 1), Goal("B", 0, 2)],
+            goals=[Goal("A", 0, 2), Goal("B", 0, 1)],
             banners=[Banner("A", "7.0", 1), Banner("B", "7.1", 1)],
         )
         account = Account(current_pity=1, character_guarantee=False, wishes=3)

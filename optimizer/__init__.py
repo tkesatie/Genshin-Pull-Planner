@@ -57,26 +57,36 @@ Phase 5 invariants:
    Grouping goals onto a shared banner is a strategy-execution
    optimization only; the simulator evaluates every original Goal
    independently (§11) and feasibility scores each goal separately.
-6. Feasibility = every protected goal's simulated satisfaction
-   probability >= the context threshold AND a nonzero empirical outcome
-   probability (§13 step 5). The latter is a Monte Carlo criterion -
-   acknowledged sampling noise, not a proof of impossibility.
-7. Evaluation runs the Phase 4 simulator (§14): carried pity/guarantee,
+6. Priority enters at the decision boundary, not in the classification
+   (§2): only protected goals whose priority outranks the objective the
+   current banner serves constrain spending
+   (`constraining_goals`). A lower-priority future goal is still pursued
+   and still reported, but it cannot veto spending on a higher-priority
+   current goal - and the inverse (a future Priority 1 goal constraining
+   a current Priority 2 goal) is exactly what the gate preserves.
+   `planner.protection` stays priority-independent: its Phase 3 contract
+   answers "what is protected", never "what may veto this decision".
+7. Feasibility = every constraining protected goal's simulated
+   satisfaction probability >= the context threshold AND a nonzero
+   empirical outcome probability (§13 step 5). The latter is a Monte
+   Carlo criterion - acknowledged sampling noise, not a proof of
+   impossibility.
+8. Evaluation runs the Phase 4 simulator (§14): carried pity/guarantee,
    actual spending decisions, income timing and multi-copy targets all
    count. No rate mathematics lives in this package.
-8. Selection is lexicographic, never a global score (§2, §13): preference
+9. Selection is lexicographic, never a global score (§2, §13): preference
    rank, then feasibility, then the largest feasible cap. The cap scan is
    exhaustive over the given caps - feasibility is not monotone in the
    cap (a lost 50/50 carried forward can protect a future goal), so no
    binary search.
-9. Monte Carlo results are seed-deterministic; the Recommendation carries
+10. Monte Carlo results are seed-deterministic; the Recommendation carries
    runs and seed so its probabilities are never mistaken for exact values
    (§2, §11 invariant 10).
-10. When no outcome is feasible, the recommendation is "do not spend"
+11. When no outcome is feasible, the recommendation is "do not spend"
     with per-outcome rejections - never a fabricated strategy (§1, §13).
-11. Stop conditions express the cap's real-world execution: stop on the
+12. Stop conditions express the cap's real-world execution: stop on the
     outcome, never exceed the cap, re-run after updates (§1, §2).
-12. Weapon refinement is displayed from preference labels but never
+13. Weapon refinement is displayed from preference labels but never
     simulated (§17, §19).
 """
 
@@ -89,7 +99,12 @@ from optimizer.evaluation import (
     evaluate_skip_baseline,
 )
 from optimizer.outcomes import OutcomeOption, available_outcomes
-from optimizer.protection import ProtectedGroup, protected_groups
+from optimizer.protection import (
+    ProtectedGroup,
+    constraining_goals,
+    current_goal_priority,
+    protected_groups,
+)
 from optimizer.recommend import (
     Recommendation,
     RejectedOutcome,
@@ -108,6 +123,8 @@ __all__ = [
     "StopConditions",
     "available_outcomes",
     "candidate_plan",
+    "constraining_goals",
+    "current_goal_priority",
     "evaluate_candidate",
     "evaluate_skip_baseline",
     "for_pursue",

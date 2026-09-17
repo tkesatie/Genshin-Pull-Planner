@@ -16,12 +16,22 @@ GROUPING INVARIANT: grouping must never replace or merge the underlying
 roadmap goals for outcome evaluation. The simulator reports satisfaction
 per original Goal (§11); the optimizer reads those per-goal probabilities
 back - the group only decides what single spend target executes them.
+
+CLASSIFICATION vs. CONSTRAINT: which goals are *protected* (§13 step 5,
+above) and which protected goals may *constrain the current decision* (§2)
+are deliberately separate questions. §2 asks what spending now does to the
+"higher-priority future objectives", so a protected goal the user ranked
+below the objective the current banner serves does not get to veto spending
+on it - otherwise "Priority 1 → Vesna C0" would mean nothing when Vesna is
+available today and Tsaritsa is not. `constraining_goals` is that filter; it
+is applied here in Phase 5 and never inside planner.protection, whose
+Phase 3 contract is priority-independent by design.
 """
 
 from dataclasses import dataclass
 
 from domain import Banner, Goal
-from planner import PlannerContext, evaluate_goals
+from planner import PlannerContext, actionable_goals, evaluate_goals
 from planner.banners import current_banner
 
 
@@ -83,3 +93,53 @@ def protected_groups(context: PlannerContext) -> tuple[ProtectedGroup, ...]:
             )
         )
     return tuple(groups)
+
+
+def current_goal_priority(context: PlannerContext) -> int | None:
+    """Priority the current decision is anchored to (§2, §9).
+
+    The objective a banner decision serves is the best-ranked ACTIVE goal
+    on the current banner: the current banner's character's highest-priority
+    actionable goal. Priorities are a strict protection order (§2), so this
+    is the priority any future goal must beat to be allowed to constrain
+    the spend.
+
+    None when the current banner has no ACTIVE roadmap goal - a decision
+    made from a preference chain alone is not anchored to a position in the
+    roadmap, and every protected goal constrains it (the conservative
+    reading; §13 step 5 is not weakened by an unanchored decision).
+
+    Raises:
+        ValueError: via `current_banner`, when the context has no roadmap
+            banner at its (version, phase).
+    """
+    priorities = [
+        evaluation.goal.priority for evaluation in actionable_goals(context)
+    ]
+    return min(priorities) if priorities else None
+
+
+def constraining_goals(context: PlannerContext) -> frozenset[Goal]:
+    """The protected goals whose probability gates the current decision (§2).
+
+    §2 frames the tradeoff precisely: "If I spend wishes pursuing Tsaritsa,
+    what happens to my probability of satisfying the *higher-priority*
+    future objectives?" A protected goal therefore constrains spending only
+    when its priority is higher (a lower number) than the current decision's
+    own priority (`current_goal_priority`). A goal the user ranked below the
+    current objective keeps its full place in the strategy - it is still
+    pursued by candidate plans and still reported - but its probability can
+    no longer force the current spend down to nothing.
+
+    This is a Phase 5 filter over `protected_groups`; the classification
+    itself (and planner.protection's Phase 3 contract) is untouched, so the
+    two layers keep one definition of "protected" while only the decision
+    layer knows about priority.
+    """
+    protected = [
+        goal for group in protected_groups(context) for goal in group.goals
+    ]
+    priority = current_goal_priority(context)
+    if priority is None:
+        return frozenset(protected)
+    return frozenset(goal for goal in protected if goal.priority < priority)

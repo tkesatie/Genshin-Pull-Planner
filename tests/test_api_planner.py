@@ -185,10 +185,51 @@ class TestRecommendation:
         assert body["runs"] == 200
         assert body["seed"] == 5
 
-    def test_the_doc_example_skips_with_per_outcome_rejections(
+    def test_the_doc_example_pursues_because_its_future_goal_lower_priority(
         self, api_client, doc_account_id
     ):
-        """Nothing is pursueable at 90% here, and the API says why (§1, §13)."""
+        """The doc example's Vesna C0 is Priority 1 and current; Tsaritsa C0
+        is Priority 4. §2 only lets *higher-priority* future goals constrain a
+        decision, so the API pursues Vesna's top preference at the whole pool
+        and reports Tsaritsa as protected but non-gating (§13)."""
+        body = api_client.get(
+            f"/accounts/{doc_account_id}/planner/recommendation",
+            params={"runs": 200, "seed": 5, "budgets": [40, 20, 0]},
+        ).json()
+        assert body["action"] == "pursue"
+        assert body["outcome"]["character"] == "Vesna"
+        assert body["budget"] == 40
+        assert body["skip_reason"] is None
+        # Any fallthrough is the empirical-pursuit criterion, never Tsaritsa:
+        # a non-constraining goal is reported but never named as a blocker.
+        assert all(not rejected["shortfalls"] for rejected in body["rejected"])
+
+        (protected,) = body["protected"]
+        assert protected["goal"] == {
+            "character": "Tsaritsa",
+            "constellation": 0,
+            "priority": 4,
+        }
+        assert protected["constraining"] is False
+        assert protected["meets_threshold"] is False
+
+    def test_a_higher_priority_future_goal_blocks_and_the_api_says_why(
+        self, api_client, doc_account_id
+    ):
+        """The inverse: make Tsaritsa Priority 1 and Vesna C0 Priority 2 and
+        the same account skips again, with the blocker named in the shortfall
+        list (§1, §13 step 7)."""
+        api_client.put(
+            f"/accounts/{doc_account_id}/goals",
+            json={
+                "goals": [
+                    {"character": "Tsaritsa", "constellation": 0, "priority": 1},
+                    {"character": "Vesna", "constellation": 0, "priority": 2},
+                    {"character": "Vesna", "constellation": 2, "priority": 3},
+                    {"character": "Vodynista", "constellation": 0, "priority": 4},
+                ]
+            },
+        )
         body = api_client.get(
             f"/accounts/{doc_account_id}/planner/recommendation",
             params={"runs": 200, "seed": 5, "budgets": [40, 20, 0]},
@@ -196,13 +237,18 @@ class TestRecommendation:
         assert body["action"] == "skip"
         assert body["outcome"] is None
         assert body["plan"] is None
-        assert body["skip_reason"] is not None
+        assert "higher-priority" in body["skip_reason"]
         assert [rejected["outcome"]["label"] for rejected in body["rejected"]] == [
             "C2R1",
             "C1R1",
             "C0",
         ]
-        assert body["rejected"][0]["shortfalls"]
+        for rejected in body["rejected"]:
+            assert rejected["shortfalls"], "the 'why' must name the blocker"
+            (shortfall,) = rejected["shortfalls"]
+            assert shortfall["goal"]["character"] == "Tsaritsa"
+            assert shortfall["constraining"] is True
+            assert shortfall["meets_threshold"] is False
 
     def test_a_pursue_recommendation_carries_its_plan_and_stops(
         self, api_client, doc_account_id
