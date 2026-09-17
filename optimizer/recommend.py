@@ -6,6 +6,26 @@ The decision is lexicographic - never a global "best" score (§2, §13):
     2. Can I pursue it while protecting
        the roadmap?                          feasibility (§13 step 5)
     3. How much may I spend on it?          largest feasible cap (§14)
+    4. Is that cap actually worth
+       recommending?                        minimum_outcome_probability (§14)
+
+Step 4 is a separate concept from step 2's protection threshold (Phase 5
+correction). The confidence threshold answers "does this leave my
+higher-priority future goals safe?" `MINIMUM_OUTCOME_PROBABILITY` answers a
+different question: "is this specific outcome, at the largest cap that
+keeps the roadmap safe, actually likely enough to call it a recommendation?"
+A candidate can be entirely feasible (protection holds, the outcome is
+empirically reachable at all) and still have a low empirical
+`outcome_probability` - reaching a deep constellation, or reaching any
+target on very few wishes. Below the minimum, the winning outcome does not
+change (§13 step 7's outcome order and feasibility are untouched - a low
+probability at the winning outcome's own cap is never a reason to fall
+through to the next, more-conservative outcome), but the action reported is
+"discretionary" rather than "pursue": the wishes are available to spend
+without endangering anything higher priority, but success is unlikely
+enough that presenting it as an ordinary recommendation would overstate it.
+"You are allowed to spend these wishes" is not the same claim as "I
+recommend spending these wishes."
 
 `optimizer.outcomes.available_outcomes` already restricts every outcome
 it returns to the current banner's single character, and resulting
@@ -70,7 +90,14 @@ from optimizer.evaluation import (
 )
 from optimizer.outcomes import OutcomeOption, available_outcomes
 from optimizer.protection import constraining_goals, priority_for_outcome
-from optimizer.stops import StopConditions, for_pursue, for_skip
+from optimizer.stops import StopConditions, for_discretionary, for_pursue, for_skip
+
+# The confidence threshold (PlannerContext.confidence) protects
+# *higher-priority future goals*; this constant is a different question -
+# whether the current-banner objective itself, at the largest cap that
+# keeps those future goals safe, is likely enough to present as a normal
+# recommendation rather than a disclosed gamble (module docstring, §14).
+MINIMUM_OUTCOME_PROBABILITY = 0.25
 
 
 @dataclass(frozen=True)
@@ -100,14 +127,21 @@ class Recommendation:
 
     Attributes:
         banner: the current banner the decision is about.
-        action: "pursue" or "skip" (§1: "do not spend" is a legitimate
-            answer).
+        action: "pursue", "discretionary" or "skip" (§1: "do not spend" is
+            a legitimate answer). "discretionary" is a feasible candidate -
+            protection holds and the outcome is empirically reachable -
+            whose `outcome_probability` falls below
+            `MINIMUM_OUTCOME_PROBABILITY`: the wishes may be spent without
+            endangering anything higher priority, but the chance of success
+            is too low to present as an ordinary recommendation (module
+            docstring, §14).
         outcome: the pursued outcome - in outcome order (see module
             docstring: descending constellation for the current
             character's chain), the first feasible one; None when
-            skipping.
+            skipping. Set for both "pursue" and "discretionary".
         budget: the largest feasible cap for the outcome (§14); 0 when
-            skipping.
+            skipping. Set for both "pursue" and "discretionary" - a
+            discretionary action still names how much may safely be spent.
         plan: the executable strategy for the recommendation (§12); None
             when skipping.
         outcome_probability: the empirical probability of achieving the
@@ -119,8 +153,14 @@ class Recommendation:
             the spend.
         rejected: outcomes tried before the winner (or before giving up),
             in the same order `available_outcomes` returns them - furthest
-            constellation first - the "why" behind the recommendation.
-        skip_reason: why nothing can be pursued; None when pursuing.
+            constellation first - the "why" behind the recommendation. A
+            "discretionary" winner is never itself listed here: the 25%
+            check decides how to present the winning outcome, not whether
+            it is the winner (module docstring).
+        skip_reason: why nothing can be pursued; None unless skipping.
+        discretionary_reason: why a feasible outcome was downgraded to a
+            disclosed gamble instead of an ordinary recommendation; None
+            unless action is "discretionary".
         stops: the stop conditions attached to the recommendation (§1).
         runs / seed: simulation provenance (§2).
     """
@@ -137,6 +177,7 @@ class Recommendation:
     stops: StopConditions
     runs: int
     seed: int | None
+    discretionary_reason: str | None = None
 
 
 
@@ -161,6 +202,27 @@ def _skip(
         stops=for_skip(reason),
         runs=runs,
         seed=seed,
+        discretionary_reason=None,
+    )
+
+
+def _discretionary_reason(
+    outcome_label: str, outcome_probability: float, minimum_outcome_probability: float
+) -> str:
+    """The "available but not recommended" explanation (module docstring).
+
+    Named at the label level (never the detection mechanics beyond the two
+    numbers themselves): the largest cap that still protects every
+    higher-priority goal, and the empirical chance that spending it achieves
+    the outcome.
+    """
+    return (
+        f"{outcome_label} is available but not recommended: the largest "
+        "spend that still protects every higher-priority goal gives only a "
+        f"{outcome_probability:.0%} chance of achieving it, below the "
+        f"{minimum_outcome_probability:.0%} minimum for an ordinary "
+        "recommendation. You may still spend up to the reported budget if "
+        "you want to take the gamble, but success is unlikely."
     )
 
 
@@ -209,23 +271,29 @@ def recommend(
     runs: int = DEFAULT_RUNS,
     seed: int | None = DEFAULT_SEED,
     budgets: Iterable[int] | None = None,
+    minimum_outcome_probability: float = MINIMUM_OUTCOME_PROBABILITY,
 ) -> Recommendation:
     """The highest-preference feasible outcome and its largest feasible
     cap (§13, §14).
 
     Deterministic for identical (context, preferences, runs, seed,
-    budgets). For an outcome with no *constraining* protected goals the
-    scan short-circuits to the largest cap: nothing future outranks that
-    outcome's objective, and a larger cap never lowers the outcome's
-    probability (§12's cap semantics). This is decided per outcome, not
-    once for the whole call (module docstring) - a deeper same-character
-    reach can be gated even when the shallower one is not. Lower-priority
-    protected goals may still exist and are still reported - they simply
-    do not gate the spend (§2).
+    budgets, minimum_outcome_probability). For an outcome with no
+    *constraining* protected goals the scan short-circuits to the largest
+    cap: nothing future outranks that outcome's objective, and a larger cap
+    never lowers the outcome's probability (§12's cap semantics). This is
+    decided per outcome, not once for the whole call (module docstring) - a
+    deeper same-character reach can be gated even when the shallower one is
+    not. Lower-priority protected goals may still exist and are still
+    reported - they simply do not gate the spend (§2).
 
-    Cost: a pursue recommendation stops at its first feasible cap, so it
-    probes only the rejected upper caps. A skip must scan every cap of
-    every outcome to report the rejections, which costs
+    `minimum_outcome_probability` never changes which outcome wins or its
+    cap (module docstring: it is not an outcome-selection rule) - it only
+    decides whether the winning candidate is reported as `action="pursue"`
+    or the disclosed-gamble `action="discretionary"`.
+
+    Cost: a pursue or discretionary recommendation stops at its first
+    feasible cap, so it probes only the rejected upper caps. A skip must
+    scan every cap of every outcome to report the rejections, which costs
     `outcomes x caps x runs` histories - seconds, not milliseconds, at the
     defaults. Pass a coarser `budgets` list when latency matters, keeping
     in mind that a coarse list can miss a narrow feasible window
@@ -235,8 +303,14 @@ def recommend(
         ValueError: via `_caps`, when the context has no roadmap banner
             at its (version, phase), or for degenerate duplicate active
             goals in the no-preference fallback (via
-            `available_outcomes`).
+            `available_outcomes`); or if `minimum_outcome_probability` is
+            outside [0, 1].
     """
+    if not 0.0 <= minimum_outcome_probability <= 1.0:
+        raise ValueError(
+            "minimum_outcome_probability must be in [0, 1], got "
+            f"{minimum_outcome_probability}"
+        )
     outcomes = available_outcomes(context, preferences)
     all_caps = _caps(context, budgets)
     if not outcomes:
@@ -272,10 +346,34 @@ def recommend(
                 diagnostic_best = candidate
             if candidate.feasible:
                 # First feasible cap in a descending scan = the largest
-                # feasible cap among the scanned caps (§14).
+                # feasible cap among the scanned caps (§14). Which outcome
+                # won and what it costs are already settled at this point;
+                # the only thing left to decide is how to present it (module
+                # docstring step 4) - never whether to keep scanning.
+                if candidate.outcome_probability >= minimum_outcome_probability:
+                    return Recommendation(
+                        banner=current_banner(context),
+                        action="pursue",
+                        outcome=outcome,
+                        budget=cap,
+                        plan=candidate.plan,
+                        outcome_probability=candidate.outcome_probability,
+                        protected=candidate.protected,
+                        rejected=tuple(rejected),
+                        skip_reason=None,
+                        stops=for_pursue(outcome.label, cap),
+                        runs=runs,
+                        seed=seed,
+                        discretionary_reason=None,
+                    )
+                reason = _discretionary_reason(
+                    outcome.label,
+                    candidate.outcome_probability,
+                    minimum_outcome_probability,
+                )
                 return Recommendation(
                     banner=current_banner(context),
-                    action="pursue",
+                    action="discretionary",
                     outcome=outcome,
                     budget=cap,
                     plan=candidate.plan,
@@ -283,9 +381,15 @@ def recommend(
                     protected=candidate.protected,
                     rejected=tuple(rejected),
                     skip_reason=None,
-                    stops=for_pursue(outcome.label, cap),
+                    stops=for_discretionary(
+                        outcome.label,
+                        cap,
+                        candidate.outcome_probability,
+                        minimum_outcome_probability,
+                    ),
                     runs=runs,
                     seed=seed,
+                    discretionary_reason=reason,
                 )
         shortfalls = tuple(
             standing

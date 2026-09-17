@@ -43,7 +43,7 @@ from api.schemas.planner import (
     SpendTableView,
     StopConditionsView,
 )
-from optimizer import DEFAULT_RUNS, recommend
+from optimizer import DEFAULT_RUNS, MINIMUM_OUTCOME_PROBABILITY, recommend
 from planner import (
     actionable_goals,
     current_banner,
@@ -168,6 +168,7 @@ def _recommendation(
     runs: int,
     seed: int | None,
     budgets: list[int] | None,
+    minimum_outcome_probability: float,
 ):
     """Run the optimizer once for the endpoints that need a decision (§13)."""
     context = record.context(
@@ -180,6 +181,7 @@ def _recommendation(
         runs=runs,
         seed=seed,
         budgets=budgets,
+        minimum_outcome_probability=minimum_outcome_probability,
     )
     return context, decision
 
@@ -200,7 +202,11 @@ def _recommendation(
         "scans every cap of every outcome, which is seconds of work at the "
         "defaults; pass a coarser `budgets` list when latency matters, "
         "keeping in mind that a coarse list can miss a narrow feasible "
-        "window. Results are reproducible for an identical `runs`/`seed`."
+        "window. Results are reproducible for an identical `runs`/`seed`.\n\n"
+        "A feasible outcome whose probability at its largest safe cap falls "
+        "below `minimum_outcome_probability` is reported as "
+        '`action="discretionary"` rather than `"pursue"`: the budget is '
+        "still safe to spend, but not recommended (§14)."
     ),
 )
 def planner_recommendation(
@@ -215,12 +221,24 @@ def planner_recommendation(
             "account's wishes down to 0."
         ),
     ),
+    minimum_outcome_probability: float = Query(
+        MINIMUM_OUTCOME_PROBABILITY,
+        description=(
+            "Minimum outcome probability for an ordinary recommendation "
+            '(§14); below it a feasible outcome is reported as '
+            '"discretionary" instead of "pursue".'
+        ),
+    ),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> RecommendationView:
-    context, decision = _recommendation(record, overrides, runs, seed, budgets)
+    context, decision = _recommendation(
+        record, overrides, runs, seed, budgets, minimum_outcome_probability
+    )
     return RecommendationView.from_domain(
-        decision, confidence=context.confidence
+        decision,
+        confidence=context.confidence,
+        minimum_outcome_probability=minimum_outcome_probability,
     )
 
 
@@ -243,8 +261,18 @@ def planner_stop_conditions(
     budgets: list[int] | None = Query(
         None, description="Candidate spend caps to scan."
     ),
+    minimum_outcome_probability: float = Query(
+        MINIMUM_OUTCOME_PROBABILITY,
+        description=(
+            "Minimum outcome probability for an ordinary recommendation "
+            '(§14); below it the stops describe a "discretionary" gamble '
+            'instead of a "pursue".'
+        ),
+    ),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> StopConditionsView:
-    _, decision = _recommendation(record, overrides, runs, seed, budgets)
+    _, decision = _recommendation(
+        record, overrides, runs, seed, budgets, minimum_outcome_probability
+    )
     return StopConditionsView.from_domain(decision.stops)

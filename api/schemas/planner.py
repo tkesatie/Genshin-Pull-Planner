@@ -242,7 +242,7 @@ class RejectedOutcomeView(BaseModel):
 class StopConditionsView(BaseModel):
     """When to stop pursuing, and what to do then (§1)."""
 
-    action: str
+    action: str = Field(..., description='"pursue", "discretionary" or "skip".')
     outcome_label: str | None
     spend_cap: int
     rules: list[str]
@@ -261,26 +261,58 @@ class RecommendationView(BaseModel):
     """The planner's decision at the current banner (§1, §13, §20)."""
 
     banner: BannerModel
-    action: str = Field(..., description='"pursue" or "skip".')
+    action: str = Field(
+        ...,
+        description=(
+            '"pursue", "discretionary" or "skip". "discretionary" is a '
+            "feasible outcome - protection holds and it is empirically "
+            "reachable - whose outcome_probability falls below "
+            "minimum_outcome_probability: the budget is safe to spend but "
+            "not recommended (§14)."
+        ),
+    )
     outcome: OutcomeView | None
     budget: int = Field(
-        ..., description="Largest feasible spend cap - a cap, not a commitment (§12)."
+        ...,
+        description=(
+            "Largest feasible spend cap - a cap, not a commitment (§12). "
+            'Set for both "pursue" and "discretionary".'
+        ),
     )
     plan: SpendPlanModel | None
     outcome_probability: float
     confidence: float = Field(
         ..., description="The threshold the decision was made against."
     )
+    minimum_outcome_probability: float = Field(
+        ...,
+        description=(
+            "The minimum outcome_probability for an ordinary recommendation "
+            '(§14); below it, a feasible outcome is reported as '
+            '"discretionary" rather than "pursue".'
+        ),
+    )
     protected: list[GoalStandingView]
     rejected: list[RejectedOutcomeView]
     skip_reason: str | None
+    discretionary_reason: str | None = Field(
+        None,
+        description=(
+            'Why a feasible outcome was reported as "discretionary" '
+            'instead of "pursue"; null unless action is "discretionary".'
+        ),
+    )
     stops: StopConditionsView
     runs: int
     seed: int | None
 
     @classmethod
     def from_domain(
-        cls, recommendation: Recommendation, *, confidence: float
+        cls,
+        recommendation: Recommendation,
+        *,
+        confidence: float,
+        minimum_outcome_probability: float,
     ) -> "RecommendationView":
         return cls(
             banner=BannerModel.from_domain(recommendation.banner),
@@ -298,6 +330,7 @@ class RecommendationView(BaseModel):
             ),
             outcome_probability=recommendation.outcome_probability,
             confidence=confidence,
+            minimum_outcome_probability=minimum_outcome_probability,
             protected=[
                 GoalStandingView.from_domain(standing)
                 for standing in recommendation.protected
@@ -307,6 +340,7 @@ class RecommendationView(BaseModel):
                 for rejected in recommendation.rejected
             ],
             skip_reason=recommendation.skip_reason,
+            discretionary_reason=recommendation.discretionary_reason,
             stops=StopConditionsView.from_domain(recommendation.stops),
             runs=recommendation.runs,
             seed=recommendation.seed,

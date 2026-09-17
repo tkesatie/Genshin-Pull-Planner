@@ -66,14 +66,22 @@ class TestDocExampleAt90Percent:
         rec = recommend(
             doc_context, doc_preferences, runs=2_000, seed=5, budgets=[40, 20, 0]
         )
-        assert rec.action == "pursue"
+        # Issue 2 (minimum_outcome_probability, §14): the winning outcome
+        # here (see below) is only reachable a small fraction of the time
+        # on 40 wishes from fresh pity, well under the 25% minimum for an
+        # ordinary recommendation, so this is the disclosed-gamble
+        # "discretionary" action. Tsaritsa's non-gating status - this
+        # test's actual subject - is unaffected: it is still reported,
+        # still non-constraining, and never named as a blocker below.
+        assert rec.action == "discretionary"
+        assert rec.outcome_probability < 0.25
         assert rec.outcome.character == "Vesna"
         # Nothing future outranks Vesna C0, so the whole pool is the cap
         # (§14: a cap, not a commitment) instead of the single digits a
         # Priority 4 future goal used to leave.
         assert rec.budget == 40
         assert rec.skip_reason is None
-        assert rec.stops.action == "pursue"
+        assert rec.stops.action == "discretionary"
         assert rec.stops.spend_cap == 40
         # Ranks can still fall through on the empirical-pursuit criterion
         # (three copies inside 40 wishes is a long shot), but Tsaritsa is
@@ -252,7 +260,13 @@ class TestIncomeAtHalfThreshold:
         rec = recommend(
             context, chain, runs=5_000, seed=11, budgets=[40, 20, 10, 0]
         )
-        assert rec.action == "pursue"
+        # Issue 2 (minimum_outcome_probability, §14): 40 wishes from fresh
+        # pity on this banner's mechanics gives this C0 only ~11% empirical
+        # success - feasible (Tsaritsa stays protected) but below the 25%
+        # minimum for an ordinary recommendation, so this is now the
+        # disclosed-gamble "discretionary" action rather than "pursue". The
+        # cap itself - this test's actual subject - is unaffected.
+        assert rec.action == "discretionary"
         assert rec.outcome.label == "C0"
         # The analytic safe spend for this context (pinned Phase 3).
         assert safe_spend(context) == 20
@@ -285,18 +299,26 @@ class TestLexicographicSelection:
 
     def test_top_preference_wins_even_with_lower_probability(self):
         """The §15 chain: C2R1 (3 copies, far lower success probability) is
-        recommended over C0 because it ranks first - the preference system
-        is a preference system, not a probability score (§13 step 7)."""
+        won over C0 because it ranks first - the preference system is a
+        preference system, not a probability score (§13 step 7). This is
+        also a textbook case for Issue 2's minimum_outcome_probability
+        (§14): the win itself does not change, but reaching for 3 copies on
+        120 wishes is only ~1-2% likely, so it is reported as the
+        disclosed-gamble "discretionary" action rather than an ordinary
+        "pursue" - the 25% floor decides how the winner is presented, never
+        which outcome wins (optimizer.recommend module docstring)."""
         chain = (
             Preference("Vesna", 1, 2, weapon_refinement=1),
             Preference("Vesna", 2, 0),
         )
         rec = recommend(self._context(), chain, runs=3_000, seed=13)
-        assert rec.action == "pursue"
+        assert rec.action == "discretionary"
         assert rec.outcome.label == "C2R1"
         assert rec.budget == 120
-        assert 0.0 < rec.outcome_probability < 1.0
+        assert 0.0 < rec.outcome_probability < 0.25
         assert rec.plan.entries[0].target_constellation == 2
+        assert rec.discretionary_reason is not None
+        assert "C2R1" in rec.discretionary_reason
 
     def test_outcome_probability_matches_phase2_for_the_single_copy(self):
         """Optimizer -> simulator -> Phase 2 (review point 13): the
@@ -427,13 +449,18 @@ class TestSameCharacterProgression:
     def test_falls_back_to_the_lower_constellation_when_constrained(self):
         """Too few wishes to safely reach C2: the optimizer falls back to
         C0 rather than skipping outright (the required behavior to
-        preserve)."""
+        preserve). With only 1 wish, even C0 is a long shot - well under
+        Issue 2's 25% minimum_outcome_probability (§14) - so the winning
+        outcome is reported as the disclosed-gamble "discretionary" action;
+        the fallback to C0 itself, this test's actual subject, is
+        unaffected."""
         rec = recommend(
             self._context(wishes=1), self._chain(), runs=2_000, seed=7
         )
-        assert rec.action == "pursue"
+        assert rec.action == "discretionary"
         assert rec.outcome.label == "C0"
         assert rec.plan.entries[0].target_constellation == 0
+        assert rec.outcome_probability < 0.25
         # C2 was tried first (per the new ordering) and rejected before C0
         # was reached.
         assert [r.outcome.label for r in rec.rejected] == ["C2"]
@@ -464,13 +491,17 @@ class TestSameCharacterProgression:
         protection is a Goals-only concept (§2, §15): with no Goal, there
         is nothing to gate the reach to C2, at any wish count. This is
         the reason `TestPriorityGatedProgression` below models Arlecchino
-        as an actual roadmap Goal instead."""
+        as an actual roadmap Goal instead. 150 wishes for 2 copies is only
+        a ~4% empirical shot, below Issue 2's 25% minimum_outcome_probability
+        (§14), so the winning C2 outcome - unchanged by that check - is
+        reported as "discretionary" rather than "pursue"."""
         rec = recommend(
             self._context(wishes=150), self._chain(), runs=1_500, seed=3
         )
-        assert rec.action == "pursue"
+        assert rec.action == "discretionary"
         assert rec.outcome.label == "C2"
         assert rec.budget == 150
+        assert rec.outcome_probability < 0.25
         assert rec.rejected == ()
 
 
@@ -545,6 +576,202 @@ class TestPriorityGatedProgression:
         assert shortfall.goal == Goal("Arlecchino", 0, 2)
         assert shortfall.constraining is True
         assert shortfall.meets_threshold is False
+
+
+class TestDiscretionaryGamble:
+    """Issue 2 (Phase 5 correction): minimum_outcome_probability (§14).
+
+    The confidence threshold protects higher-priority future goals; this is
+    the separate question of whether the winning current-banner outcome, at
+    its largest feasible cap, is itself likely enough to present as an
+    ordinary "pursue" recommendation. Sparse mechanics (hard_pity=3,
+    featured_rate tuned to the exact probability wanted) make the numbers
+    exact rather than approximate: with base_rate effectively 0 and a hard
+    pity of 3, a fresh account is guaranteed its first 5-star at exactly 3
+    wishes, and featured_rate is then, deterministically, the chance that
+    5-star is the target character - so `featured_rate=0.2` and
+    `featured_rate=0.3` give exact 20% and 30% outcome probabilities with
+    only ordinary Monte Carlo sampling noise around them (well clear of the
+    25% line at a few thousand runs), never the coarse 0%/50%/100% jumps a
+    50/50 featured rate would produce.
+    """
+
+    def _mechanics(self, featured_rate: float) -> WishMechanics:
+        return WishMechanics(
+            banner_type="sparse",
+            hard_pity=3,
+            soft_pity_start=2,
+            base_rate=1e-9,
+            soft_pity_increment=1.0,
+            featured_rate=featured_rate,
+        )
+
+    def _context(self, featured_rate: float, wishes: int = 3) -> PlannerContext:
+        """No protected goals: the cap is the whole pool, unconstrained, so
+        the outcome's own probability is the only thing in question."""
+        roadmap = Roadmap(goals=[], banners=[Banner("Navia", "7.0", 1)])
+        return PlannerContext(
+            account=Account(wishes=wishes),
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=self._mechanics(featured_rate),
+        )
+
+    def test_probability_just_below_25_percent_is_discretionary(self):
+        """A guaranteed 5-star at exactly 20% featured rate: the outcome is
+        feasible (nonzero, and nothing to protect) but the empirical
+        probability sits at ~20%, below the 25% minimum - a disclosed
+        gamble, not an ordinary recommendation."""
+        rec = recommend(
+            self._context(featured_rate=0.2), (Preference("Navia", 1, 0),),
+            runs=6_000, seed=11,
+        )
+        assert rec.action == "discretionary"
+        assert rec.outcome.label == "C0"
+        assert rec.budget == 3
+        assert rec.outcome_probability == pytest.approx(0.2, abs=0.03)
+        assert rec.outcome_probability < 0.25
+        assert rec.skip_reason is None
+        assert rec.discretionary_reason is not None
+        assert "C0" in rec.discretionary_reason
+        assert "20%" in rec.discretionary_reason
+        assert rec.stops.action == "discretionary"
+        assert rec.stops.spend_cap == 3
+        # The plan still executes the pursuit - a discretionary action is
+        # still an executable strategy, just not a recommended one (§14).
+        assert rec.plan is not None
+        assert rec.plan.entries[0].target_constellation == 0
+        assert rec.plan.entries[0].budget == 3
+
+    def test_probability_at_or_above_25_percent_is_pursue(self):
+        """The identical setup, 10 percentage points higher: now an ordinary
+        recommendation, at the same budget and the same winning outcome -
+        only the empirical probability changed."""
+        rec = recommend(
+            self._context(featured_rate=0.3), (Preference("Navia", 1, 0),),
+            runs=6_000, seed=11,
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C0"
+        assert rec.budget == 3
+        assert rec.outcome_probability == pytest.approx(0.3, abs=0.03)
+        assert rec.outcome_probability >= 0.25
+        assert rec.discretionary_reason is None
+        assert rec.stops.action == "pursue"
+
+    def test_custom_minimum_does_not_change_the_winning_outcome_or_cap(self):
+        """Lowering the minimum for the same ~20% scenario turns it back
+        into a "pursue" - proof the threshold only relabels the decision
+        already made, it never re-derives the outcome or the cap (module
+        docstring: not an outcome-selection rule)."""
+        rec = recommend(
+            self._context(featured_rate=0.2), (Preference("Navia", 1, 0),),
+            runs=6_000, seed=11, minimum_outcome_probability=0.1,
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C0"
+        assert rec.budget == 3
+        assert rec.outcome_probability == pytest.approx(0.2, abs=0.03)
+
+    def test_rejects_an_out_of_range_minimum(self):
+        with pytest.raises(ValueError):
+            recommend(
+                self._context(featured_rate=0.2),
+                (Preference("Navia", 1, 0),),
+                minimum_outcome_probability=1.5,
+            )
+
+
+class TestDiscretionaryUnderPriorityProtection:
+    """Issue 2's own worked example, made exact with sparse mechanics: a
+    higher-priority future goal (B) reserves enough of the pool that the
+    current banner's own objective (A) is left with a small, feasible-but-
+    unlikely budget. Confirms the 25% check operates *after* priority
+    protection has already picked the cap - it never substitutes for it,
+    and protection (§2) keeps working exactly as it does under a "pursue".
+    """
+
+    def _mechanics(self, featured_rate: float) -> WishMechanics:
+        return WishMechanics(
+            banner_type="sparse",
+            hard_pity=3,
+            soft_pity_start=2,
+            base_rate=1e-9,
+            soft_pity_increment=1.0,
+            featured_rate=featured_rate,
+        )
+
+    def _context(self, featured_rate: float, wishes: int) -> PlannerContext:
+        """A (current, Priority 2) vs B (future, Priority 1, gating). B
+        needs 4 wishes to reach certainty at this mechanics (0.2 -> 1.0 via
+        the character-guarantee carry), so protecting B to 90% at 6 total
+        wishes leaves A a cap of exactly 3 - a guaranteed single 5-star
+        pull, whose featured_rate is A's entire outcome probability."""
+        roadmap = Roadmap(
+            goals=[Goal("A", 0, 2), Goal("B", 0, 1)],
+            banners=[Banner("A", "7.0", 1), Banner("B", "7.1", 1)],
+        )
+        return PlannerContext(
+            account=Account(wishes=wishes),
+            roadmap=roadmap,
+            current_version="7.0",
+            confidence=0.9,
+            mechanics=self._mechanics(featured_rate),
+        )
+
+    def test_low_probability_after_protection_is_discretionary(self):
+        rec = recommend(
+            self._context(featured_rate=0.2, wishes=6),
+            (Preference("A", 1, 0),),
+            runs=6_000,
+            seed=11,
+        )
+        assert rec.action == "discretionary"
+        assert rec.outcome.character == "A"
+        assert rec.outcome.label == "C0"
+        # The cap is what protection allows - not the whole pool (§14).
+        assert rec.budget == 3
+        assert rec.outcome_probability == pytest.approx(0.2, abs=0.03)
+        assert rec.outcome_probability < 0.25
+
+        (b,) = [s for s in rec.protected if s.goal.character == "B"]
+        assert b.constraining is True
+        assert b.meets_threshold is True
+        assert b.probability == pytest.approx(1.0, abs=0.01)
+        assert rec.rejected == ()
+        assert rec.discretionary_reason is not None
+
+    def test_higher_probability_at_the_same_protected_cap_is_pursue(self):
+        """Same protection story, same resulting cap (3) - only A's own
+        featured rate changed, so only the label changes."""
+        rec = recommend(
+            self._context(featured_rate=0.3, wishes=6),
+            (Preference("A", 1, 0),),
+            runs=6_000,
+            seed=11,
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.character == "A"
+        assert rec.budget == 3
+        assert rec.outcome_probability == pytest.approx(0.3, abs=0.03)
+
+        (b,) = [s for s in rec.protected if s.goal.character == "B"]
+        assert b.constraining is True
+        assert b.meets_threshold is True
+
+    def test_too_few_wishes_to_protect_b_at_all_is_still_skip(self):
+        """Below B's own reserve, the decision is still "do not spend" -
+        the 25% check never turns an infeasible (protection-violating)
+        candidate into a discretionary one; feasibility is unchanged."""
+        rec = recommend(
+            self._context(featured_rate=0.2, wishes=4),
+            (Preference("A", 1, 0),),
+            runs=2_000,
+            seed=11,
+        )
+        assert rec.action == "skip"
+        assert rec.outcome is None
+        assert rec.discretionary_reason is None
 
 
 class TestDeterminismAndIsolation:

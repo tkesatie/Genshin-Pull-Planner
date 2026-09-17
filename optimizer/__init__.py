@@ -28,11 +28,12 @@ Conceptual flow:
                         v
                     recommend()          (§13 steps 6-7)
                         |
-              +---------+---------+
-              v                   v
-           pursue               skip
-              |
-              v
+          +-------------+-------------+
+          v             v             v
+       pursue     discretionary      skip
+          |             |
+          +------+------+
+                 v
         StopConditions            (§1, §2)
 
 Phase 5 invariants:
@@ -98,6 +99,18 @@ Phase 5 invariants:
     outcome, never exceed the cap, re-run after updates (§1, §2).
 13. Weapon refinement is displayed from preference labels but never
     simulated (§17, §19).
+14. Feasibility (invariant 7) and `MINIMUM_OUTCOME_PROBABILITY` are separate
+    questions (§2, §14). The confidence threshold protects higher-priority
+    future goals; `MINIMUM_OUTCOME_PROBABILITY` (default 0.25) asks whether
+    the winning outcome's own empirical probability, at its largest feasible
+    cap, is high enough to present as an ordinary recommendation. It is
+    never an outcome-selection rule - it does not reopen the choice of
+    outcome or cap, and it never causes a fall-through to a different,
+    more-conservative outcome (optimizer.recommend module docstring). Below
+    the minimum, the same winning (outcome, cap) is reported as
+    `action="discretionary"`: the spend is disclosed as available and safe
+    for the roadmap, but not recommended, because "allowed to spend" and
+    "recommended to spend" are different claims.
 """
 
 from optimizer.candidates import candidate_plan
@@ -117,14 +130,16 @@ from optimizer.protection import (
     protected_groups,
 )
 from optimizer.recommend import (
+    MINIMUM_OUTCOME_PROBABILITY,
     Recommendation,
     RejectedOutcome,
     recommend,
 )
-from optimizer.stops import StopConditions, for_pursue, for_skip
+from optimizer.stops import StopConditions, for_discretionary, for_pursue, for_skip
 
 __all__ = [
     "DEFAULT_RUNS",
+    "MINIMUM_OUTCOME_PROBABILITY",
     "CandidateStrategy",
     "GoalStanding",
     "OutcomeOption",
@@ -138,6 +153,7 @@ __all__ = [
     "current_goal_priority",
     "evaluate_candidate",
     "evaluate_skip_baseline",
+    "for_discretionary",
     "for_pursue",
     "for_skip",
     "priority_for_outcome",

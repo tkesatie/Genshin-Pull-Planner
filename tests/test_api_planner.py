@@ -10,6 +10,8 @@ from domain import Account, Banner, Goal, Ownership, Preference, Roadmap
 from planner import PlannerContext, safe_spend
 from optimizer import recommend
 
+import pytest
+
 
 def _doc_context(wishes: int = 40, confidence: float = 0.9) -> PlannerContext:
     """The stored doc example, rebuilt for direct comparison (§8)."""
@@ -196,7 +198,13 @@ class TestRecommendation:
             f"/accounts/{doc_account_id}/planner/recommendation",
             params={"runs": 200, "seed": 5, "budgets": [40, 20, 0]},
         ).json()
-        assert body["action"] == "pursue"
+        # Issue 2 (minimum_outcome_probability, §14): the winning outcome on
+        # 40 wishes from fresh pity is well under the 25% minimum for an
+        # ordinary recommendation, so the API reports the disclosed-gamble
+        # "discretionary" action here. Tsaritsa's non-gating status - this
+        # test's actual subject - is unaffected.
+        assert body["action"] == "discretionary"
+        assert body["outcome_probability"] < 0.25
         assert body["outcome"]["character"] == "Vesna"
         assert body["budget"] == 40
         assert body["skip_reason"] is None
@@ -266,7 +274,13 @@ class TestRecommendation:
             f"/accounts/{doc_account_id}/planner/recommendation",
             params={"runs": 200, "seed": 5},
         ).json()
-        assert body["action"] == "pursue"
+        # Issue 2 (minimum_outcome_probability, §14): with no protected
+        # goals left, the deepest reachable rung of the chain wins outright
+        # (unaffected by this test's own subject), but that rung is a long
+        # shot on 40 wishes - under the 25% minimum - so the API reports the
+        # disclosed-gamble "discretionary" action rather than "pursue".
+        assert body["action"] == "discretionary"
+        assert body["outcome_probability"] < 0.25
         # Nothing future constrains the spend, so the whole pool is the cap
         # (§14) - a cap, not a commitment (§12).
         assert body["budget"] == 40
@@ -278,9 +292,136 @@ class TestRecommendation:
         assert entry["banner"]["character"] == "Vesna"
         assert entry["target_constellation"] == body["outcome"]["constellation"]
         assert entry["budget"] == 40
-        assert body["stops"]["action"] == "pursue"
+        assert body["stops"]["action"] == "discretionary"
         assert body["stops"]["outcome_label"] == body["outcome"]["label"]
         assert body["stops"]["spend_cap"] == 40
+
+
+class TestDiscretionaryRecommendation:
+    """Issue 2 over HTTP (§14): minimum_outcome_probability is a request
+    parameter (like runs/seed/budgets), and a feasible-but-unlikely
+    recommendation carries a discretionary_reason. Sparse mechanics with a
+    tuned featured_rate give an exact, low-variance probability (see
+    test_optimizer_recommend.TestDiscretionaryGamble for why)."""
+
+    def _sparse_account(self, api_client, featured_rate: float) -> str:
+        response = api_client.post(
+            "/accounts",
+            json={
+                "label": "discretionary gamble",
+                "account": {"wishes": 3},
+                "settings": {
+                    "current_version": "7.0",
+                    "current_phase": 1,
+                    "mechanics": {
+                        "banner_type": "sparse",
+                        "hard_pity": 3,
+                        "soft_pity_start": 2,
+                        "base_rate": 1e-9,
+                        "soft_pity_increment": 1.0,
+                        "featured_rate": featured_rate,
+                    },
+                },
+                "banners": [{"character": "Navia", "version": "7.0", "phase": 1}],
+                "preferences": [
+                    {"character": "Navia", "rank": 1, "constellation": 0}
+                ],
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    def test_low_probability_is_discretionary_with_a_reason(self, api_client):
+        account_id = self._sparse_account(api_client, featured_rate=0.2)
+        body = api_client.get(
+            f"/accounts/{account_id}/planner/recommendation",
+            params={"runs": 6_000, "seed": 11},
+        ).json()
+
+        assert body["action"] == "discretionary"
+        assert body["outcome"]["label"] == "C0"
+        assert body["budget"] == 3
+        assert body["outcome_probability"] == pytest.approx(0.2, abs=0.03)
+        assert body["minimum_outcome_probability"] == pytest.approx(0.25)
+        assert body["skip_reason"] is None
+        assert body["discretionary_reason"] is not None
+        assert "C0" in body["discretionary_reason"]
+        assert body["stops"]["action"] == "discretionary"
+        # Existing fields are otherwise untouched by the new field.
+        assert body["plan"]["entries"][0]["budget"] == 3
+        assert body["protected"] == []
+        assert body["rejected"] == []
+
+    def test_a_normal_recommendation_carries_no_discretionary_reason(
+        self, api_client
+    ):
+        account_id = self._sparse_account(api_client, featured_rate=0.3)
+        body = api_client.get(
+            f"/accounts/{account_id}/planner/recommendation",
+            params={"runs": 6_000, "seed": 11},
+        ).json()
+
+        assert body["action"] == "pursue"
+        assert body["outcome_probability"] == pytest.approx(0.3, abs=0.03)
+        assert body["discretionary_reason"] is None
+        assert body["skip_reason"] is None
+
+    def test_minimum_outcome_probability_is_accepted_and_passed_through(
+        self, api_client
+    ):
+        """Lowering the query parameter for the same ~20% scenario turns it
+        into an ordinary recommendation - proof the parameter reaches the
+        optimizer rather than being ignored - and the reported minimum
+        echoes back whatever was requested."""
+        account_id = self._sparse_account(api_client, featured_rate=0.2)
+        body = api_client.get(
+            f"/accounts/{account_id}/planner/recommendation",
+            params={"runs": 6_000, "seed": 11, "minimum_outcome_probability": 0.1},
+        ).json()
+
+        assert body["action"] == "pursue"
+        assert body["discretionary_reason"] is None
+        assert body["minimum_outcome_probability"] == pytest.approx(0.1)
+
+        expected = recommend(
+            PlannerContext(
+                account=Account(wishes=3),
+                roadmap=Roadmap(
+                    goals=[], banners=[Banner("Navia", "7.0", 1)]
+                ),
+                current_version="7.0",
+                mechanics=self._mechanics(0.2),
+            ),
+            (Preference("Navia", 1, 0),),
+            runs=6_000,
+            seed=11,
+            minimum_outcome_probability=0.1,
+        )
+        assert body["action"] == expected.action
+        assert body["outcome_probability"] == expected.outcome_probability
+
+    def test_stop_conditions_endpoint_reflects_discretionary_action(
+        self, api_client
+    ):
+        account_id = self._sparse_account(api_client, featured_rate=0.2)
+        stops = api_client.get(
+            f"/accounts/{account_id}/planner/stop-conditions",
+            params={"runs": 6_000, "seed": 11},
+        ).json()
+        assert stops["action"] == "discretionary"
+        assert stops["spend_cap"] == 3
+
+    def _mechanics(self, featured_rate: float):
+        from domain import WishMechanics
+
+        return WishMechanics(
+            banner_type="sparse",
+            hard_pity=3,
+            soft_pity_start=2,
+            base_rate=1e-9,
+            soft_pity_increment=1.0,
+            featured_rate=featured_rate,
+        )
 
 
 class TestStopConditions:
