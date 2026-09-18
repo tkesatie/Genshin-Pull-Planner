@@ -40,6 +40,22 @@ from simulation import DEFAULT_SEED
 
 router = APIRouter(tags=["planner"])
 
+@router.post("/accounts/{account_id}/planner/timing", include_in_schema=False)
+def planner_timing(timing: dict[str, float]) -> None:
+    """Print the browser-side planner timing summary to the server terminal."""
+    def fmt(value):
+        return "n/a" if value is None else f"{value:.2f}s"
+
+    print(
+        "Planner timing\n"
+        "-------------\n"
+        f"Planner calculation: {fmt(timing.get('planner_calculation_seconds'))}\n"
+        f"API response:        {fmt(timing.get('api_response_seconds'))}\n"
+        f"Frontend load:       {fmt(timing.get('frontend_load_seconds'))}\n"
+        f"Total:               {fmt(timing.get('total_seconds'))}"
+    )
+
+
 
 @router.get("/accounts/{account_id}/planner/goals", response_model=GoalEvaluationsView)
 def planner_goals(
