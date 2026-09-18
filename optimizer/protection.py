@@ -63,7 +63,7 @@ class ProtectedGroup:
     uncapped_budget: int
 
 
-def protected_groups(context: PlannerContext, banner: Banner | None = None) -> tuple[ProtectedGroup, ...]:
+def protected_groups(context: PlannerContext, banner: Banner | None = None, *, include_same_slot: bool = True) -> tuple[ProtectedGroup, ...]:
     """Protected goals grouped per banner, in chronological order (§13).
 
     Goals whose next banner is the current banner (including blocked ones
@@ -82,7 +82,11 @@ def protected_groups(context: PlannerContext, banner: Banner | None = None) -> t
         # current opportunity. It must remain in the candidate plan so a
         # higher-priority goal there can constrain this decision. The
         # selected banner itself is current-banner business, not protection.
-        if banner is None or banner.order_key < current.order_key or banner == current:
+        if banner is None or banner.order_key < current.order_key:
+            continue
+        if banner == current:
+            continue
+        if banner.order_key == current.order_key and not include_same_slot:
             continue
         buckets.setdefault(banner, []).append(evaluation.goal)
 
@@ -168,7 +172,9 @@ _AUTO = object()
 
 
 def constraining_goals(
-    context: PlannerContext, priority: int | None = _AUTO  # type: ignore[assignment]
+    context: PlannerContext,
+    priority: int | None = _AUTO,  # type: ignore[assignment]
+    banner: Banner | None = None,
 ) -> frozenset[Goal]:
     """The protected goals whose probability gates a decision (§2).
 
@@ -197,7 +203,8 @@ def constraining_goals(
     layer knows about priority.
     """
     protected = [
-        goal for group in protected_groups(context) for goal in group.goals
+        goal for group in protected_groups(context, banner=banner)
+        for goal in group.goals
     ]
     if priority is _AUTO:
         priority = current_goal_priority(context)
