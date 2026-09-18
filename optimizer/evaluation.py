@@ -144,6 +144,7 @@ def evaluate_candidate(
     context: PlannerContext,
     outcome: OutcomeOption,
     budget: int,
+    banner=None,
     runs: int = DEFAULT_RUNS,
     seed: int | None = DEFAULT_SEED,
 ) -> CandidateStrategy:
@@ -158,7 +159,7 @@ def evaluate_candidate(
     """
     from optimizer.protection import constraining_goals, priority_for_outcome
 
-    plan = candidate_plan(context, outcome, budget)
+    plan = candidate_plan(context, outcome, budget, banner=banner)
     result = simulate(context, plan, runs=runs, seed=seed)
 
     # The first processed banner is the current banner (§11): its
