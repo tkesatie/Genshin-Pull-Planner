@@ -355,7 +355,7 @@ def test_skirk_protected_boundary_convergence(capsys):
                     wishes=budget,
                     current_pity=starting_pity,
                     character_guarantee=False,
-                    character_radiance=0,
+                    capturing_radiance_counter=0,
                 )
 
                 for _ in range(runs):
