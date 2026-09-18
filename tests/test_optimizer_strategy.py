@@ -80,7 +80,15 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
 
     assert result.reserve_wishes == 150
     assert result.reserve_goal == Goal("Skirk", 2, 3)
-    assert result.steps[-1].safe_spend == 300
+
+    vesna_step = next(
+        step
+        for step in result.steps
+        if step.goal == Goal("Vesna", 2, 4)
+        and step.action == "pursue_until_reserve"
+    )
+    assert vesna_step.safe_spend == 300
+    assert vesna_step.reserve_wishes == 150
 
     plan = captured[300]
     assert plan.entries == (
@@ -100,3 +108,4 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
             budget=450,
         ),
     )
+)
