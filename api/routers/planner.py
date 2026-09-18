@@ -27,6 +27,7 @@ from optimizer import (
 )
 from planner import (
     actionable_goals,
+    available_banners,
     current_banner,
     evaluate_goals,
     protected_goal_outcomes,
@@ -44,10 +45,12 @@ def planner_goals(
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> GoalEvaluationsView:
     context = record.context(confidence=overrides.confidence, income_scenario=overrides.income_scenario)
+    banners = available_banners(context)
     relevant = {evaluation.goal for evaluation in relevant_goal_evaluations(context)}
     actionable = {evaluation.goal for evaluation in actionable_goals(context)}
     return GoalEvaluationsView(
-        current_banner=BannerModel.from_domain(current_banner(context)),
+        current_banner=(BannerModel.from_domain(banners[0]) if len(banners) == 1 else None),
+        available_banners=[BannerModel.from_domain(banner) for banner in banners],
         goals=[
             GoalEvaluationView.from_domain(
                 evaluation,
@@ -61,13 +64,17 @@ def planner_goals(
 
 @router.get("/accounts/{account_id}/planner/safe-spend", response_model=SafeSpendView)
 def planner_safe_spend(
+    character: str | None = Query(None),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> SafeSpendView:
     context = record.context(confidence=overrides.confidence, income_scenario=overrides.income_scenario)
+    banners = available_banners(context)
+    selected = _select_banner(banners, character)
     return SafeSpendView(
-        current_banner=BannerModel.from_domain(current_banner(context)),
-        safe_spend=safe_spend(context),
+        current_banner=BannerModel.from_domain(selected) if selected else None,
+        available_banners=[BannerModel.from_domain(banner) for banner in banners],
+        safe_spend=safe_spend(context, banner=selected),
         account_wishes=context.account.wishes,
         confidence=context.confidence,
         protected=[
@@ -89,6 +96,7 @@ def planner_safe_spend(
     ),
 )
 def planner_spend_table(
+    character: str | None = Query(None),
     step: int = Query(10, description="Spend increment between rows."),
     runs: int = Query(DEFAULT_RUNS, description="Histories per candidate."),
     seed: int | None = Query(DEFAULT_SEED, description="Rng seed; null draws entropy from the OS."),
@@ -104,10 +112,12 @@ def planner_spend_table(
     if runs < 1:
         raise ValueError(f"runs must be >= 1, got {runs}")
 
-    outcomes = _spend_table_outcomes(context, record.preferences)
+    selected = _select_banner(available_banners(context), character)
+    outcomes = _spend_table_outcomes(context, record.preferences, selected)
     if not outcomes:
         return SpendTableView(
-            current_banner=BannerModel.from_domain(current_banner(context)),
+            current_banner=BannerModel.from_domain(selected),
+            available_banners=[BannerModel.from_domain(banner) for banner in available_banners(context)],
             outcomes=[],
             step=step,
             confidence=context.confidence,
@@ -126,7 +136,7 @@ def planner_spend_table(
             OutcomeProbabilityView(
                 outcome=OutcomeView.from_domain(outcome),
                 probability=evaluate_candidate(
-                    context, outcome, budget, runs=runs, seed=seed
+                    context, outcome, budget, banner=selected, runs=runs, seed=seed
                 ).outcome_probability,
             )
             for outcome in outcomes
@@ -136,7 +146,7 @@ def planner_spend_table(
         # future-roadmap tradeoff does not depend on which current-banner
         # constellation column the user is looking at.
         reference_candidate = evaluate_candidate(
-            context, outcomes[0], budget, runs=runs, seed=seed
+            context, outcomes[0], budget, banner=selected, runs=runs, seed=seed
         )
         rows.append(
             SpendRowView(
@@ -155,7 +165,8 @@ def planner_spend_table(
         )
 
     return SpendTableView(
-        current_banner=BannerModel.from_domain(current_banner(context)),
+        current_banner=BannerModel.from_domain(selected),
+        available_banners=[BannerModel.from_domain(banner) for banner in available_banners(context)],
         outcomes=[OutcomeView.from_domain(outcome) for outcome in outcomes],
         step=step,
         confidence=context.confidence,
@@ -165,7 +176,7 @@ def planner_spend_table(
     )
 
 
-def _spend_table_outcomes(context, preferences) -> tuple[OutcomeOption, ...]:
+def _spend_table_outcomes(context, preferences, banner) -> tuple[OutcomeOption, ...]:
     """Return unsatisfied roadmap milestones for the current banner.
 
     The recommendation's outcome list is intentionally preference-driven,
@@ -175,7 +186,7 @@ def _spend_table_outcomes(context, preferences) -> tuple[OutcomeOption, ...]:
     remain visible here even when the optimizer would not currently choose
     them as its recommendation outcome.
     """
-    current_character = current_banner(context).character
+    current_character = banner.character
     preference_ranks = {
         preference.constellation: preference.rank
         for preference in preferences
@@ -183,7 +194,7 @@ def _spend_table_outcomes(context, preferences) -> tuple[OutcomeOption, ...]:
     }
 
     by_constellation: dict[int, OutcomeOption] = {}
-    for evaluation in relevant_goal_evaluations(context):
+    for evaluation in relevant_goal_evaluations(context, banner):
         if evaluation.copies_needed <= 0:
             continue
         constellation = evaluation.goal.constellation
@@ -200,7 +211,25 @@ def _spend_table_outcomes(context, preferences) -> tuple[OutcomeOption, ...]:
     )
 
 
-def _recommendation(
+
+def _select_banner(banners, character):
+    if not banners:
+        raise ValueError("no roadmap banner at the current version/phase")
+    if character is None:
+        if len(banners) > 1:
+            raise ValueError(
+                "multiple banners are active; select a character explicitly: "
+                + ", ".join(banner.character for banner in banners)
+            )
+        return banners[0]
+    matches = [banner for banner in banners if banner.character == character]
+    if not matches:
+        raise ValueError(
+            f"character {character!r} is not an available banner at the current version/phase"
+        )
+    return matches[0]
+
+_recommendation(
     record: AccountRecord,
     overrides: ContextOverrides,
     runs: int,
