@@ -43,6 +43,7 @@ class AccountStateModel(StrictModel):
         False, description="True when the next 5-star is guaranteed featured."
     )
     wishes: int = Field(0, description="Wishes currently owned, as a resource.")
+    capturing_radiance_counter: int = Field(0, description="Current Capturing Radiance counter (0-3).")
     owned_characters: dict[str, int] = Field(
         default_factory=dict,
         description=(
@@ -57,6 +58,7 @@ class AccountStateModel(StrictModel):
             character_guarantee=self.character_guarantee,
             owned_characters=Ownership(dict(self.owned_characters)),
             wishes=self.wishes,
+            capturing_radiance_counter=self.capturing_radiance_counter,
         )
 
     @classmethod
@@ -65,6 +67,7 @@ class AccountStateModel(StrictModel):
             current_pity=account.current_pity,
             character_guarantee=account.character_guarantee,
             wishes=account.wishes,
+            capturing_radiance_counter=account.capturing_radiance_counter,
             owned_characters=dict(account.owned_characters.characters),
         )
 
