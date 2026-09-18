@@ -114,6 +114,7 @@ def aggregate_runs(
         goals=goal_probabilities,
         banners=tuple(banner_aggregates),
         all_goals_probability=all_goals_probability,
+        joint_goal_probability=joint_probability,
         final_wishes_mean=sum(final_wishes) / count,
         final_wishes_min=min(final_wishes),
         final_wishes_max=max(final_wishes),
