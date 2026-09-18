@@ -38,6 +38,7 @@ def _record_to_dict(record: AccountRecord) -> dict:
     settings = record.settings
     return {
         "id": record.id,
+        "owner_id": record.owner_id,
         "label": record.label,
         "account": {
             "current_pity": record.account.current_pity,
@@ -131,6 +132,7 @@ def _record_from_dict(value: dict) -> AccountRecord:
 
     return AccountRecord(
         id=value["id"],
+        owner_id=value.get("owner_id"),
         label=value["label"],
         account=Account(
             current_pity=account["current_pity"],
@@ -183,6 +185,7 @@ class SQLiteAccountRepository:
                 """
                 CREATE TABLE IF NOT EXISTS accounts (
                     id TEXT PRIMARY KEY,
+                    owner_id TEXT,
                     label TEXT NOT NULL,
                     payload TEXT NOT NULL
                 )
@@ -199,8 +202,8 @@ class SQLiteAccountRepository:
         with self._lock, self._connect() as connection:
             try:
                 connection.execute(
-                    "INSERT INTO accounts (id, label, payload) VALUES (?, ?, ?)",
-                    (record.id, record.label, payload),
+                    "INSERT INTO accounts (id, owner_id, label, payload) VALUES (?, ?, ?, ?)",
+                    (record.id, record.owner_id, record.label, payload),
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValueError(f"account {record.id!r} already exists") from exc
@@ -227,8 +230,8 @@ class SQLiteAccountRepository:
         payload = json.dumps(_record_to_dict(record), separators=(",", ":"))
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
-                "UPDATE accounts SET label = ?, payload = ? WHERE id = ?",
-                (record.label, payload, record.id),
+                "UPDATE accounts SET owner_id = ?, label = ?, payload = ? WHERE id = ?",
+                (record.owner_id, record.label, payload, record.id),
             )
             if cursor.rowcount == 0:
                 raise AccountNotFound(f"no account with id {record.id!r}")
