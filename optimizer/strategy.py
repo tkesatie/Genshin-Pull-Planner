@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 from domain import Banner, Goal
 from optimizer.protection import constraining_goals, protected_groups
+from planner.protection import protected_goal_outcomes
 from planner import PlannerContext, evaluate_goals
 from planner.banners import available_banners
 from simulation import PlannedSpend, SimulationResult, SpendPlan, simulate
@@ -214,15 +215,19 @@ def _safe_spend(
             )
         return cache[spend]
 
-    def is_safe(spend: int) -> bool:
-        result, protected_goals = evaluate(spend)
-        if not protected_goals:
-            return True
-        probabilities = [
-            next(item for item in result.goals if item.goal == protected).probability
-            for protected in protected_goals
+    def protection_at(spend: int):
+        return [
+            outcome
+            for outcome in protected_goal_outcomes(
+                context, spent=spend, banner=banner
+            )
+            if outcome.goal in constraining_goals(
+                context, priority=goal.priority, banner=banner
+            )
         ]
-        return all(probability >= context.confidence for probability in probabilities)
+
+    def is_safe(spend: int) -> bool:
+        return all(outcome.meets_threshold for outcome in protection_at(spend))
 
     # First find a safe/unsafe bracket with a small number of broad samples.
     if is_safe(max_spend):
