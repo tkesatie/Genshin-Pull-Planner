@@ -449,7 +449,7 @@ function renderRecommendation(rec) {
   const banner = bannerName(rec.banner);
   $("decision-label").className = `decision-label ${rec.action}`;
   $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
-  $("metric-target").textContent = `${rec.outcome.character} ${rec.outcome.label}`;
+  $("metric-target").textContent = rec.outcome ? `${rec.outcome.character} ${rec.outcome.label}` : "—";
   $("metric-budget").textContent = wishWord(rec.budget);
   $("metric-probability").textContent = pct(rec.outcome_probability);
   $("decision-label").className = `decision-label ${rec.action}`;
@@ -465,7 +465,7 @@ function renderRecommendation(rec) {
       `at or above ${pct(rec.confidence)}.`;
   } else {
     $("verdict").textContent = `Don't spend on ${banner}.`;
-    $("verdict-detail").textContent = rec.skip_reason || "";
+    $("verdict-detail").textContent = rec.skip_reason || "No current-banner outcome can be pursued safely.";
   }
   $("provenance").textContent =
     `${rec.runs.toLocaleString()} simulated futures, seed ${rec.seed === null ? "random" : rec.seed}. ` +
