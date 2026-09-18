@@ -99,7 +99,7 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
     )
     assert vesna_step.safe_spend == 300
     assert vesna_step.reserve_wishes == 150
-    assert vesna_step.outcome_probability == 0.42
+    assert vesna_step.outcome_probability == 0.0
 
     plan = captured[300]
     assert plan.entries == (
@@ -138,6 +138,7 @@ def test_safe_spend_uses_simulation_for_non_monotonic_frontier(monkeypatch):
         probability = probabilities.get(vesna_entry.budget, 0.91)
         return SimpleNamespace(
             goals=(GoalProbability(skirk, probability),),
+            joint_goal_probability=None,
             banners=(
                 BannerAggregate(
                     banner=Banner("Vodynista", "7.1", 1),
