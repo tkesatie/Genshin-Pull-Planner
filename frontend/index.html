@@ -554,44 +554,79 @@ function renderSpendTable(table) {
   const host = $("spend-table");
   host.innerHTML = "";
   if (table instanceof Error) {
-    $("spend-caption").textContent = "Not available for this banner.";
+    $("spend-caption").textContent = "Not available.";
     const note = document.createElement("p");
     note.textContent = table.message;
     host.append(note);
     return;
   }
-  $("spend-caption").textContent =
-    `Shows how different current-banner spending levels change your target odds and the odds of your protected future goals. ` +
-    `The highlighted row is the last tested spend where every protected goal stays above ${pct(table.confidence)}.`;
 
-  const protectedGoals = table.rows[0] ? table.rows[0].protected : [];
-  const head = ["Spend", `${goalName(table.goal)} odds`]
-    .concat(protectedGoals.map((p) => goalName(p.goal)));
+  if (!table.outcome) {
+    $("spend-caption").textContent =
+      "There is no actionable outcome on the current banner to analyze.";
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "No current-banner target is being pursued.";
+    host.append(note);
+    return;
+  }
+
+  $("spend-caption").textContent =
+    `See how spending more on ${table.outcome.character} ${table.outcome.label} changes your chance of reaching that target and the protection of future goals. ` +
+    `The highlighted row is the largest tested spend that keeps every constraining future goal at ${pct(table.confidence)} or higher.`;
+
+  const protectedGoals = [];
+  for (const row of table.rows) {
+    for (const standing of row.protected) {
+      const key = `${standing.goal.character}|${standing.goal.constellation}|${standing.goal.priority}`;
+      if (!protectedGoals.some((p) => p.key === key)) {
+        protectedGoals.push({ key, standing });
+      }
+    }
+  }
 
   const element = document.createElement("table");
   const thead = element.createTHead().insertRow();
-  for (const label of head) {
+  for (const label of [
+    "Spend",
+    `${table.outcome.character} ${table.outcome.label}`,
+    ...protectedGoals.map((p) => goalName(p.standing.goal))
+  ]) {
     const th = document.createElement("th");
     th.textContent = label;
     thead.append(th);
   }
+
   const body = element.createTBody();
   let lastSafeIndex = -1;
   table.rows.forEach((row, index) => {
     if (row.all_protected_meet_threshold) lastSafeIndex = index;
   });
+
   table.rows.forEach((row, index) => {
     const tr = body.insertRow();
     if (index === lastSafeIndex) tr.className = "boundary";
-    tr.insertCell().textContent = row.wishes_spent;
-    tr.insertCell().textContent = pct(row.goal_confidence);
-    for (const outcome of row.protected) {
+
+    tr.insertCell().textContent = wishWord(row.wishes_spent);
+    tr.insertCell().textContent = pct(row.outcome_probability);
+
+    for (const { key } of protectedGoals) {
+      const standing = row.protected.find(
+        (item) => `${item.goal.character}|${item.goal.constellation}|${item.goal.priority}` === key
+      );
       const cell = tr.insertCell();
-      cell.textContent = pct(outcome.confidence);
-      cell.className = outcome.meets_threshold ? "yes" : "no";
+      cell.textContent = standing ? pct(standing.probability) : "—";
+      if (standing) cell.className = standing.meets_threshold ? "yes" : "no";
     }
   });
   host.append(element);
+
+  const provenance = document.createElement("p");
+  provenance.className = "muted";
+  provenance.style.marginTop = ".75rem";
+  provenance.textContent =
+    `${table.runs.toLocaleString()} simulated futures per spending level, seed ${table.seed === null ? "random" : table.seed}.`;
+  host.append(provenance);
 }
 
 function renderRoadmap(view) {
