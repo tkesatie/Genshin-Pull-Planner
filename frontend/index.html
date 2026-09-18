@@ -530,7 +530,7 @@ function renderRecommendation(rec, strategy) {
     $("resource-breakdown").innerHTML = `
       <div class="resource-card"><span>Available now</span><strong>${wishWord(strategy.starting_wishes)}</strong></div>
       <div class="resource-card"><span>Expected future income</span><strong>+${wishWord(strategy.future_income)}</strong></div>
-      <div class="resource-card"><span>Current-phase spend</span><strong>${wishWord(strategy.starting_wishes)}</strong></div>
+      <div class="resource-card"><span>Protected now</span><strong>${strategy.reserve_wishes === null ? "—" : wishWord(strategy.reserve_wishes)}</strong></div>
     `;
   }
 
