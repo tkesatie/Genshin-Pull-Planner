@@ -1,0 +1,608 @@
+# UI ↔ Backend Contract
+
+Primary reference for frontend work. The UI should treat API responses as the source of truth. Return to backend source only when this contract is incomplete or a real backend change is required.
+
+**Current scope:** character planning only. Weapon/refinement fields exist in the data model for future use, but weapon mechanics and weapon optimization are not implemented.
+
+## 1. API surface
+
+The FastAPI app serves the static frontend at / and the API from the same origin.
+
+| Endpoint | Purpose |
+|---|---|
+| GET /health | Liveness |
+| GET /accounts | Account summaries |
+| POST /accounts | Create account + optional complete roadmap |
+| GET /accounts/{id} | Full account + roadmap |
+| PUT /accounts/{id} | Replace account state/settings |
+| DELETE /accounts/{id} | Delete account |
+| GET/PUT /accounts/{id}/goals | Roadmap goals |
+| GET/PUT /accounts/{id}/banners | Banner schedule |
+| GET/PUT /accounts/{id}/preferences | Preference chains |
+| GET/PUT /accounts/{id}/income | Future income |
+| DELETE /accounts/{id}/income | Remove income forecast |
+| GET /accounts/{id}/planner/goals | Goal states |
+| GET /accounts/{id}/planner/safe-spend | Analytical safe-spend approximation |
+| GET /accounts/{id}/planner/spend-table | Spend/probability table |
+| GET /accounts/{id}/planner/recommendation | Central optimizer decision |
+| GET /accounts/{id}/planner/stop-conditions | Stop instructions for current decision |
+| GET /accounts/{id}/probability/character | Exact single-copy probability |
+| GET /accounts/{id}/probability/wishes-needed | Exact wishes needed for confidence |
+| POST /accounts/{id}/simulation/run | Submit lower-level Monte Carlo simulation |
+| GET /accounts/{id}/simulation/{job_id} | Poll simulation |
+
+/probability/weapon currently returns 501 and is not a UI feature.
+
+The current frontend is a single static frontend/index.html that already contains a basic dashboard and direct API calls. It can be refactored/replaced during the UI phase.
+
+## 2. Account data
+
+Account state:
+
+~~~json
+{
+  "wishes": 180,
+  "current_pity": 32,
+  "character_guarantee": false,
+  "owned_characters": {"Navia": 0}
+}
+~~~
+
+- wishes: currently held wishes.
+- current_pity: character-banner pulls since the last 5-star.
+- character_guarantee: whether the next 5-star is guaranteed featured.
+- owned_characters: character → resulting constellation; -1 means not owned. A constellation is not a copy count.
+
+Planner settings:
+
+~~~json
+{
+  "current_version": "7.0",
+  "current_phase": 1,
+  "confidence": 0.9,
+  "income_scenario": "expected"
+}
+~~~
+
+confidence is the required probability threshold for protected roadmap goals. income_scenario is low, expected, or high.
+
+PUT /accounts/{id} replaces account state/settings but does not modify roadmap collections. Re-run the planner after meaningful account changes.
+
+## 3. Roadmap data
+
+### Goals
+
+~~~json
+{
+  "goals": [
+    {"character": "Navia", "constellation": 0, "priority": 1},
+    {"character": "Navia", "constellation": 1, "priority": 2},
+    {"character": "Navia", "constellation": 2, "priority": 3},
+    {"character": "Tsaritsa", "constellation": 0, "priority": 4}
+  ]
+}
+~~~
+
+A Goal is a **roadmap priority/progression milestone**. Priority 1 is protected before priority 2, etc.
+
+**Critical:** same-character C0 → C1 → C2 goals are cumulative progression, not competing alternatives.
+
+### Banners
+
+~~~json
+{"character": "Navia", "version": "7.0", "phase": 1}
+~~~
+
+The banner schedule is a user assumption. Banners are ordered chronologically by version/phase.
+
+### Preferences
+
+~~~json
+{
+  "preferences": [
+    {
+      "character": "Navia",
+      "rank": 1,
+      "constellation": 2,
+      "weapon_refinement": 0,
+      "notes": "Main target",
+      "label": "C2"
+    },
+    {
+      "character": "Navia",
+      "rank": 2,
+      "constellation": 1,
+      "weapon_refinement": 0,
+      "notes": "Fallback",
+      "label": "C1"
+    }
+  ]
+}
+~~~
+
+A Preference is an alternative acceptable way of pursuing an objective, ordered by rank. It is **not** roadmap priority.
+
+Do not visually merge Goal priority and Preference rank into one ordering.
+
+weapon_refinement/labels may be displayed as stored data, but refinement is currently display-only and must not be presented as optimized behavior.
+
+### Income
+
+~~~json
+{
+  "versions": [
+    {
+      "version": "7.0",
+      "estimate": {"low": 60, "expected": 75, "high": 90},
+      "sources": [],
+      "aggregate": {"low": 60, "expected": 75, "high": 90}
+    }
+  ]
+}
+~~~
+
+Income is future income arriving after the current account state. null income means no future income is credited; that differs from a forecast of zero wishes.
+
+Roadmap PUT requests replace the complete collection.
+
+## 4. Planner query overrides
+
+Planner endpoints accept:
+
+- confidence — temporary override of stored confidence.
+- income_scenario — low, expected, or high.
+
+These do not modify stored account settings.
+
+## 5. Goal-state response
+
+GET /accounts/{id}/planner/goals
+
+~~~json
+{
+  "current_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "goals": [
+    {
+      "goal": {"character": "Navia", "constellation": 0, "priority": 1},
+      "copies_needed": 1,
+      "state": "active",
+      "blocked_by": null,
+      "next_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+      "relevant": true,
+      "actionable": true
+    },
+    {
+      "goal": {"character": "Navia", "constellation": 2, "priority": 3},
+      "copies_needed": 3,
+      "state": "blocked",
+      "blocked_by": {"character": "Navia", "constellation": 0, "priority": 1},
+      "next_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+      "relevant": true,
+      "actionable": false
+    },
+    {
+      "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+      "copies_needed": 1,
+      "state": "active",
+      "blocked_by": null,
+      "next_banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
+      "relevant": false,
+      "actionable": false
+    }
+  ]
+}
+~~~
+
+States:
+
+- satisfied: account already meets the target.
+- active: unsatisfied and not blocked by an earlier same-character constellation.
+- blocked: an earlier same-character constellation must be reached first.
+- next_banner null: the goal still exists, but no matching scheduled banner exists.
+- relevant: goal character matches the current banner.
+- actionable: relevant + active.
+
+A blocked goal remains part of the roadmap.
+
+## 6. Safe-spend response
+
+GET /accounts/{id}/planner/safe-spend
+
+~~~json
+{
+  "current_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "safe_spend": 84,
+  "account_wishes": 180,
+  "confidence": 0.9,
+  "approximation": "sequential independent reserves (Phase 3); the recommendation endpoint evaluates spending through simulation (§14)",
+  "protected": [
+    {
+      "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+      "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
+      "budget_at_banner": 96,
+      "required_wishes": 80,
+      "confidence": 0.93,
+      "meets_threshold": true
+    }
+  ]
+}
+~~~
+
+safe_spend is an analytical Phase 3 approximation, not the optimizer's exact maximum feasible cap. It may disagree with recommendation.budget. A value of 0 is valid.
+
+## 7. Spend table
+
+GET /accounts/{id}/planner/spend-table?step=10
+
+Requires exactly one active single-copy goal on the current banner.
+
+~~~json
+{
+  "current_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "goal": {"character": "Navia", "constellation": 0, "priority": 1},
+  "copies_needed": 1,
+  "step": 10,
+  "confidence": 0.9,
+  "rows": [
+    {
+      "wishes_spent": 180,
+      "goal_confidence": 0.94,
+      "all_protected_meet_threshold": false,
+      "protected": [
+        {
+          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+          "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
+          "budget_at_banner": 0,
+          "required_wishes": 80,
+          "confidence": 0.0,
+          "meets_threshold": false
+        }
+      ]
+    },
+    {
+      "wishes_spent": 80,
+      "goal_confidence": 0.84,
+      "all_protected_meet_threshold": true,
+      "protected": [
+        {
+          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+          "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
+          "budget_at_banner": 100,
+          "required_wishes": 80,
+          "confidence": 0.95,
+          "meets_threshold": true
+        }
+      ]
+    }
+  ]
+}
+~~~
+
+This is explanatory/analytical data, not the optimizer's final decision.
+
+## 8. Recommendation response
+
+GET /accounts/{id}/planner/recommendation
+
+Query parameters:
+
+- runs: Monte Carlo histories per candidate; optimizer default is 2000.
+- seed: reproducibility seed; default 0; null uses OS entropy.
+- budgets: optional explicit candidate caps. If omitted, every cap from available wishes down to 0 is scanned.
+- minimum_outcome_probability: probability floor separating pursue from discretionary.
+
+### Pursue
+
+~~~json
+{
+  "banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "action": "pursue",
+  "outcome": {
+    "character": "Navia",
+    "constellation": 2,
+    "rank": 1,
+    "weapon_refinement": 0,
+    "label": "C2"
+  },
+  "budget": 150,
+  "plan": {
+    "entries": [
+      {
+        "banner": {"character": "Navia", "version": "7.0", "phase": 1},
+        "target_constellation": 2,
+        "budget": 150
+      }
+    ]
+  },
+  "outcome_probability": 0.91,
+  "confidence": 0.9,
+  "minimum_outcome_probability": 0.5,
+  "protected": [
+    {
+      "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+      "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
+      "probability": 0.93,
+      "meets_threshold": true,
+      "constraining": true
+    }
+  ],
+  "rejected": [],
+  "skip_reason": null,
+  "discretionary_reason": null,
+  "stops": {
+    "action": "pursue",
+    "outcome_label": "C2",
+    "spend_cap": 150,
+    "rules": ["Stop after reaching C2.", "Do not spend more than 150 wishes."]
+  },
+  "runs": 2000,
+  "seed": 0
+}
+~~~
+
+### Discretionary
+
+~~~json
+{
+  "banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "action": "discretionary",
+  "outcome": {
+    "character": "Navia",
+    "constellation": 2,
+    "rank": 1,
+    "weapon_refinement": 0,
+    "label": "C2"
+  },
+  "budget": 120,
+  "plan": {
+    "entries": [
+      {
+        "banner": {"character": "Navia", "version": "7.0", "phase": 1},
+        "target_constellation": 2,
+        "budget": 120
+      }
+    ]
+  },
+  "outcome_probability": 0.41,
+  "confidence": 0.9,
+  "minimum_outcome_probability": 0.5,
+  "protected": [],
+  "rejected": [],
+  "skip_reason": null,
+  "discretionary_reason": "The outcome is feasible, but its estimated probability is below the minimum ordinary-recommendation threshold.",
+  "stops": {
+    "action": "discretionary",
+    "outcome_label": "C2",
+    "spend_cap": 120,
+    "rules": ["Treat this as discretionary spending.", "Do not spend more than 120 wishes."]
+  },
+  "runs": 2000,
+  "seed": 0
+}
+~~~
+
+### Skip
+
+~~~json
+{
+  "banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "action": "skip",
+  "outcome": null,
+  "budget": 0,
+  "plan": null,
+  "outcome_probability": 0.0,
+  "confidence": 0.9,
+  "minimum_outcome_probability": 0.5,
+  "protected": [],
+  "rejected": [
+    {
+      "outcome": {
+        "character": "Navia",
+        "constellation": 2,
+        "rank": 1,
+        "weapon_refinement": 0,
+        "label": "C2"
+      },
+      "best_budget": 150,
+      "outcome_probability": 0.92,
+      "min_protected_probability": 0.72,
+      "shortfalls": [
+        {
+          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+          "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
+          "probability": 0.72,
+          "meets_threshold": false,
+          "constraining": true
+        }
+      ]
+    }
+  ],
+  "skip_reason": "No available outcome can be pursued while satisfying the required protection constraints.",
+  "discretionary_reason": null,
+  "stops": {
+    "action": "skip",
+    "outcome_label": null,
+    "spend_cap": 0,
+    "rules": ["Do not spend on this banner."]
+  },
+  "runs": 2000,
+  "seed": 0
+}
+~~~
+
+Recommendation semantics:
+
+- pursue = feasible and outcome_probability meets minimum_outcome_probability.
+- discretionary = feasible, but outcome_probability is below minimum_outcome_probability.
+- skip = no available outcome is feasible.
+- outcome is null for skip.
+- budget is the largest feasible **spend cap**, not a commitment or necessarily an exact amount the user will spend.
+- optimizer selection is lexicographic: most-preferred feasible outcome first, then largest feasible cap for that outcome.
+- protected[].constraining identifies goals whose thresholds actually gate the decision.
+- rejected explains more-preferred outcomes that were infeasible.
+
+## 9. Probability distinctions
+
+Do not collapse these into one number:
+
+| Field/concept | Meaning |
+|---|---|
+| outcome_probability | Chance of achieving the selected current-banner outcome |
+| protected[].probability | Chance of satisfying a future protected goal |
+| confidence | Required probability for protected goals |
+| minimum_outcome_probability | Probability floor for an ordinary pursue recommendation |
+| safe_spend | Analytical approximation |
+| recommendation.budget | Largest feasible optimizer cap |
+| spend-table wishes_spent | Hypothetical current-banner spend |
+| planned_budget | Cap encoded in a simulation plan |
+
+**Important:** minimum_outcome_probability is not the confidence/protection threshold.
+
+**Important:** a displayed/coarse spend amount is not necessarily the exact maximum safe spend. If the UI supplies a coarse budgets list, it can miss a narrow feasible cap window.
+
+Recommendation probabilities and simulation probabilities are Monte Carlo estimates. Preserve runs and seed in detailed/provenance UI.
+
+## 10. Stop conditions
+
+The recommendation contains stops, and GET /planner/stop-conditions returns the same data independently.
+
+~~~json
+{
+  "action": "pursue",
+  "outcome_label": "C2",
+  "spend_cap": 150,
+  "rules": [
+    "Stop after reaching C2.",
+    "Do not spend more than 150 wishes."
+  ]
+}
+~~~
+
+Present these as operational instructions attached to the recommendation, not as a separate optimization result.
+
+## 11. Exact probability endpoints
+
+GET /accounts/{id}/probability/character?wishes=N
+
+Optional: starting_pity, guaranteed, include_curve.
+
+~~~json
+{
+  "wishes": 80,
+  "starting_pity": 32,
+  "guaranteed": false,
+  "probability": 0.84,
+  "curve": [0.0, 0.006, "..."],
+  "mechanics": {
+    "banner_type": "character_event",
+    "hard_pity": 90,
+    "soft_pity_start": 74,
+    "base_rate": 0.006,
+    "soft_pity_increment": 0.06,
+    "featured_rate": 0.5
+  }
+}
+~~~
+
+This is exact analytical probability, not Monte Carlo.
+
+GET /accounts/{id}/probability/wishes-needed
+
+Optional: confidence, starting_pity, guaranteed.
+
+~~~json
+{
+  "confidence": 0.9,
+  "starting_pity": 32,
+  "guaranteed": false,
+  "wishes_needed": 91,
+  "probability_at_wishes_needed": 0.901,
+  "mechanics": {
+    "banner_type": "character_event",
+    "hard_pity": 90,
+    "soft_pity_start": 74,
+    "base_rate": 0.006,
+    "soft_pity_increment": 0.06,
+    "featured_rate": 0.5
+  }
+}
+~~~
+
+## 12. Lower-level simulation
+
+POST /accounts/{id}/simulation/run accepts a SpendPlan and returns a queued job. GET /accounts/{id}/simulation/{job_id} reports queued, running, succeeded, or failed.
+
+A successful result contains runs, seed, the plan, per-goal probabilities, per-banner aggregates, all_goals_probability, and final-wishes mean/min/max.
+
+This is not the initial dashboard's primary decision endpoint.
+
+## 13. Full account example
+
+~~~json
+{
+  "id": "demo",
+  "label": "Main Account",
+  "account": {
+    "wishes": 180,
+    "current_pity": 32,
+    "character_guarantee": false,
+    "owned_characters": {"Navia": 0}
+  },
+  "settings": {
+    "current_version": "7.0",
+    "current_phase": 1,
+    "confidence": 0.9,
+    "income_scenario": "expected",
+    "mechanics": {
+      "banner_type": "character_event",
+      "hard_pity": 90,
+      "soft_pity_start": 74,
+      "base_rate": 0.006,
+      "soft_pity_increment": 0.06,
+      "featured_rate": 0.5
+    }
+  },
+  "goals": [
+    {"character": "Navia", "constellation": 0, "priority": 1},
+    {"character": "Navia", "constellation": 1, "priority": 2},
+    {"character": "Navia", "constellation": 2, "priority": 3},
+    {"character": "Tsaritsa", "constellation": 0, "priority": 4}
+  ],
+  "banners": [
+    {"character": "Navia", "version": "7.0", "phase": 1},
+    {"character": "Tsaritsa", "version": "7.1", "phase": 1}
+  ],
+  "preferences": [
+    {"character": "Navia", "rank": 1, "constellation": 2, "weapon_refinement": 0, "notes": "Main target", "label": "C2"}
+  ],
+  "income": null
+}
+~~~
+
+## 14. Initial UI information hierarchy
+
+The application should answer the practical question in this order:
+
+1. **Current decision** — pursue / discretionary / skip, target, cap, probability.
+2. **Why** — more-preferred rejected outcomes and the protected goals that constrained them.
+3. **When to stop** — stop rules and cap.
+4. **What is at risk** — future protected-goal probabilities against confidence.
+5. **Spending detail** — safe-spend approximation and spend/probability table.
+6. **Roadmap** — chronological banners and goal state/priority.
+7. **Inputs/settings** — account state, goals, preferences, banners, income, confidence, scenario.
+
+The first screen should not require users to understand optimizer terminology before seeing the decision.
+
+## 15. UI development boundary
+
+Use this contract and the dummy responses as the working reference for UI implementation.
+
+Do not redesign optimizer/backend behavior during UI work.
+
+Only return to backend implementation when:
+
+1. a required UI datum is absent from this contract/API, or
+2. the UI exposes a real backend defect, or
+3. a genuinely required backend capability does not exist.
+
+Do not implement weapon/refinement optimization until explicitly brought back into scope.
