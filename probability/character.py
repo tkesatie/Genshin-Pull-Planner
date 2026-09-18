@@ -22,8 +22,8 @@ from probability.rates import featured_rate_at, pull_rate
 class _State:
     """Survival probability mass over `(pity, guarantee)` states."""
 
-    no_guarantee: np.ndarray  # shape (hard_pity,)
-    guaranteed: np.ndarray  # shape (hard_pity,)
+    no_guarantee: np.ndarray  # shape (hard_pity, 4)
+    guaranteed: np.ndarray  # shape (hard_pity, 4)
 
     def total(self) -> float:
         return float(self.no_guarantee.sum() + self.guaranteed.sum())
@@ -43,7 +43,7 @@ class _Transitions:
 
     rates: np.ndarray
     survive: np.ndarray
-    lost_cond: np.ndarray
+    featured: np.ndarray
 
 
 def _transitions(mechanics: WishMechanics) -> _Transitions:
@@ -52,50 +52,45 @@ def _transitions(mechanics: WishMechanics) -> _Transitions:
     survive = 1.0 - rates
     # A guaranteed 5-star is always featured, so only not-guaranteed states
     # can lose the 50/50.
-    lost_cond = rates * (
-        1.0
-        - np.array(
-            [featured_rate_at(p, False, mechanics) for p in pities]
-        )
-    )
-    return _Transitions(rates, survive, lost_cond)
+    featured = np.array(
+        [
+            mechanics.featured_rate
+            if radiance < 2
+            else (6.0 / 11.0 if radiance == 2 else 1.0)
+            for p in pities
+            for radiance in range(4)
+        ]
+    ).reshape(mechanics.hard_pity, 4)
+    return _Transitions(rates, survive, featured)
 
 
 def _initial_state(
     starting_pity: int, guaranteed: bool, hard_pity: int
 ) -> _State:
-    no_guarantee = np.zeros(hard_pity)
-    guaranteed_mass = np.zeros(hard_pity)
+    no_guarantee = np.zeros((hard_pity, 4))
+    guaranteed_mass = np.zeros((hard_pity, 4))
     if guaranteed:
-        guaranteed_mass[starting_pity] = 1.0
+        guaranteed_mass[starting_pity, 0] = 1.0
     else:
-        no_guarantee[starting_pity] = 1.0
+        no_guarantee[starting_pity, 0] = 1.0
     return _State(no_guarantee, guaranteed_mass)
 
 
 def _advance(state: _State, moves: _Transitions, hard_pity: int) -> _State:
-    """Apply one wish to the survival distribution.
+    """Apply one wish while retaining Capturing Radiance state."""
 
-    Transitions from state (pity, guarantee):
+    carried = state.no_guarantee * moves.survive[:, None]
+    carried_g = state.guaranteed * moves.survive[:, None]
+    lost = state.no_guarantee * moves.rates[:, None] * (1.0 - moves.featured)
 
-        5-star & featured      -> success (mass leaves the distribution)
-        5-star & not featured  -> (pity=0, guarantee=True)
-        no 5-star              -> (pity=pity+1, guarantee unchanged)
+    new_no_guarantee = np.zeros((hard_pity, 4))
+    new_guaranteed = np.zeros((hard_pity, 4))
+    new_no_guarantee[1:, :] = carried[:-1, :]
+    new_guaranteed[1:, :] = carried_g[:-1, :]
 
-    On the hard-pity wish the 5-star rate is 1.0, so no mass can survive at
-    pity hard_pity - 1 and the shift below never overflows the array.
-    """
-    carried = state.no_guarantee * moves.survive
-    carried_g = state.guaranteed * moves.survive
-
-    # Lost 50/50s land at pity 0 with the guarantee flipped on.
-    lost = (state.no_guarantee * moves.lost_cond).sum()
-
-    new_no_guarantee = np.zeros(hard_pity)
-    new_no_guarantee[1:] = carried[:-1]
-    new_guaranteed = np.zeros(hard_pity)
-    new_guaranteed[1:] = carried_g[:-1]
-    new_guaranteed[0] += lost
+    for radiance in range(4):
+        next_radiance = min(3, radiance + 1)
+        new_guaranteed[0, next_radiance] += lost[0, radiance]
 
     return _State(new_no_guarantee, new_guaranteed)
 
