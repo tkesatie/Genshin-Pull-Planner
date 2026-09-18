@@ -12,7 +12,7 @@ import numpy as np
 
 from domain import Account, Banner, Goal, Ownership, Roadmap
 from planner import PlannerContext
-from simulation import PlannedSpend, SpendPlan, simulate
+from simulation import PlannedSpend, SpendPlan, simulate, simulate_history
 
 
 VODYNISTA = Banner("Vodynista", "7.1", 1)
@@ -67,22 +67,43 @@ def test_450_wish_strategy_uses_one_shared_pool_and_correct_copy_targets():
     assert result.final_wishes_min >= 0
     assert result.final_wishes_max <= 450
 
-    for run_index in range(result.runs):
-        # The aggregate result intentionally does not retain individual
-        # histories, so this invariant is checked by the deterministic
-        # banner-level means/bounds below rather than per-run records.
+    # Inspect individual histories too. This verifies the shared-pool
+    # invariant directly rather than only through aggregate statistics.
+    rng = np.random.default_rng(0)
+    for _ in range(100):
+        run = simulate_history(context, plan, rng)
+        results = {item.banner: item for item in run.banner_results}
+
+        vodynista = results[VODYNISTA]
+        vesna = results[VESNA]
+        skirk = results[SKIRK]
+
+        # Vesna starts unowned, so C2 requires C0 plus two additional copies.
+        assert vesna.copies_needed == 3
+        # Skirk starts at C0, so C2 requires two additional copies.
+        assert skirk.copies_needed == 2
+
+        # Every banner consumes from the same evolving account.
+        assert vodynista.account_after.wishes == 450 - vodynista.wishes_spent
+        assert vesna.account_after.wishes == (
+            vodynista.account_after.wishes - vesna.wishes_spent
+        )
+        assert skirk.account_after.wishes == (
+            vesna.account_after.wishes - skirk.wishes_spent
+        )
+
+        assert run.account_after.wishes >= 0
+        total_spent = (
+            vodynista.wishes_spent
+            + vesna.wishes_spent
+            + skirk.wishes_spent
+        )
+        assert total_spent <= 450
 
     vodynista = next(b for b in result.banners if b.banner == VODYNISTA)
     vesna = next(b for b in result.banners if b.banner == VESNA)
     skirk = next(b for b in result.banners if b.banner == SKIRK)
 
-    # The Vesna C2 target starts from unowned, so it requires three featured
-    # copies: C0 plus two additional constellations.
-    assert vesna.target_constellation == 2
-
-    # Each banner's mean spend must respect both its cap and the shared
-    # starting resource. In particular, the three nominal 450/219/450 caps
-    # must not behave like three independent  pools.
     assert vodynista.mean_wishes_spent <= 450
     assert vesna.mean_wishes_spent <= 219
     assert skirk.mean_wishes_spent <= 450
