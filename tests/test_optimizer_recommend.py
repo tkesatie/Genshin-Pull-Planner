@@ -749,7 +749,7 @@ class TestPriorityGatedProgression:
         Navia's Priority 3 target) at or above the confidence threshold -
         not necessarily every wish in the account (§14: a cap, not a
         commitment)."""
-        rec = recommend(self._context(wishes=600), self._chain(), runs=2_000, seed=3)
+        rec = recommend(self._context(wishes=600), self._chain(), runs=10_000, seed=3)
         assert rec.action == "pursue"
         assert rec.outcome.label == "C2"
         assert rec.outcome_probability > 0.0
