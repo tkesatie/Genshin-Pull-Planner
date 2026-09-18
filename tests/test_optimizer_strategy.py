@@ -63,12 +63,21 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
             goals=(GoalProbability(skirk, probability),),
             banners=(
                 BannerAggregate(
+                    banner=Banner("Vodynista", "7.1", 1),
+                    target_constellation=0,
+                    planned_budget=450,
+                    mean_income_credited=0.0,
+                    mean_wishes_spent=0.0,
+                    target_met_probability=1.0,
+                    mean_copies_obtained=0.0,
+                ),
+                BannerAggregate(
                     banner=Banner("Vesna", "7.1", 1),
                     target_constellation=2,
                     planned_budget=vesna_entry.budget,
                     mean_income_credited=0.0,
                     mean_wishes_spent=0.0,
-                    target_met_probability=1.0,
+                    target_met_probability=0.42,
                     mean_copies_obtained=0.0,
                 ),
             ),
@@ -89,6 +98,7 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
     )
     assert vesna_step.safe_spend == 300
     assert vesna_step.reserve_wishes == 150
+    assert vesna_step.outcome_probability == 0.42
 
     plan = captured[300]
     assert plan.entries == (
