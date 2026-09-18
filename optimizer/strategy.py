@@ -282,7 +282,7 @@ def build_strategy(
     """Build the current multi-step strategy and spend frontiers."""
     banners = available_banners(context)
     if not banners:
-        return PullStrategy((), None, None, None, runs, seed)
+        return PullStrategy((), None, None, None, runs, seed, context.account.wishes, 0)
 
     current_characters = {banner.character for banner in banners}
     evaluations = evaluate_goals(context)
@@ -328,15 +328,16 @@ def build_strategy(
         reserve = context.account.wishes - spend
         reserve_income = 0
         if protected_goals:
-            reserve_banner = min(
-                (candidate for candidate in context.roadmap.banners
-                 if candidate.character == min(protected_goals, key=lambda item: item.priority).character
-                 and candidate.order_key > banner.order_key),
-                key=lambda candidate: candidate.order_key,
+            reserve_goal_for_display = min(protected_goals, key=lambda item: item.priority)
+            reserve_evaluation = next(
+                item for item in evaluate_goals(context)
+                if item.goal == reserve_goal_for_display
             )
-            reserve_income = context.income_available_before(
-                reserve_banner.version, reserve_banner.phase
-            )
+            if reserve_evaluation.next_banner is not None:
+                reserve_income = context.income_available_before(
+                    reserve_evaluation.next_banner.version,
+                    reserve_evaluation.next_banner.phase,
+                )
         reserve_total = reserve + reserve_income
         if reserve_goal is None and protected_goals:
             reserve_goal = min(protected_goals, key=lambda item: item.priority)
@@ -370,4 +371,12 @@ def build_strategy(
         steps=tuple(steps), reserve_goal=reserve_goal,
         reserve_wishes=reserve_wishes, reserve_probability=reserve_probability,
         runs=runs, seed=seed,
+        starting_wishes=context.account.wishes,
+        future_income=(
+            context.income_available_before(
+                max(context.roadmap.banners, key=lambda item: item.order_key).version,
+                max(context.roadmap.banners, key=lambda item: item.order_key).phase,
+            )
+            if context.roadmap.banners else 0
+        ),
     )
