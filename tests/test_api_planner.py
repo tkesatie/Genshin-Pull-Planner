@@ -127,11 +127,11 @@ class TestSpendTable:
     ):
         body = api_client.get(
             f"/accounts/{doc_account_id}/planner/spend-table",
-            params={"step": 10, "runs": 200, "seed": 5},
+            params={"step": 10, "runs": 2_000, "seed": 5},
         ).json()
 
         assert [outcome["label"] for outcome in body["outcomes"]] == ["C0", "C2"]
-        assert body["runs"] == 200
+        assert body["runs"] == 2_000
         assert body["seed"] == 5
         assert [row["wishes_spent"] for row in body["rows"]] == [0, 10, 20, 30, 40]
 
