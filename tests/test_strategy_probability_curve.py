@@ -54,7 +54,7 @@ def test_vesna_spend_curve(capsys):
     context = make_context()
     budgets = (0, 100, 150, 200, 219, 250, 300, 350, 400, 450)
 
-    print("\nVesna spend curve with 90 expected 7.1 income (10,000 runs, seed=0)")
+    print("\\nVesna spend curve with 90 expected 7.1 income (10,000 runs, seed=0)")
     print("budget | Vesna C2 | Skirk C2 | all goals | final wishes")
     print("-------+-----------+----------+-----------+-------------")
 
@@ -86,9 +86,6 @@ def test_vesna_spend_curve(capsys):
             f"{result.all_goals_probability:9.2%} | {result.final_wishes_mean:12.1f}"
         )
 
-    # The curve should move in the expected direction. Monte Carlo noise can
-    # cause tiny local reversals, so use endpoint comparisons rather than
-    # demanding strict monotonicity at every adjacent budget.
     assert rows[-1][1] > rows[0][1]
     assert rows[-1][2] < rows[0][2]
     assert rows[-1][0] == 450
@@ -102,7 +99,7 @@ def test_skirk_c2_probability_sanity_curve(capsys):
     mechanics = context.mechanics
     budgets = (240, 264, 265, 280)
 
-    print("\nSkirk C2 raw probability sanity curve (10,000 runs, seed=0)")
+    print("\\nSkirk C2 raw probability sanity curve (10,000 runs, seed=0)")
     print("budget | Skirk C2")
     print("-------+----------")
 
@@ -122,7 +119,6 @@ def test_skirk_c2_probability_sanity_curve(capsys):
         rows.append((budget, probability))
         print(f"{budget:6d} | {probability:8.2%}")
 
-    # Diagnostic comparison only; this does not hard-code an external calculator's result.
     assert rows[-1][1] > rows[0][1]
 
 
@@ -161,7 +157,6 @@ def test_multi_copy_confidence_is_explicit(capsys):
 
     assert results[0] < results[-1]
     assert results[1] < results[2] < results[3] < results[4]
-
 
 
 def test_skirk_c2_probability_by_starting_pity(capsys):
@@ -207,7 +202,7 @@ def test_planner_protection_matches_skirk_threshold(capsys):
     context = make_context()
     spends = (0, 50, 100, 150, 200, 240)
 
-    print("\nPlanner Skirk protection diagnostic")
+    print("\\nPlanner Skirk protection diagnostic")
     print("spent | budget_at_banner | required | confidence | meets")
     print("------+-------------------+----------+------------+------")
 
@@ -225,8 +220,6 @@ def test_planner_protection_matches_skirk_threshold(capsys):
             f"{str(skirk.meets_threshold):5s}"
         )
 
-    # Diagnostic only: verify the planner's protection calculation is
-    # actually responding to additional current-banner spending.
     assert rows[-1][1].budget_at_banner < rows[0][1].budget_at_banner
     assert rows[-1][1].confidence <= rows[0][1].confidence
 
@@ -239,7 +232,7 @@ def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
     caps = (200, 210, 220, 225, 230, 231, 235, 240)
     mechanics = context.mechanics
 
-    print("\nCombined frontier with actual Skirk reserve (10,000 runs, seed=0)")
+    print("\\nCombined frontier with actual Skirk reserve (10,000 runs, seed=0)")
     print("cap | reserve | Skirk C2")
     print("----+---------+----------")
 
@@ -271,9 +264,6 @@ def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
         rows.append((cap, reserve, probability))
         print(f"{cap:3d} | {reserve:7d} | {probability:8.2%}")
 
-    # This test is specifically checking that the displayed reserve is the
-    # budget used for the protected Skirk goal. As current-banner spending
-    # increases, the protected probability should decrease.
     assert rows[-1][2] < rows[0][2]
 
 
@@ -285,7 +275,7 @@ def test_combined_current_banner_frontier(capsys):
     caps = (200, 210, 220, 225, 230, 231, 235, 240)
     mechanics = context.mechanics
 
-    print("\nCombined phase-1 spend frontier (Vod C0 + Vesna C2)")
+    print("\\nCombined phase-1 spend frontier (Vod C0 + Vesna C2)")
     print("cap | reserve | Vesna C2 | Skirk C2 | all three")
     print("----+---------+----------+----------+----------")
 
@@ -303,8 +293,6 @@ def test_combined_current_banner_frontier(capsys):
                 account, "Vodynista", 1, cap, mechanics, rng
             )
 
-            # 7.1 income is future income. It cannot fund either Phase 1
-            # banner, but will be available when Skirk's later phase arrives.
             vesna_budget = max(cap - vod_spent, 0)
             _, vesna_copies, _, account = _pull_toward_target(
                 account, "Vesna", 3, vesna_budget, mechanics, rng
@@ -338,7 +326,7 @@ def test_skirk_protected_boundary_convergence(capsys):
     budgets = (259, 263, 265)
     run_counts = (2_000, 5_000, 10_000, 20_000)
 
-    print("\nSkirk C2 boundary: zero pity vs current 27 pity")
+    print("\\nSkirk C2 boundary: zero pity vs current 27 pity")
     print("runs  | budget | pity 0 | pity 27")
     print("------+--------+--------+--------")
 
@@ -377,9 +365,6 @@ def test_skirk_protected_boundary_convergence(capsys):
                 f"{probabilities[1]:7.2%}"
             )
 
-    # The protected reserve calculation intentionally starts from zero pity.
-    # This diagnostic makes sure the boundary discrepancy is attributable to
-    # that state difference rather than Monte Carlo noise.
     for runs, budget, zero_pity, current_pity in rows:
         assert current_pity > zero_pity
 
@@ -414,9 +399,6 @@ def test_skirk_reserve_from_actual_vesna_outcome_states(capsys):
                     account, "Vesna", 3, vesna_budget, mechanics, rng
                 )
 
-                # Future 7.1 income arrives before Skirk. The reserve is the
-                # remaining current wishes plus that future income, represented
-                # here by the tested total resource pool.
                 account = replace(account, wishes=skirk_reserve)
                 _, skirk_copies, _, _ = _pull_toward_target(
                     account, "Skirk", 2, skirk_reserve, mechanics, rng
@@ -427,12 +409,59 @@ def test_skirk_reserve_from_actual_vesna_outcome_states(capsys):
             rows.append((phase1_cap, skirk_reserve, probability))
             print(f"{phase1_cap:11d} | {skirk_reserve:13d} | {probability:10.2%}")
 
-    # This diagnostic deliberately does not assert an exact boundary yet.
-    # It tells us whether failed Vesna paths materially improve or worsen the
-    # protected Skirk probability once their actual pity/guarantee/Radiance
-    # state is carried forward.
     assert rows
     assert all(0.0 <= probability <= 1.0 for _, _, probability in rows)
+
+
+def test_vodynista_c0_vesna_c2_then_skirk_c2_with_future_income(capsys):
+    """Measure Skirk C2 after fully pursuing Vodynista C0 and Vesna C2."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    mechanics = context.mechanics
+    runs = 20_000
+    skirk_success = 0
+    vodynista_success = 0
+    vesna_success = 0
+    all_success = 0
+
+    rng = np.random.default_rng(0)
+
+    for _ in range(runs):
+        account = context.account
+
+        # Spend the shared current pool on Vodynista C0 first.
+        _, vod_copies, _, account = _pull_toward_target(
+            account, "Vodynista", 1, account.wishes, mechanics, rng
+        )
+        vod_met = vod_copies == 1
+        vodynista_success += vod_met
+
+        # Whatever remains is then used for Vesna C2 (three copies from C0).
+        _, vesna_copies, _, account = _pull_toward_target(
+            account, "Vesna", 3, account.wishes, mechanics, rng
+        )
+        vesna_met = vesna_copies == 3
+        vesna_success += vesna_met
+
+        # 90 wishes of future 7.1 income arrive before Skirk's Phase 2.
+        account = replace(account, wishes=account.wishes + 90)
+        _, skirk_copies, _, _ = _pull_toward_target(
+            account, "Skirk", 2, account.wishes, mechanics, rng
+        )
+        skirk_met = skirk_copies == 2
+        skirk_success += skirk_met
+        all_success += vod_met and vesna_met and skirk_met
+
+    print("\\nVodynista C0 -> Vesna C2 -> +90 income -> Skirk C2")
+    print(f"runs: {runs}, seed: 0")
+    print(f"Vodynista C0: {vodynista_success / runs:.2%}")
+    print(f"Vesna C2:     {vesna_success / runs:.2%}")
+    print(f"Skirk C2:     {skirk_success / runs:.2%}")
+    print(f"All three:    {all_success / runs:.2%}")
+
+    assert 0.0 <= skirk_success / runs <= 1.0
+    assert 0.0 <= all_success / runs <= 1.0
 
 
 def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
@@ -446,13 +475,11 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
         if step.goal == Goal("Vesna", 2, 4)
     )
 
-    print("\nVesna C2 joint strategy probability")
+    print("\\nVesna C2 joint strategy probability")
     print(f"safe spend: {vesna_c2.safe_spend}")
     print(f"reserve: {vesna_c2.reserve_wishes}")
     print(f"joint probability: {vesna_c2.outcome_probability:.2%}")
 
-    # Vodynista C0 and Vesna C2 must fit the strategy's sequential current-
-    # banner allocation. Skirk C2 remains the separate 90% reserve constraint.
     assert vesna_c2.safe_spend in range(275, 278)
     assert vesna_c2.reserve_wishes in range(173, 176)
     assert vesna_c2.future_income == 90
@@ -460,11 +487,9 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     assert 0.15 < vesna_c2.outcome_probability < 0.21
 
 
-
 def test_future_income_cannot_fund_current_phase(capsys):
     """Current-phase spending uses only wishes already available now."""
     from optimizer.strategy import build_strategy
-    from simulation.engine import _pull_toward_target
 
     context = make_context()
     strategy = build_strategy(context, runs=10_000, seed=0)
