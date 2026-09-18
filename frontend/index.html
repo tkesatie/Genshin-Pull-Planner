@@ -465,6 +465,7 @@ function barRow(label, sublabel, probability, threshold, meets) {
 
 function renderRecommendation(rec) {
   const banner = bannerName(rec.banner);
+  $("banner-meta").textContent = banner;
   $("decision-label").className = `decision-label ${rec.action}`;
   $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
   $("metric-target").textContent = rec.outcome ? `${rec.outcome.character} ${rec.outcome.label}` : "—";
