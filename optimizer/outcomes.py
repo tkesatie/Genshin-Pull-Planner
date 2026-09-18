@@ -83,7 +83,7 @@ from planner import (
     actionable_goals,
     relevant_goal_evaluations,
 )
-from planner.banners import current_banner
+from planner.banners import available_banners, current_banner
 
 
 @dataclass(frozen=True)
@@ -121,7 +121,9 @@ class OutcomeOption:
         return label
 
 
-def _later_progression_constellations(context: PlannerContext) -> frozenset[int]:
+def _later_progression_constellations(
+    context: PlannerContext, banner=None
+) -> frozenset[int]:
     """Chain constellations the roadmap schedules as a later progression step.
 
     A roadmap goal that is BLOCKED (§9) names a progression objective that
@@ -133,7 +135,7 @@ def _later_progression_constellations(context: PlannerContext) -> frozenset[int]
     banner the current banner is the goal's only remaining opportunity and
     nothing is demoted.
     """
-    current = current_banner(context)
+    current = banner if banner is not None else current_banner(context)
     if not any(
         banner.order_key > current.order_key
         for banner in context.roadmap.banners_for(current.character)
@@ -149,6 +151,7 @@ def _later_progression_constellations(context: PlannerContext) -> frozenset[int]
 def available_outcomes(
     context: PlannerContext,
     preferences: Iterable[Preference] = (),
+    banner=None,
 ) -> tuple[OutcomeOption, ...]:
     """Outcomes the optimizer may pursue, in preference order (§13 step 2).
 
@@ -161,7 +164,15 @@ def available_outcomes(
             duplicate goals; the optimizer will not silently choose (the
             same refusal as planner.spend_table).
     """
-    character = current_banner(context).character
+    if banner is None:
+        matches = available_banners(context)
+        if len(matches) != 1:
+            raise ValueError(
+                "available_outcomes requires an explicit banner when multiple "
+                "banners are available at the current version/phase"
+            )
+        banner = matches[0]
+    character = banner.character
     owned = context.account.owned_constellation(character)
 
     chain = sort_by_rank(
@@ -174,7 +185,7 @@ def available_outcomes(
         best_by_constellation: dict[int, Preference] = {}
         for preference in chain:
             best_by_constellation.setdefault(preference.constellation, preference)
-        later_progression = _later_progression_constellations(context)
+        later_progression = _later_progression_constellations(context, banner)
         eligible = tuple(
             OutcomeOption(
                 character=character,
@@ -211,7 +222,7 @@ def available_outcomes(
     # goal (§5) - user-defined data, never invented (§2).
     active = [
         evaluation
-        for evaluation in actionable_goals(context)
+        for evaluation in actionable_goals(context, banner)
         if evaluation.goal.character == character
     ]
     if len(active) > 1:
