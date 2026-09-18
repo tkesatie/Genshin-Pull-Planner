@@ -126,6 +126,37 @@ def test_skirk_c2_probability_sanity_curve(capsys):
     assert rows[-1][1] > rows[0][1]
 
 
+def test_planner_protection_matches_skirk_threshold(capsys):
+    """Inspect the planner's protected Skirk reserve at representative spend levels."""
+    from planner.protection import protected_goal_outcomes
+
+    context = make_context()
+    spends = (200, 210, 220, 225, 230, 240)
+
+    print("\nPlanner Skirk protection diagnostic")
+    print("spent | budget_at_banner | required | confidence | meets")
+    print("------+-------------------+----------+------------+------")
+
+    rows = []
+    for spent in spends:
+        outcomes = protected_goal_outcomes(context, spent=spent)
+        skirk = next(
+            outcome for outcome in outcomes
+            if outcome.goal == Goal("Skirk", 2, 3)
+        )
+        rows.append((spent, skirk))
+        print(
+            f"{spent:5d} | {skirk.budget_at_banner:17d} | "
+            f"{skirk.required_wishes:8d} | {skirk.confidence:10.2%} | "
+            f"{str(skirk.meets_threshold):5s}"
+        )
+
+    # Diagnostic only: verify the planner's protection calculation is
+    # actually responding to additional current-banner spending.
+    assert rows[-1][1].budget_at_banner < rows[0][1].budget_at_banner
+    assert rows[-1][1].confidence < rows[0][1].confidence
+
+
 def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
     """Measure Skirk C2 using the reserve actually advertised by the frontier."""
     from simulation.engine import _pull_toward_target
