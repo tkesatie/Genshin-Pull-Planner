@@ -189,6 +189,7 @@ def _safe_spend(
 
     started = time.perf_counter()
     candidates = 0
+    observations: list[tuple[int, float]] = []
 
     for spend in range(context.account.wishes, -1, -1):
         candidates += 1
@@ -206,11 +207,17 @@ def _safe_spend(
             next(item for item in result.goals if item.goal == protected).probability
             for protected in protected_goals
         ]
+        if protected_goals:
+            observations.append((spend, min(probabilities)))
         if all(probability >= context.confidence for probability in probabilities):
             elapsed = time.perf_counter() - started
             print(
                 f"_safe_spend: goal={goal.character} C{goal.constellation}, "
                 f"candidates={candidates}, elapsed={elapsed:.3f}s, safe_spend={spend}"
+            )
+            print(
+                "_safe_spend observations:",
+                ", ".join(f"{spend}={prob:.3f}" for spend, prob in observations)
             )
             return spend, result, protected_goals
     raise RuntimeError("safe-spend search must find the zero-spend candidate")
