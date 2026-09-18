@@ -127,25 +127,41 @@ def test_skirk_c2_probability_sanity_curve(capsys):
 
 
 def test_multi_copy_confidence_is_explicit(capsys):
-    """Show the probability API's behavior for a two-copy target."""
-    from probability import cumulative_probability, wishes_for_confidence
+    """Measure the actual simulated probability of two featured copies."""
+    from simulation.engine import _pull_toward_target
 
     context = make_context()
-    one_copy = wishes_for_confidence(
-        context.confidence, 0, False, context.mechanics
-    )
-    two_copy_curve = cumulative_probability(
-        180, 0, False, context.mechanics
-    )
+    budgets = (155, 180, 240, 264, 265)
+    runs = 10_000
+    rng = np.random.default_rng(0)
 
-    print("\\nMulti-copy confidence diagnostic")
-    print(f"one-copy 90% reserve: {one_copy}")
-    print(f"two-copy probability at 155 wishes: {two_copy_curve[155]:.2%}")
-    print(f"two-copy probability at 180 wishes: {two_copy_curve[180]:.2%}")
+    print("\\nMulti-copy simulation confidence diagnostic")
+    print(f"runs: {runs}, seed: 0")
+    print("budget | Skirk C2")
+    print("-------+----------")
 
-    assert one_copy == 155
-    assert 0.0 <= two_copy_curve[155] <= 1.0
-    assert 0.0 <= two_copy_curve[180] <= 1.0
+    results = []
+    for budget in budgets:
+        successes = 0
+        for _ in range(runs):
+            account = replace(context.account, wishes=budget)
+            spent, obtained, _, _ = _pull_toward_target(
+                account,
+                "Skirk",
+                2,
+                budget,
+                context.mechanics,
+                rng,
+            )
+            if obtained >= 2 and spent <= budget:
+                successes += 1
+        probability = successes / runs
+        results.append(probability)
+        print(f"{budget:6d} | {probability:8.2%}")
+
+    assert results[0] < results[-1]
+    assert results[1] < results[2] < results[3] < results[4]
+
 
 
 def test_planner_protection_matches_skirk_threshold(capsys):
