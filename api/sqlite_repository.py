@@ -8,7 +8,6 @@ serialization and durable storage.
 import json
 import sqlite3
 import threading
-from dataclasses import dataclass
 from pathlib import Path
 
 from domain import (
@@ -113,7 +112,7 @@ def _record_from_dict(value: dict) -> AccountRecord:
     income = None
     if income_value is not None:
         income = IncomeForecast(
-            versions=[
+            versions=tuple(
                 VersionIncome(
                     version=entry["version"],
                     estimate=(
@@ -127,7 +126,7 @@ def _record_from_dict(value: dict) -> AccountRecord:
                     ],
                 )
                 for entry in income_value["versions"]
-            ]
+            )
         )
 
     return AccountRecord(
@@ -154,7 +153,7 @@ def _record_from_dict(value: dict) -> AccountRecord:
                 p["character"],
                 p["rank"],
                 p["constellation"],
-                weapon_refinement=p["weapon_refinement"],
+                weapon_ref=p["weapon_refinement"],
                 notes=p["notes"],
             )
             for p in value["preferences"]
@@ -242,3 +241,4 @@ class SQLiteAccountRepository:
             )
             if cursor.rowcount == 0:
                 raise AccountNotFound(f"no account with id {account_id!r}")
+            
