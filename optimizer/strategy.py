@@ -19,7 +19,6 @@ from dataclasses import dataclass
 
 from domain import Banner, Goal
 from optimizer.protection import constraining_goals, protected_groups
-from planner.protection import protected_goal_outcomes
 from planner import PlannerContext, evaluate_goals
 from planner.banners import available_banners
 from simulation import PlannedSpend, SimulationResult, SpendPlan, simulate
@@ -200,10 +199,11 @@ def _safe_spend(
 ) -> tuple[int, SimulationResult, tuple[Goal, ...]]:
     """Find the largest current budget that preserves every constraint.
 
-    The protected probability is empirically monotonic with spend, but Monte
-    Carlo introduces small local fluctuations. Use coarse sampling to bracket
-    the frontier, binary search to narrow it, then exhaustively test a small
-    window around the boundary so the returned value is directly verified.
+    Feasibility is not assumed to be monotonic: spending can change the
+    carried pity/guarantee state for a future banner, so a larger current cap
+    can occasionally be worse for a protected goal than a smaller cap. The
+    search therefore checks candidate caps from largest to smallest using the
+    same Phase 4 simulation that evaluates recommendations.
     """
     max_spend = context.account.wishes
     cache: dict[int, tuple[SimulationResult, tuple[Goal, ...]]] = {}
@@ -215,43 +215,36 @@ def _safe_spend(
             )
         return cache[spend]
 
-    def protection_at(spend: int):
-        return [
-            outcome
-            for outcome in protected_goal_outcomes(
-                context, spent=spend, banner=banner
-            )
-            if outcome.goal in constraining_goals(
-                context, priority=goal.priority, banner=banner
-            )
+    constraining = constraining_goals(
+        context, priority=goal.priority, banner=banner
+    )
+
+    def protection_at(spend: int) -> tuple[bool, SimulationResult, tuple[Goal, ...]]:
+        result, protected_goals = evaluate(spend)
+        probability_by_goal = {
+            item.goal: item.probability for item in result.goals
+        }
+        relevant = [
+            probability_by_goal[protected]
+            for protected in protected_goals
+            if protected in constraining
         ]
+        return (
+            all(probability >= context.confidence for probability in relevant),
+            result,
+            protected_goals,
+        )
 
-    def is_safe(spend: int) -> bool:
-        return all(outcome.meets_threshold for outcome in protection_at(spend))
+    # Feasibility is deliberately not treated as monotonic. A current spend
+    # can create a carried guarantee/pity state that makes a later protected
+    # goal easier or harder, so binary search can skip a feasible cap. Check
+    # from the largest cap downward and return the first simulated-safe cap.
+    for spend in range(max_spend, -1, -1):
+        safe, result, protected_goals = protection_at(spend)
+        if safe:
+            return spend, result, protected_goals
 
-    # First find a safe/unsafe bracket with a small number of broad samples.
-    if is_safe(max_spend):
-        safe = max_spend
-        unsafe = None
-    else:
-        safe = 0
-        unsafe = max_spend
-        step = max(25, max_spend // 8)
-        spend = max_spend - step
-
-        while spend > 0:
-            if is_safe(spend):
-                safe = spend
-                break
-            unsafe = spend
-            spend -= step
-
-        if spend == 0 and safe == 0:
-            evaluate(0)
-        elif safe == 0 and is_safe(0):
-            evaluate(0)
-        elif safe == 0:
-            raise RuntimeError("safe-spend search must find the zero-spend candidate")
+    raise RuntimeError("safe-spend search must find the zero-spend candidate")
 
     # Narrow the bracket using the monotonic trend observed in Monte Carlo.
     if unsafe is not None:
@@ -379,9 +372,10 @@ def build_strategy(
         starting_wishes=context.account.wishes,
         future_income=(
             context.income_available_before(
-                max(context.roadmap.banners, key=lambda item: item.order_key).version,
-                max(context.roadmap.banners, key=lambda item: item.order_key).phase,
+                reserve_banner.version,
+                reserve_banner.phase,
             )
-            if context.roadmap.banners else 0
+            if reserve_goal is not None
+            else 0
         ),
     )
