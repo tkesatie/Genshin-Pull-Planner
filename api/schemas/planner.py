@@ -135,6 +135,9 @@ class StrategyStepView(BaseModel):
     goal: GoalModel
     banner: BannerModel
     reserve_wishes: int | None = None
+    safe_spend: int | None = None
+    outcome_probability: float | None = None
+    protected_probability: float | None = None
 
     @classmethod
     def from_domain(cls, step: StrategyStep):
@@ -143,6 +146,9 @@ class StrategyStepView(BaseModel):
             goal=GoalModel.from_domain(step.goal),
             banner=BannerModel.from_domain(step.banner),
             reserve_wishes=step.reserve_wishes,
+            safe_spend=step.safe_spend,
+            outcome_probability=step.outcome_probability,
+            protected_probability=step.protected_probability,
         )
 
 
