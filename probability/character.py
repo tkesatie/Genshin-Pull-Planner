@@ -90,7 +90,7 @@ def _advance(state: _State, moves: _Transitions, hard_pity: int) -> _State:
 
     for radiance in range(4):
         next_radiance = min(3, radiance + 1)
-        new_guaranteed[0, next_radiance] += lost[0, radiance]
+        new_guaranteed[0, next_radiance] += lost[:, radiance].sum()
 
     return _State(new_no_guarantee, new_guaranteed)
 
