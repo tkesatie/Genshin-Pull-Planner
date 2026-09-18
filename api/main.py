@@ -86,6 +86,8 @@ def create_app(
         description=DESCRIPTION,
         version="0.6.0",
     )
+    app.middleware("http")(_planner_timing_middleware)
+
     if repository is None:
         # Each app instance gets an isolated repository; test fixtures and
         # callers that need seeded data must inject it explicitly.
