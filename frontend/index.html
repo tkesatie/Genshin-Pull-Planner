@@ -297,8 +297,7 @@
     <section id="protected-section" hidden>
       <h2>Protected future goals</h2>
       <p class="muted" id="protected-caption"></p>
-      <div class="panel"><div class="bars" id="protected"></div></div>
-    </section>
+      <div class="panel"><div class="bars" id="protected"></div></div>    </section>
 
     <section id="stops-section" hidden>
       <h2>When to stop</h2>
@@ -332,7 +331,7 @@
 <script>
 "use strict";
 
-const state = { account: null, planner: null, runOptions: {}, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
+const state = { account: null, planner: null, runOptions: {}, plannerLoading: false, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -422,11 +421,18 @@ function query(extra) {
 }
 
 async function loadPlanner(source = "unknown") {
+  if (state.plannerLoading) {
+    console.log(`Planner run ignored — already running (source: ${state.plannerRunSource})`);
+    return;
+  }
   const plannerRunId = ++state.plannerRunId;
   const plannerStarted = performance.now();
+  state.plannerLoading = true;
   state.plannerStarted = plannerStarted;
   state.plannerTiming = [];
   state.plannerRunSource = source;
+  $("run").disabled = true;
+  $("run").textContent = "Simulating";
   console.log(`Planner run #${plannerRunId} started — source: ${source}`);
   const id = state.account.id;
   const wishes = state.account.account.wishes;
@@ -510,6 +516,9 @@ async function loadPlanner(source = "unknown") {
     showError(error.message);
   } finally {
     state.runOptions = {};
+    state.plannerLoading = false;
+    $("run").disabled = false;
+    $("run").textContent = "Run the planner";
   }
 }
 
@@ -597,8 +606,7 @@ function renderRecommendation(rec, strategy) {
     index.className = "strategy-number";
     index.textContent = number++;
 
-    const body = document.createElement("div");
-    const action = document.createElement("div");
+    const body = document.createElement("div");    const action = document.createElement("div");
     action.className = "strategy-action";
 
     if (step.action === "get") {
@@ -897,8 +905,7 @@ function renderRoadmap(view) {
     stop.append(when, what);
     host.append(stop);
   }
-  if (unscheduled.length > 0) {
-    const note = document.createElement("p");
+  if (unscheduled.length > 0) {    const note = document.createElement("p");
     note.className = "muted";
     note.textContent =
       "No banner scheduled yet: " + unscheduled.map((g) => goalName(g.goal)).join(", ") + ".";
@@ -967,9 +974,6 @@ async function saveAccount() {
 async function run() {
   clearError();
   console.log("Run Planner button clicked");
-  const button = $("run");
-  button.disabled = true;
-  button.textContent = "Simulating";
   try {
     const wishes = state.account.account.wishes;
     const extra = {};
@@ -985,8 +989,7 @@ async function run() {
   } catch (error) {
     showError(error.message);
   } finally {
-    button.disabled = false;
-    button.textContent = "Run the planner";
+    // loadPlanner owns the planner button state while a run is active.
   }
 }
 
