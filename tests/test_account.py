@@ -17,6 +17,7 @@ def test_account_holds_only_ownership_state_not_desires():
         "character_guarantee",
         "owned_characters",
         "wishes",
+        "capturing_radiance_counter",
     ]
 
 
@@ -26,6 +27,7 @@ def test_defaults_represent_a_fresh_account():
     assert account.character_guarantee is False
     assert account.owned_characters == Ownership()
     assert account.wishes == 0
+    assert account.capturing_radiance_counter == 0
 
 
 def test_delegates_ownership_lookups():
@@ -54,3 +56,4 @@ def test_wishes_is_a_possession_not_a_decision():
     """
     account = Account(wishes=40)
     assert account.wishes == 40
+    assert account.capturing_radiance_counter == 0
