@@ -88,3 +88,58 @@ def test_vesna_spend_curve(capsys):
     assert rows[-1][1] > rows[0][1]
     assert rows[-1][2] < rows[0][2]
     assert rows[-1][0] == 450
+
+
+def test_combined_current_banner_frontier(capsys):
+    """Measure the real frontier: Vod C0 + Vesna C2 share the 450-wish pool."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    caps = (200, 210, 220, 225, 230, 231, 235, 240)
+    mechanics = context.mechanics
+
+    print("\nCombined phase-1 spend frontier (Vod C0 + Vesna C2)")
+    print("cap | reserve | Vesna C2 | Skirk C2 | all three")
+    print("----+---------+----------+----------+----------")
+
+    rows = []
+    for cap in caps:
+        vesna_success = 0
+        skirk_success = 0
+        all_success = 0
+        rng = np.random.default_rng(0)
+
+        for _ in range(10_000):
+            account = context.account
+
+            vod_spent, vod_copies, _, account = _pull_toward_target(
+                account, "Vodynista", 1, cap, mechanics, rng
+            )
+
+            # 7.1 income arrives at the second processed banner. It is
+            # available to Vesna, but cannot increase the original 450-wish
+            # phase-1 spending cap.
+            account = replace(account, wishes=account.wishes + 90)
+            vesna_budget = max(cap - vod_spent, 0)
+            _, vesna_copies, _, account = _pull_toward_target(
+                account, "Vesna", 3, vesna_budget, mechanics, rng
+            )
+
+            vesna_met = vesna_copies == 3
+            vesna_success += vesna_met
+
+            _, skirk_copies, _, _ = _pull_toward_target(
+                account, "Skirk", 2, 450, mechanics, rng
+            )
+            skirk_met = skirk_copies == 2
+            skirk_success += skirk_met
+            all_success += vod_copies == 1 and vesna_met and skirk_met
+
+        rows.append((cap, vesna_success / 10_000, skirk_success / 10_000))
+        print(
+            f"{cap:3d} | {450 - cap:7d} | {vesna_success / 10_000:8.2%} | "
+            f"{skirk_success / 10_000:8.2%} | {all_success / 10_000:8.2%}"
+        )
+
+    assert rows[-1][1] > rows[0][1]
+    assert rows[-1][2] < rows[0][2]
