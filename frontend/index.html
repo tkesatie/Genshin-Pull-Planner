@@ -374,20 +374,38 @@ async function loadPlanner() {
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
   try {
-    const extra = state.runOptions || {};
-    const recommendation = await api(
-      `/accounts/${id}/planner/recommendation${query(extra)}`
-    );
-    const character = recommendation.banner && recommendation.banner.character;
-    const bannerQuery = character ? { character } : {};
+    const goals = await api(`/accounts/${id}/planner/goals${query()}`);
 
-    const [goals, safe, table] = await Promise.all([
-      api(`/accounts/${id}/planner/goals${query()}`),
+    let recommendation = state.planner && state.planner.recommendation;
+    if (Object.keys(state.runOptions || {}).length) {
+      recommendation = await api(
+        `/accounts/${id}/planner/recommendation${query(state.runOptions)}`
+      );
+    }
+
+    const available = goals.available_banners || [];
+    let character = recommendation && recommendation.banner
+      ? recommendation.banner.character
+      : null;
+
+    if (!character && available.length) {
+      const actionable = goals.goals
+        .filter((goal) => goal.actionable)
+        .sort((a, b) => a.goal.priority - b.goal.priority);
+      const selectedGoal = actionable[0];
+      character = selectedGoal
+        ? available.find((banner) => banner.character === selectedGoal.goal.character)?.character
+        : available[0].character;
+    }
+
+    const bannerQuery = character ? { character } : {};
+    const [safe, table] = await Promise.all([
       api(`/accounts/${id}/planner/safe-spend${query(bannerQuery)}`),
       api(`/accounts/${id}/planner/spend-table${query({ ...bannerQuery, step })}`).catch((error) => error),
     ]);
+
     state.planner = { recommendation, goals, safe, table };
-    renderRecommendation(recommendation);
+    if (recommendation) renderRecommendation(recommendation);
     renderSafeSpend(safe);
     renderSpendTable(table);
     renderRoadmap(goals);
