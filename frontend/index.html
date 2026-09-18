@@ -272,7 +272,7 @@
             <p class="verdict" id="verdict">Run the planner to build your current strategy.</p>
           </div>
           <p id="verdict-detail" class="decision-detail">The strategy is based on your goal priorities, available banners, and protection thresholds.</p>
-          <div class="metrics"><div class="metric"><span class="metric-label">Selected target</span><span class="metric-value" id="metric-target">—</span></div><div class="metric"><span class="metric-label">Spend boundary</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of target</span><span class="metric-value" id="metric-probability">—</span></div></div>
+          <div class="metrics"><div class="metric"><span class="metric-label">Spend boundary</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of full roadmap</span><span class="metric-value" id="metric-roadmap-probability">—</span></div></div>
           <p class="provenance" id="provenance"></p>
         </div>
       </div>
@@ -431,13 +431,14 @@ async function loadPlanner() {
     }
 
     const bannerQuery = character ? { character } : {};
-    const [safe, table] = await Promise.all([
+    const [safe, table, strategy] = await Promise.all([
       api(`/accounts/${id}/planner/safe-spend${query(bannerQuery)}`),
       api(`/accounts/${id}/planner/spend-table${query({ ...bannerQuery, step })}`).catch((error) => error),
+      api(`/accounts/${id}/planner/strategy${query()}`),
     ]);
 
-    state.planner = { recommendation, goals, safe, table };
-    if (recommendation) renderRecommendation(recommendation);
+    state.planner = { recommendation, goals, safe, table, strategy };
+    if (recommendation) renderRecommendation(recommendation, strategy);
     renderSafeSpend(safe);
     renderSpendTable(table);
     renderRoadmap(goals);
@@ -495,7 +496,7 @@ function barRow(label, sublabel, probability, threshold, meets) {
   return row;
 }
 
-function renderRecommendation(rec) {
+function renderRecommendation(rec, strategy) {
   const banner = bannerName(rec.banner);
   $("banner-meta").textContent = banner;
   $("decision-label").className = `decision-label ${rec.action}`;
@@ -506,28 +507,18 @@ function renderRecommendation(rec) {
         ? "Strategy · Discretionary"
         : "Strategy · Skip";
 
-  $("metric-target").textContent =
-    rec.outcome ? `${rec.outcome.character} ${rec.outcome.label}` : "—";
   $("metric-budget").textContent = wishWord(rec.budget);
-  $("metric-probability").textContent = pct(rec.outcome_probability);
+  $("metric-roadmap-probability").textContent = "—";
 
-  const strategy = $("strategy");
-  strategy.innerHTML = "";
+  const strategyList = $("strategy");
+  strategyList.innerHTML = "";
 
-  const currentGoals = state.planner.goals.goals
-    .filter((goal) => goal.next_banner &&
-      (goal.actionable || goal.state === "active"))
-    .sort((a, b) => a.goal.priority - b.goal.priority);
-
+  const steps = strategy && strategy.steps ? strategy.steps : [];
   let number = 1;
-  for (const goal of currentGoals) {
-    const isRecommended =
-      rec.outcome &&
-      goal.goal.character === rec.outcome.character &&
-      goal.goal.constellation === rec.outcome.constellation;
 
+  for (const step of steps) {
     const item = document.createElement("div");
-    item.className = `strategy-item${isRecommended ? " recommended" : ""}`;
+    item.className = "strategy-item";
 
     const index = document.createElement("div");
     index.className = "strategy-number";
@@ -537,45 +528,47 @@ function renderRecommendation(rec) {
     const action = document.createElement("div");
     action.className = "strategy-action";
 
-    if (goal.goal.constellation === 0) {
-      action.textContent = `Get ${goalName(goal.goal)}`;
-    } else if (isRecommended) {
-      action.textContent =
-        rec.action === "pursue"
-          ? `Pursue ${goalName(goal.goal)}`
-          : `Consider ${goalName(goal.goal)}`;
+    if (step.action === "get") {
+      action.textContent = `Get ${goalName(step.goal)}`;
+    } else if (step.action === "pursue_until_reserve") {
+      action.textContent = `Work toward ${goalName(step.goal)}`;
+    } else if (step.action === "save") {
+      action.textContent = `Protect ${goalName(step.goal)}`;
     } else {
-      action.textContent = `Work toward ${goalName(goal.goal)}`;
+      action.textContent = step.action;
     }
 
     const meta = document.createElement("div");
     meta.className = "strategy-meta";
     meta.textContent =
-      `Priority ${goal.goal.priority} · ${bannerName(goal.next_banner)}`;
-    if (isRecommended && rec.action !== "skip") {
-      meta.textContent += ` · up to ${wishWord(rec.budget)} under this recommendation`;
+      `Priority ${step.goal.priority} · ${bannerName(step.banner)}`;
+
+    if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
+      meta.textContent += ` · up to ${wishWord(step.safe_spend)}`;
+    } else if (step.action === "save" && step.reserve_wishes !== null) {
+      meta.textContent += ` · keep ${wishWord(step.reserve_wishes)}`;
     }
 
     body.append(action, meta);
     item.append(index, body);
-    strategy.append(item);
+    strategyList.append(item);
   }
 
-  if (currentGoals.length === 0) {
+  if (steps.length === 0) {
     const empty = document.createElement("p");
     empty.className = "verdict";
     empty.style.fontSize = "1.8rem";
     empty.textContent =
-      rec.action === "skip" ? `Don't spend on ${banner}.` : `No actionable current goal is available.`;
-    strategy.append(empty);
+      rec.action === "skip" ? `Don't spend on ${banner}.` : "No current strategy is available.";
+    strategyList.append(empty);
   }
 
   if (rec.action === "pursue") {
     $("verdict-detail").textContent =
-      `The selected target reaches ${pct(rec.outcome_probability)} at its ${wishWord(rec.budget)} spend boundary, while higher-priority protected goals remain at or above ${pct(rec.confidence)}.`;
+      "Follow the plan in order. The spending frontier is recalculated when your account, banners, or assumptions change.";
   } else if (rec.action === "discretionary") {
     $("verdict-detail").textContent =
-      rec.discretionary_reason || `The selected outcome is feasible, but its success probability is below the ordinary recommendation threshold.`;
+      rec.discretionary_reason || "The current opportunity is feasible, but is below the ordinary recommendation threshold.";
   } else {
     $("verdict-detail").textContent =
       rec.skip_reason || "No current-banner outcome can be pursued safely.";
@@ -641,6 +634,7 @@ function renderRecommendation(rec) {
   }
   $("stops-section").hidden = false;
 }
+
 function renderSafeSpend(safe) {
   $("safe-spend").textContent =
     safe.safe_spend === 0
