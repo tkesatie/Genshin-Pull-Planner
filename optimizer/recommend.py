@@ -210,8 +210,10 @@ def _skip(
     rejected: tuple[RejectedOutcome, ...] = (),
 ) -> Recommendation:
     """A do-not-spend recommendation with the do-nothing baseline (§1, §2)."""
+    banners = available_banners(context)
+    banner = banners[0] if banners else current_banner(context)
     return Recommendation(
-        banner=current_banner(context),
+        banner=banner,
         action="skip",
         outcome=None,
         budget=0,
