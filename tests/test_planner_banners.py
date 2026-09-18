@@ -1,9 +1,9 @@
-"""current_banner: identification from the roadmap schedule (§7)."""
+"""available_banners: identification from the roadmap schedule (§7)."""
 
 import pytest
 
 from domain import Account, Banner, Roadmap
-from planner import PlannerContext, current_banner
+from planner import PlannerContext, available_banners, current_banner
 
 
 def test_identifies_the_current_banner(doc_context):
@@ -38,9 +38,33 @@ def test_unknown_version_is_no_match(doc_account, doc_roadmap):
         current_banner(context)
 
 
-def test_ambiguous_slot_is_rejected(doc_account):
-    """Two characters in the same (version, phase) slot cannot be
-    resolved silently: the Phase 3 planner models one current banner."""
+def test_available_banners_returns_all_simultaneous_banners(doc_account):
+    roadmap = Roadmap(
+        banners=[Banner("Vesna", "7.0", 1), Banner("Tsaritsa", "7.0", 1)]
+    )
+    context = PlannerContext(
+        account=doc_account, roadmap=roadmap, current_version="7.0"
+    )
+    assert available_banners(context) == (
+        Banner("Tsaritsa", "7.0", 1),
+        Banner("Vesna", "7.0", 1),
+    )
+
+
+def test_available_banners_returns_empty_when_slot_has_no_banner(
+    doc_account, doc_roadmap
+):
+    context = PlannerContext(
+        account=doc_account,
+        roadmap=doc_roadmap,
+        current_version="7.0",
+        current_phase=2,
+    )
+    assert available_banners(context) == ()
+
+
+def test_ambiguous_slot_is_still_rejected_by_singular_helper(doc_account):
+    """Legacy single-banner callers must not silently choose."""
     roadmap = Roadmap(
         banners=[Banner("Vesna", "7.0", 1), Banner("Tsaritsa", "7.0", 1)]
     )
