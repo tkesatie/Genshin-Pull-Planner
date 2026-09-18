@@ -72,6 +72,8 @@ def create_app(
         version="0.6.0",
     )
     if repository is None:
+        # Each app instance gets an isolated repository; test fixtures and
+        # callers that need seeded data must inject it explicitly.
         repository = InMemoryAccountRepository()
     app.state.repository = repository
     app.state.jobs = SimulationJobStore() if jobs is None else jobs
