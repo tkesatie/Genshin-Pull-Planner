@@ -61,6 +61,7 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
         probability = 0.91 if vesna_entry.budget <= 300 else 0.89
         return SimpleNamespace(
             goals=(GoalProbability(skirk, probability),),
+            joint_goal_probability=None,
             banners=(
                 BannerAggregate(
                     banner=Banner("Vodynista", "7.1", 1),
