@@ -143,6 +143,8 @@
   .strategy-action { color:var(--text); font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; font-size:1.35rem; line-height:1.2; }
   .strategy-meta { color:var(--muted); font: .78rem/1.4 system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; margin-top:.2rem; }
   .strategy-item.recommended .strategy-action { color:var(--gold-bright); }
+  .strategy-outcomes { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.65rem; }
+  .strategy-outcomes button { font-size:.76rem; padding:.35rem .55rem; }
   .strategy-frontier { margin-top:.55rem; display:flex; flex-wrap:wrap; gap:.5rem 1.25rem; align-items:baseline; }
   .strategy-frontier strong { color:var(--gold-bright); font-size:1.2rem; }
   .strategy-frontier .frontier-label { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
@@ -743,6 +745,22 @@ function renderRecommendation(rec, strategy) {
     meta.textContent =
       `Priority ${step.goal.priority} · ${bannerName(step.banner)}`;
 
+    if (step.action === "get" || step.action === "pursue_until_reserve") {
+      const outcomes = document.createElement("div");
+      outcomes.className = "strategy-outcomes";
+      const pulled = document.createElement("button");
+      pulled.textContent = `Pulled ${step.goal.character}`;
+      pulled.addEventListener("click", () => recordPullOutcome(step.goal.character, "featured"));
+      const lost = document.createElement("button");
+      lost.textContent = "Lost 50/50";
+      lost.addEventListener("click", () => recordPullOutcome(step.goal.character, "lost_50_50"));
+      const stopped = document.createElement("button");
+      stopped.textContent = "Stopped pulling";
+      stopped.addEventListener("click", () => recordPullOutcome(step.goal.character, "stopped"));
+      outcomes.append(pulled, lost, stopped);
+      body.append(outcomes);
+    }
+
     if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
       const startingWishes = state.account.account.wishes;
       const spend = Math.max(0, startingWishes - step.safe_spend);
@@ -1085,6 +1103,36 @@ async function saveAccount() {
     showError(error.message);
   } finally {
     $("save").disabled = false;
+  }
+}
+
+
+async function recordPullOutcome(character, outcome) {
+  const label = outcome === "featured" ? `Pulled ${character}` : outcome === "lost_50_50" ? "Lost 50/50" : "Stopped pulling";
+  const value = window.prompt(`${label}. How many wishes did you use?`, "0");
+  if (value === null) return;
+  const wishesUsed = Number(value);
+  if (!Number.isInteger(wishesUsed) || wishesUsed < 1) {
+    showError("Enter a positive whole number of wishes.");
+    return;
+  }
+  clearError();
+  try {
+    state.account = await api(`/accounts/${state.account.id}/pull-result`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome, wishes_used: wishesUsed, character: outcome === "featured" ? character : null }),
+    });
+    state.planner = null;
+    fillAccountForm();
+    $("confidence").value = state.account.settings.confidence;
+    $("hero-wishes").textContent = state.account.account.wishes;
+    $("hero-pity").textContent = state.account.account.current_pity;
+    $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
+    resetVerdict();
+    await loadPlanner("Record pull outcome");
+  } catch (error) {
+    showError(error.message);
   }
 }
 
