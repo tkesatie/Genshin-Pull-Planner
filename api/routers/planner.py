@@ -167,25 +167,38 @@ def planner_spend_table(
 
 
 def _spend_table_outcomes(context, preferences) -> tuple[OutcomeOption, ...]:
-    """Return unique current-banner constellation milestones for the table.
+    """Return unsatisfied roadmap milestones for the current banner.
 
-    The optimizer's outcome list can contain weapon-labelled variants of the
-    same constellation. The spend analysis is character-only, so the table
-    collapses those variants and reports the probability of each resulting
-    constellation, from C0 upward.
+    The recommendation's outcome list is intentionally preference-driven,
+    but the spend analysis answers a different question: how does spending
+    on this banner affect each milestone in the roadmap for this character?
+    Therefore blocked progression goals (such as Vesna C2 behind Vesna C0)
+    remain visible here even when the optimizer would not currently choose
+    them as its recommendation outcome.
     """
-    available = available_outcomes(context, preferences)
+    current_character = current_banner(context).character
+    preference_ranks = {
+        preference.constellation: preference.rank
+        for preference in preferences
+        if preference.character == current_character
+    }
+
     by_constellation: dict[int, OutcomeOption] = {}
-    for outcome in available:
+    for evaluation in relevant_goal_evaluations(context):
+        if evaluation.copies_needed <= 0:
+            continue
+        constellation = evaluation.goal.constellation
         by_constellation.setdefault(
-            outcome.constellation,
+            constellation,
             OutcomeOption(
-                character=outcome.character,
-                constellation=outcome.constellation,
-                rank=outcome.rank,
+                character=current_character,
+                constellation=constellation,
+                rank=preference_ranks.get(constellation, evaluation.goal.priority),
             ),
         )
-    return tuple(sorted(by_constellation.values(), key=lambda outcome: outcome.constellation))
+    return tuple(
+        sorted(by_constellation.values(), key=lambda outcome: outcome.constellation)
+    )
 
 
 def _recommendation(
