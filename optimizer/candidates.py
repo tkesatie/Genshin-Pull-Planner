@@ -55,6 +55,6 @@ def candidate_plan(
             target_constellation=group.target_constellation,
             budget=group.uncapped_budget,
         )
-        for group in protected_groups(context)
+        for group in protected_groups(context, banner=selected_banner)
     )
     return SpendPlan(entries=tuple(entries))
