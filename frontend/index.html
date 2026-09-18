@@ -332,7 +332,7 @@
 <script>
 "use strict";
 
-const state = { account: null, planner: null, runOptions: {}, plannerTiming: [], plannerStarted: null };
+const state = { account: null, planner: null, runOptions: {}, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -404,7 +404,7 @@ async function selectAccount(id) {
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   resetVerdict();
-  await loadPlanner();
+  await loadPlanner("account selection");
 }
 
 function query(extra) {
@@ -421,10 +421,13 @@ function query(extra) {
   return text ? `?${text}` : "";
 }
 
-async function loadPlanner() {
+async function loadPlanner(source = "unknown") {
+  const plannerRunId = ++state.plannerRunId;
   const plannerStarted = performance.now();
   state.plannerStarted = plannerStarted;
   state.plannerTiming = [];
+  state.plannerRunSource = source;
+  console.log(`Planner run #${plannerRunId} started — source: ${source}`);
   const id = state.account.id;
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
@@ -481,6 +484,7 @@ async function loadPlanner() {
             .filter((value) => value !== null)
         )
       : null;
+    console.log(`Planner run #${plannerRunId} finished — source: ${source}`);
     const timing = {
       planner_calculation_seconds: calculationSeconds,
       api_response_seconds: apiResponseSeconds,
@@ -960,6 +964,7 @@ async function saveAccount() {
 
 async function run() {
   clearError();
+  console.log("Run Planner button clicked");
   const button = $("run");
   button.disabled = true;
   button.textContent = "Simulating";
@@ -974,7 +979,7 @@ async function run() {
       extra.budgets = caps;
     }
     state.runOptions = extra;
-    await loadPlanner();
+    await loadPlanner("Run Planner button");
   } catch (error) {
     showError(error.message);
   } finally {
@@ -986,7 +991,11 @@ async function run() {
 $("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
 $("save").addEventListener("click", saveAccount);
 $("run").addEventListener("click", run);
-$("confidence").addEventListener("change", () => { resetVerdict(); loadPlanner(); });
+$("confidence").addEventListener("change", () => {
+  resetVerdict();
+  console.log("Confidence changed — starting planner");
+  loadPlanner("confidence change");
+});
 
 loadAccounts().catch((error) => showError(error.message));
 </script>
