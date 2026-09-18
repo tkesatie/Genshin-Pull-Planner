@@ -369,3 +369,22 @@ def test_future_income_cannot_fund_current_phase(capsys):
     assert vesna_c2.safe_spend in range(215, 224)
     assert vesna_c2.reserve_wishes in range(227, 236)
     assert 0.03 < vesna_c2.outcome_probability < 0.08
+
+
+def test_zero_wishes_cannot_spend_current_phase_income():
+    """Forecast income is unavailable until the roadmap reaches a later phase."""
+    from simulation.engine import simulate_history
+
+    context = make_context()
+    zero_context = replace(context, account=replace(context.account, wishes=0))
+    plan = SpendPlan(
+        entries=(
+            PlannedSpend(VODYNISTA, target_constellation=0, budget=90),
+            PlannedSpend(VESNA, target_constellation=0, budget=90),
+            PlannedSpend(SKIRK, target_constellation=2, budget=90),
+        )
+    )
+    history = simulate_history(zero_context, plan, np.random.default_rng(0))
+    assert all(result.income_credited == 0 for result in history.banner_results[:2])
+    assert all(result.wishes_spent == 0 for result in history.banner_results[:2])
+    assert history.banner_results[2].income_credited == 90
