@@ -676,9 +676,16 @@ function renderRoadmap(view) {
     const stop = document.createElement("div");
     stop.className = "stop";
     const isNow =
-      banner.character === view.current_banner.character &&
-      banner.version === view.current_banner.version &&
-      banner.phase === view.current_banner.phase;
+      (view.current_banner &&
+        banner.character === view.current_banner.character &&
+        banner.version === view.current_banner.version &&
+        banner.phase === view.current_banner.phase) ||
+      (view.current_banner === null &&
+        (view.available_banners || []).some((current) =>
+          banner.character === current.character &&
+          banner.version === current.version &&
+          banner.phase === current.phase
+        ));
     if (isNow) stop.classList.add("now");
 
     const when = document.createElement("div");
