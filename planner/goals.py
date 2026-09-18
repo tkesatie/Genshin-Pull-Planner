@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from domain import Banner, Goal, copies_needed_for
-from planner.banners import current_banner
+from planner.banners import available_banners, current_banner
 from planner.context import PlannerContext
 
 
@@ -65,9 +65,17 @@ class GoalEvaluation:
     next_banner: Banner | None
 
 
-def _next_banner(context: PlannerContext, character: str) -> Banner | None:
-    """First banner for `character` at-or-after the current banner."""
-    current = current_banner(context)
+def _next_banner(
+    context: PlannerContext, character: str, banner: Banner | None = None
+) -> Banner | None:
+    """First banner for character at-or-after the selected current slot."""
+    current = banner
+    if current is None:
+        matches = available_banners(context)
+        if len(matches) != 1:
+            current = current_banner(context)
+        else:
+            current = matches[0]
     upcoming = [
         banner
         for banner in context.roadmap.banners_for(character)
@@ -118,14 +126,26 @@ def evaluate_goals(context: PlannerContext) -> list[GoalEvaluation]:
     return [_evaluate_one(context, goal, all_goals) for goal in all_goals]
 
 
-def relevant_goal_evaluations(context: PlannerContext) -> list[GoalEvaluation]:
+def relevant_goal_evaluations(
+    context: PlannerContext, banner: Banner | None = None
+) -> list[GoalEvaluation]:
     """Goals matching the current banner's featured character (§9).
 
     For the doc example at Vesna 7.0 this is Vesna C0 and Vesna C2: the
     C2 goal is relevant but (while C0 is incomplete) blocked, not
     actionable.
     """
-    character = current_banner(context).character
+    if banner is None:
+        matches = available_banners(context)
+        if len(matches) == 1:
+            banner = matches[0]
+        else:
+            return [
+                evaluation
+                for evaluation in evaluate_goals(context)
+                if evaluation.goal.character in {item.character for item in matches}
+            ]
+    character = banner.character
     return [
         evaluation
         for evaluation in evaluate_goals(context)
@@ -133,7 +153,9 @@ def relevant_goal_evaluations(context: PlannerContext) -> list[GoalEvaluation]:
     ]
 
 
-def actionable_goals(context: PlannerContext) -> list[GoalEvaluation]:
+def actionable_goals(
+    context: PlannerContext, banner: Banner | None = None
+) -> list[GoalEvaluation]:
     """Relevant goals in state ACTIVE: what the user can act on now (§9).
 
     A relevant goal that is blocked (Vesna C2 behind Vesna C0) or already
@@ -142,6 +164,6 @@ def actionable_goals(context: PlannerContext) -> list[GoalEvaluation]:
     """
     return [
         evaluation
-        for evaluation in relevant_goal_evaluations(context)
+        for evaluation in relevant_goal_evaluations(context, banner)
         if evaluation.state is GoalState.ACTIVE
     ]
