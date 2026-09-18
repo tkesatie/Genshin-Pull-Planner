@@ -164,6 +164,42 @@ def test_multi_copy_confidence_is_explicit(capsys):
 
 
 
+def test_skirk_c2_probability_by_starting_pity(capsys):
+    """Compare the C2 probability from zero pity versus the account's current pity."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    budgets = (240, 264, 265)
+    runs = 10_000
+    print("\\nSkirk C2 probability by starting pity (10,000 runs, seed=0)")
+    print("budget | pity 0 | pity 27")
+    print("-------+---------+--------")
+
+    rows = []
+    for budget in budgets:
+        probabilities = []
+        for starting_pity in (0, 27):
+            successes = 0
+            rng = np.random.default_rng(0)
+            for _ in range(runs):
+                account = replace(
+                    context.account,
+                    wishes=budget,
+                    character_pity=starting_pity,
+                    character_guarantee=False,
+                )
+                _, copies, _, _ = _pull_toward_target(
+                    account, "Skirk", 2, budget, context.mechanics, rng
+                )
+                successes += copies == 2
+            probabilities.append(successes / runs)
+        rows.append(probabilities)
+        print(f"{budget:6d} | {probabilities[0]:7.2%} | {probabilities[1]:7.2%}")
+
+    for zero_pity, current_pity in rows:
+        assert current_pity > zero_pity
+
+
 def test_planner_protection_matches_skirk_threshold(capsys):
     """Inspect the planner's protected Skirk reserve at representative spend levels."""
     from planner.protection import protected_goal_outcomes
