@@ -230,47 +230,34 @@ GET /accounts/{id}/planner/safe-spend
 
 safe_spend is an analytical Phase 3 approximation, not the optimizer's exact maximum feasible cap. It may disagree with recommendation.budget. A value of 0 is valid.
 
-## 7. Spend table
+## 7. Spending analysis
 
-GET /accounts/{id}/planner/spend-table?step=10
+GET /accounts/{id}/planner/spend-table?step=10&runs=2000&seed=0
 
-Requires exactly one active single-copy goal on the current banner.
+Shows how different current-banner spending levels affect the selected current-banner outcome and every protected future goal. It uses the same Monte Carlo simulation and multi-copy outcome semantics as the recommendation; it is not limited to single-copy goals.
+
+Response:
 
 ~~~json
 {
-  "current_banner": {"character": "Navia", "version": "7.0", "phase": 1},
-  "goal": {"character": "Navia", "constellation": 0, "priority": 1},
-  "copies_needed": 1,
+  "current_banner": {"character": "Vesna", "version": "7.0", "phase": 1},
+  "outcome": {"character": "Vesna", "constellation": 2, "rank": 1, "weapon_refinement": 0, "label": "C2"},
   "step": 10,
   "confidence": 0.9,
+  "runs": 2000,
+  "seed": 0,
   "rows": [
     {
-      "wishes_spent": 180,
-      "goal_confidence": 0.94,
-      "all_protected_meet_threshold": false,
-      "protected": [
-        {
-          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
-          "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
-          "budget_at_banner": 0,
-          "required_wishes": 80,
-          "confidence": 0.0,
-          "meets_threshold": false
-        }
-      ]
-    },
-    {
       "wishes_spent": 80,
-      "goal_confidence": 0.84,
+      "outcome_probability": 0.31,
       "all_protected_meet_threshold": true,
       "protected": [
         {
-          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 4},
+          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 2},
           "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
-          "budget_at_banner": 100,
-          "required_wishes": 80,
-          "confidence": 0.95,
-          "meets_threshold": true
+          "probability": 0.94,
+          "meets_threshold": true,
+          "constraining": true
         }
       ]
     }
@@ -278,7 +265,13 @@ Requires exactly one active single-copy goal on the current banner.
 }
 ~~~
 
-This is explanatory/analytical data, not the optimizer's final decision.
+`outcome_probability` is the probability of reaching the selected resulting constellation on the current banner within the displayed spend cap. For example, Vesna C2 from an unowned account is evaluated as a three-copy cumulative target; the simulator handles the intermediate C0/C1 progression.
+
+`all_protected_meet_threshold` considers only protected goals that constrain the selected outcome. Lower-priority future goals remain in `protected` and are reported but do not veto a higher-priority current decision.
+
+`step` controls the displayed spending increments. The endpoint always includes both 0 and the account's full current wish balance.
+
+This section is explanatory decision analysis. The recommendation endpoint remains the authoritative decision.
 
 ## 8. Recommendation response
 
