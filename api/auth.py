@@ -25,6 +25,7 @@ class UserRecord:
 class AuthRepository:
     def create_user(self, user: UserRecord) -> UserRecord: raise NotImplementedError
     def get_user_by_username(self, username: str) -> UserRecord | None: raise NotImplementedError
+    def get_user_by_id(self, user_id: str) -> UserRecord | None: raise NotImplementedError
     def create_session(self, token: str, user_id: str, expires_at: datetime) -> None: raise NotImplementedError
     def get_session(self, token: str) -> tuple[str, datetime] | None: raise NotImplementedError
     def delete_session(self, token: str) -> None: raise NotImplementedError
@@ -67,6 +68,17 @@ class InMemoryAuthRepository(AuthRepository):
     def get_user_by_username(self, username):
         with self._lock:
             return next((u for u in self._users.values() if u.username == username), None)
+
+    def get_user_by_id(self, user_id):
+        with self._lock:
+            return self._users.get(user_id)
+
+    def get_user_by_id(self, user_id):
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT id, username, password_hash FROM users WHERE id = ?", (user_id,)
+            ).fetchone()
+        return None if row is None else UserRecord(*row)
 
     def create_session(self, token, user_id, expires_at):
         with self._lock:
