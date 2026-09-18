@@ -450,12 +450,20 @@ async function loadPlanner(source = "unknown") {
       throw new Error("Planner goals are not loaded. Select the account again.");
     }
 
-    let recommendation = state.planner && state.planner.recommendation;
-    if (Object.keys(state.runOptions || {}).length) {
-      recommendation = await api(
-        `/accounts/${id}/planner/recommendation${query(state.runOptions)}`
-      );
-    }
+    const recommendationPromise = Object.keys(state.runOptions || {}).length
+      ? api(
+          `/accounts/${id}/planner/recommendation${query(state.runOptions)}`
+        )
+      : Promise.resolve(state.planner && state.planner.recommendation);
+    const strategyPromise = api(`/accounts/${id}/planner/strategy${query()}`);
+
+    // Recommendation and strategy are independent backend calculations, so
+    // start them together. Safe-spend still depends on the selected banner
+    // from the recommendation, so it runs after that result is known.
+    const [recommendation, strategy] = await Promise.all([
+      recommendationPromise,
+      strategyPromise,
+    ]);
 
     const available = goals.available_banners || [];
     let character = recommendation && recommendation.banner
@@ -473,10 +481,9 @@ async function loadPlanner(source = "unknown") {
     }
 
     const bannerQuery = character ? { character } : {};
-    const [safe, strategy] = await Promise.all([
-      api(`/accounts/${id}/planner/safe-spend${query(bannerQuery)}`),
-      api(`/accounts/${id}/planner/strategy${query()}`),
-    ]);
+    const safe = await api(
+      `/accounts/${id}/planner/safe-spend${query(bannerQuery)}`
+    );
 
     state.planner = { recommendation, goals, safe, strategy };
     if (recommendation) renderRecommendation(recommendation, strategy);
