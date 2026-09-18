@@ -100,8 +100,7 @@ def protected_groups(context: PlannerContext, banner: Banner | None = None, *, i
                 target_constellation=max(goal.constellation for goal in goals),
                 uncapped_budget=(
                     context.account.wishes
-                    if banner.order_key == current.order_key
-                    else context.account.wishes + context.income_credit(banner.version)
+                    + context.income_available_before(banner.version, banner.phase)
                 ),
             )
         )
