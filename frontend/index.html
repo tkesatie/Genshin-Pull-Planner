@@ -198,6 +198,15 @@
   .table-panel th, .table-panel td { white-space:nowrap; }
   .table-panel tr.boundary { background:rgba(217,170,82,.06); }
   .table-panel tr.boundary td:first-child { color:var(--gold-bright); font-weight:700; }
+  .account-editor { margin-top: 1rem; }
+  .account-editor summary { cursor: pointer; color: var(--text); font-weight: 600; }
+  .account-form { display:grid; grid-template-columns:repeat(4, minmax(8rem, 1fr)); gap:.8rem 1rem; margin-top:1rem; align-items:end; }
+  .account-form label { display:grid; gap:.3rem; align-items:start; }
+  .account-form input, .account-form select { width:100%; }
+  .account-form .check { display:flex; align-items:center; gap:.4rem; padding-bottom:.5rem; }
+  .account-form .check input { width:auto; }
+  .account-form-actions { display:flex; align-items:center; gap:.7rem; grid-column:1 / -1; }
+  @media (max-width: 720px) { .account-form { grid-template-columns:1fr 1fr; } }
   .empty { padding:3rem 0; }
   .empty .verdict { font-size:2rem; }
   code { color:var(--gold-bright); }
@@ -789,7 +798,18 @@ function renderRoadmap(view) {
 
 /* ---------- account editing ---------- */
 
-function fillAccountForm() {}
+function fillAccountForm() {
+  const account = state.account.account;
+  const settings = state.account.settings;
+  $("f-wishes").value = account.wishes;
+  $("f-pity").value = account.current_pity;
+  $("f-guarantee").checked = account.character_guarantee;
+  $("f-version").value = settings.current_version;
+  $("f-phase").value = settings.current_phase;
+  $("f-confidence").value = settings.confidence;
+  $("f-scenario").value = settings.income_scenario;
+  $("save-note").textContent = "";
+}
 
 async function saveAccount() {
   clearError();
@@ -856,6 +876,7 @@ async function run() {
 }
 
 $("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
+$("save").addEventListener("click", saveAccount);
 $("run").addEventListener("click", run);
 $("confidence").addEventListener("change", () => { resetVerdict(); loadPlanner(); });
 
