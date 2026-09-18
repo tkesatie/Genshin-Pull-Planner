@@ -112,6 +112,7 @@ def _standings(
     context: PlannerContext,
     result: SimulationResult,
     constraining: frozenset,
+    banner=None,
 ) -> tuple[GoalStanding, ...]:
     """Per-goal simulated standings, flagged with the §2 priority gate.
 
@@ -135,7 +136,7 @@ def _standings(
             meets_threshold=probability_by_goal[goal] >= context.confidence,
             constraining=goal in constraining,
         )
-        for group in protected_groups(context)
+        for group in protected_groups(context, banner=banner)
         for goal in group.goals
     )
 
@@ -171,9 +172,11 @@ def evaluate_candidate(
     # (optimizer.protection.priority_for_outcome), so the anchor is
     # computed per outcome rather than once for the whole decision.
     constraining = constraining_goals(
-        context, priority=priority_for_outcome(context, outcome)
+        context,
+        priority=priority_for_outcome(context, outcome),
+        banner=banner,
     )
-    standings = _standings(context, result, constraining)
+    standings = _standings(context, result, constraining, banner=banner)
 
     # Feasibility (§13 step 5): only the goals that outrank the decision
     # gate it (§2); the rest are reported and pursued but never veto.
@@ -211,6 +214,10 @@ def evaluate_skip_baseline(
     """
     from optimizer.protection import constraining_goals, protected_groups
 
+    from planner.banners import available_banners
+    matches = available_banners(context)
+    selected = matches[0] if matches else None
+    groups = protected_groups(context, banner=selected, include_same_slot=False)
     plan = SpendPlan(
         entries=tuple(
             PlannedSpend(
@@ -218,8 +225,8 @@ def evaluate_skip_baseline(
                 target_constellation=group.target_constellation,
                 budget=group.uncapped_budget,
             )
-            for group in protected_groups(context)
+            for group in groups
         )
     )
     result = simulate(context, plan, runs=runs, seed=seed)
-    return _standings(context, result, constraining_goals(context))
+    return _standings(context, result, constraining_goals(context, banner=selected), banner=selected)
