@@ -73,13 +73,6 @@ class InMemoryAuthRepository(AuthRepository):
         with self._lock:
             return self._users.get(user_id)
 
-    def get_user_by_id(self, user_id):
-        with self._lock, self._connect() as db:
-            row = db.execute(
-                "SELECT id, username, password_hash FROM users WHERE id = ?", (user_id,)
-            ).fetchone()
-        return None if row is None else UserRecord(*row)
-
     def create_session(self, token, user_id, expires_at):
         with self._lock:
             self._sessions[token] = (user_id, expires_at)
