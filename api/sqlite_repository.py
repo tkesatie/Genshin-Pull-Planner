@@ -155,7 +155,7 @@ def _record_from_dict(value: dict) -> AccountRecord:
                 p["character"],
                 p["rank"],
                 p["constellation"],
-                weapon_ref=p["weapon_refinement"],
+                weapon_refinement=p["weapon_refinement"],
                 notes=p["notes"],
             )
             for p in value["preferences"]
