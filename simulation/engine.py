@@ -128,6 +128,7 @@ def _pull_toward_target(
     while obtained < copies_needed and spent < available:
         spent += 1
         if rng.random() < pull_rate(pity, mechanics):
+            was_guaranteed = guarantee
             if guarantee:
                 featured = True
             elif radiance >= 3:
@@ -143,7 +144,11 @@ def _pull_toward_target(
                 owned += 1
                 ownership = ownership.with_constellation(character, owned)
                 pity, guarantee = 0, False
-                if not guarantee:
+                if was_guaranteed:
+                    radiance = radiance
+                elif radiance >= 3:
+                    radiance = 1
+                else:
                     radiance = max(0, radiance - 1)
             else:
                 pity, guarantee = 0, True
