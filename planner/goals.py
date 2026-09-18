@@ -72,7 +72,7 @@ def _next_banner(
     current = banner
     if current is None:
         matches = available_banners(context)
-        if len(matches) != 1:
+        if not matches:
             current = current_banner(context)
         else:
             current = matches[0]
