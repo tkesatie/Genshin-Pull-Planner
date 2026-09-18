@@ -87,6 +87,7 @@ class Account:
     character_guarantee: bool = False
     owned_characters: Ownership = field(default_factory=Ownership)
     wishes: int = 0
+    capturing_radiance_counter: int = 0
 
     def __post_init__(self) -> None:
         if self.current_pity < 0:
@@ -95,6 +96,11 @@ class Account:
             )
         if self.wishes < 0:
             raise ValueError(f"wishes must be non-negative, got {self.wishes}")
+        if not 0 <= self.capturing_radiance_counter <= 3:
+            raise ValueError(
+                "capturing_radiance_counter must be between 0 and 3, "
+                f"got {self.capturing_radiance_counter}"
+            )
 
     def owned_constellation(self, character: str) -> int:
         """Delegates to Ownership (§4.2): NOT_OWNED when the character is absent."""
