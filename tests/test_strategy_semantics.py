@@ -295,7 +295,15 @@ def test_protected_probability_decreases_as_current_spend_increases(monkeypatch)
         entry = plan.entry_for(VESNA)
         assert entry is not None
         probability = max(0.0, 1.0 - entry.budget / 1000)
-        return fake_strategy_result(plan, probability)
+        return fake_strategy_result(
+            plan,
+            probability,
+            joint_probability=probability if entry is not None else 0.42,
+            joint_goals=(Goal("Skirk", 2, 3),) if entry is not None else (
+                Goal("Vodynista", 0, 1),
+                Goal("Vesna", 2, 4),
+            ),
+        )
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
 
