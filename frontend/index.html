@@ -586,7 +586,8 @@ function renderRecommendation(rec, strategy) {
       probability.innerHTML =
         `<span class="frontier-label">Chance of ${goalName(step.goal)}</span> <span class="frontier-probability">${pct(step.outcome_probability)}</span>`;
 
-      frontier.append(keep, probability);\n      body.append(accounting);
+      frontier.append(keep, probability);
+      body.append(accounting);
       body.append(action, meta, frontier);
       item.append(index, body);
       item.classList.add("recommended");
