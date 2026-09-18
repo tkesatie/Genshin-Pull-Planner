@@ -1161,6 +1161,7 @@ async function recordPullOutcome(character, outcome) {
     $("hero-pity").textContent = state.account.account.current_pity;
     $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
     resetVerdict();
+    await loadGoals();
     await loadPlanner("Record pull outcome");
   } catch (error) {
     showError(error.message);
