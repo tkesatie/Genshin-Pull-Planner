@@ -17,6 +17,25 @@ def test_sqlite_repository_round_trips_account(tmp_path):
     assert second.list() == [record]
 
 
+def test_sqlite_repository_round_trips_owner_id(tmp_path):
+    repository = SQLiteAccountRepository(tmp_path / "planner.sqlite3")
+    record = create_demo_account().__class__(
+        id=create_demo_account().id,
+        label=create_demo_account().label,
+        account=create_demo_account().account,
+        settings=create_demo_account().settings,
+        goals=create_demo_account().goals,
+        banners=create_demo_account().banners,
+        preferences=create_demo_account().preferences,
+        income=create_demo_account().income,
+        owner_id="user-123",
+    )
+    repository.create(record)
+    assert repository.get(record.id).owner_id == "user-123"
+    assert repository.list("user-123") == [record]
+    assert repository.list("other-user") == []
+
+
 def test_sqlite_repository_save_and_delete(tmp_path):
     repository = SQLiteAccountRepository(tmp_path / "planner.sqlite3")
     record = create_demo_account()
