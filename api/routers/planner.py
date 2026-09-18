@@ -1,32 +1,4 @@
-"""Planner endpoints (Design Document §9, §13, §14, §18 Phase 6).
-
-    GET /accounts/{id}/planner/goals             goal states (§9)
-    GET /accounts/{id}/planner/safe-spend        approximation (§14)
-    GET /accounts/{id}/planner/spend-table       spend vs. roadmap (§14)
-    GET /accounts/{id}/planner/recommendation    the decision (§13)
-    GET /accounts/{id}/planner/stop-conditions   the decision's discipline (§1)
-
-Two views of spending coexist here on purpose, and each says which it is:
-
-* `/safe-spend` and `/spend-table` are the Phase 3 sequential
-  independent-reserve approximation - fast, analytical, and explicitly
-  provisional (§14);
-* `/recommendation` is the Phase 5 optimizer running the Monte Carlo
-  simulator, which counts carried pity, guarantee, actual spending and
-  income timing (§14), and gates spending only on protected goals that
-  outrank the current banner's goal (§2).
-
-They can disagree; the recommendation is the answer, and the approximation
-is the cheap explanation. §14 warns against letting the approximation
-become a permanent assumption, so it is labelled rather than hidden. The
-priority gate is one place they diverge by design: Phase 3 answers "what is
-protected" for every future goal alike, while the optimizer answers "what
-may constrain this decision".
-
-`/stop-conditions` returns the stops of a real `recommend()` call. Stop
-conditions belong to a recommendation (Phase 5 invariant 12) - composing
-rules here would let the two drift apart.
-"""
+"""Planner endpoints."""
 
 from fastapi import APIRouter, Depends, Query
 
@@ -37,6 +9,7 @@ from api.schemas.planner import (
     GoalEvaluationsView,
     GoalEvaluationView,
     GoalStandingView,
+    OutcomeProbabilityView,
     OutcomeView,
     ProtectedGoalOutcomeView,
     RecommendationView,
@@ -45,7 +18,14 @@ from api.schemas.planner import (
     SpendTableView,
     StopConditionsView,
 )
-from optimizer import DEFAULT_RUNS, MINIMUM_OUTCOME_PROBABILITY, evaluate_candidate, recommend
+from optimizer import (
+    DEFAULT_RUNS,
+    MINIMUM_OUTCOME_PROBABILITY,
+    OutcomeOption,
+    available_outcomes,
+    evaluate_candidate,
+    recommend,
+)
 from planner import (
     actionable_goals,
     current_banner,
@@ -59,28 +39,13 @@ from simulation import DEFAULT_SEED
 router = APIRouter(tags=["planner"])
 
 
-@router.get(
-    "/accounts/{account_id}/planner/goals",
-    response_model=GoalEvaluationsView,
-    summary="Goal states against the current banner",
-    description=(
-        "Every roadmap goal in priority order with its planner state (§9): "
-        "satisfied, active, or blocked behind a lower-constellation goal for "
-        "the same character. Goals with no upcoming banner stay visible - "
-        '"not schedulable" is not "does not exist" (§8).'
-    ),
-)
+@router.get("/accounts/{account_id}/planner/goals", response_model=GoalEvaluationsView)
 def planner_goals(
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> GoalEvaluationsView:
-    context = record.context(
-        confidence=overrides.confidence,
-        income_scenario=overrides.income_scenario,
-    )
-    relevant = {
-        evaluation.goal for evaluation in relevant_goal_evaluations(context)
-    }
+    context = record.context(confidence=overrides.confidence, income_scenario=overrides.income_scenario)
+    relevant = {evaluation.goal for evaluation in relevant_goal_evaluations(context)}
     actionable = {evaluation.goal for evaluation in actionable_goals(context)}
     return GoalEvaluationsView(
         current_banner=BannerModel.from_domain(current_banner(context)),
@@ -95,26 +60,12 @@ def planner_goals(
     )
 
 
-@router.get(
-    "/accounts/{account_id}/planner/safe-spend",
-    response_model=SafeSpendView,
-    summary="Safe-spend approximation",
-    description=(
-        "The largest current-banner spend that keeps every protected future "
-        "goal at or above the confidence threshold, under the Phase 3 "
-        "sequential independent-reserve approximation (§14). A safe spend of "
-        "0 means the roadmap cannot be protected even by spending nothing - "
-        '"do not spend" is a legitimate answer (§1).'
-    ),
-)
+@router.get("/accounts/{account_id}/planner/safe-spend", response_model=SafeSpendView)
 def planner_safe_spend(
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> SafeSpendView:
-    context = record.context(
-        confidence=overrides.confidence,
-        income_scenario=overrides.income_scenario,
-    )
+    context = record.context(confidence=overrides.confidence, income_scenario=overrides.income_scenario)
     return SafeSpendView(
         current_banner=BannerModel.from_domain(current_banner(context)),
         safe_spend=safe_spend(context),
@@ -130,20 +81,18 @@ def planner_safe_spend(
 @router.get(
     "/accounts/{account_id}/planner/spend-table",
     response_model=SpendTableView,
-    summary="How spending changes the current plan",
+    summary="How spending changes current-banner milestones",
     description=(
-        "Shows how candidate current-banner spending changes the selected "
-        "outcome probability and the simulated probability of every protected "
-        "future goal. Multi-copy targets are supported because each row uses "
-        "the same simulator and outcome semantics as the recommendation."
+        "Shows how candidate current-banner spending changes the probability "
+        "of reaching each constellation milestone offered for the current "
+        "banner, alongside the simulated probability of every protected "
+        "future goal."
     ),
 )
 def planner_spend_table(
     step: int = Query(10, description="Spend increment between rows."),
     runs: int = Query(DEFAULT_RUNS, description="Histories per candidate."),
-    seed: int | None = Query(
-        DEFAULT_SEED, description="Rng seed; null draws entropy from the OS."
-    ),
+    seed: int | None = Query(DEFAULT_SEED, description="Rng seed; null draws entropy from the OS."),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> SpendTableView:
@@ -156,13 +105,11 @@ def planner_spend_table(
     if runs < 1:
         raise ValueError(f"runs must be >= 1, got {runs}")
 
-    _, decision = _recommendation(
-        record, overrides, runs, seed, None, MINIMUM_OUTCOME_PROBABILITY
-    )
-    if decision.outcome is None:
+    outcomes = _spend_table_outcomes(context, record.preferences)
+    if not outcomes:
         return SpendTableView(
             current_banner=BannerModel.from_domain(current_banner(context)),
-            outcome=None,
+            outcomes=[],
             step=step,
             confidence=context.confidence,
             runs=runs,
@@ -176,20 +123,33 @@ def planner_spend_table(
 
     rows = []
     for budget in budgets:
-        candidate = evaluate_candidate(
-            context, decision.outcome, budget, runs=runs, seed=seed
+        outcome_probabilities = [
+            OutcomeProbabilityView(
+                outcome=OutcomeView.from_domain(outcome),
+                probability=evaluate_candidate(
+                    context, outcome, budget, runs=runs, seed=seed
+                ).outcome_probability,
+            )
+            for outcome in outcomes
+        ]
+
+        # Use the same protected-goal evaluation for every milestone. The
+        # future-roadmap tradeoff does not depend on which current-banner
+        # constellation column the user is looking at.
+        reference_candidate = evaluate_candidate(
+            context, outcomes[0], budget, runs=runs, seed=seed
         )
         rows.append(
             SpendRowView(
                 wishes_spent=budget,
-                outcome_probability=candidate.outcome_probability,
+                outcomes=outcome_probabilities,
                 protected=[
                     GoalStandingView.from_domain(standing)
-                    for standing in candidate.protected
+                    for standing in reference_candidate.protected
                 ],
                 all_protected_meet_threshold=all(
                     standing.meets_threshold
-                    for standing in candidate.protected
+                    for standing in reference_candidate.protected
                     if standing.constraining
                 ),
             )
@@ -197,13 +157,35 @@ def planner_spend_table(
 
     return SpendTableView(
         current_banner=BannerModel.from_domain(current_banner(context)),
-        outcome=OutcomeView.from_domain(decision.outcome),
+        outcomes=[OutcomeView.from_domain(outcome) for outcome in outcomes],
         step=step,
         confidence=context.confidence,
         runs=runs,
         seed=seed,
         rows=rows,
     )
+
+
+def _spend_table_outcomes(context, preferences) -> tuple[OutcomeOption, ...]:
+    """Return unique current-banner constellation milestones for the table.
+
+    The optimizer's outcome list can contain weapon-labelled variants of the
+    same constellation. The spend analysis is character-only, so the table
+    collapses those variants and reports the probability of each resulting
+    constellation, from C0 upward.
+    """
+    available = available_outcomes(context, preferences)
+    by_constellation: dict[int, OutcomeOption] = {}
+    for outcome in available:
+        by_constellation.setdefault(
+            outcome.constellation,
+            OutcomeOption(
+                character=outcome.character,
+                constellation=outcome.constellation,
+                rank=outcome.rank,
+            ),
+        )
+    return tuple(sorted(by_constellation.values(), key=lambda outcome: outcome.constellation))
 
 
 def _recommendation(
@@ -214,7 +196,6 @@ def _recommendation(
     budgets: list[int] | None,
     minimum_outcome_probability: float,
 ):
-    """Run the optimizer once for the endpoints that need a decision (§13)."""
     context = record.context(
         confidence=overrides.confidence,
         income_scenario=overrides.income_scenario,
@@ -230,55 +211,16 @@ def _recommendation(
     return context, decision
 
 
-@router.get(
-    "/accounts/{account_id}/planner/recommendation",
-    response_model=RecommendationView,
-    summary="The current recommendation",
-    description=(
-        "The highest-preference outcome that can be pursued while every "
-        "protected future goal that outranks this banner's goal stays at or "
-        "above the confidence threshold, and the largest feasible spend cap "
-        "for it (§13, §14). Lower-priority future goals are still pursued and "
-        "reported, but they cannot force the spend down (§2). Skipping is a "
-        "legitimate recommendation and comes with per-outcome rejections "
-        "(§1).\n\n"
-        "This runs the Monte Carlo simulator once per candidate cap. A skip "
-        "scans every cap of every outcome, which is seconds of work at the "
-        "defaults; pass a coarser `budgets` list when latency matters, "
-        "keeping in mind that a coarse list can miss a narrow feasible "
-        "window. Results are reproducible for an identical `runs`/`seed`.\n\n"
-        "A feasible outcome whose probability at its largest safe cap falls "
-        "below `minimum_outcome_probability` is reported as "
-        '`action="discretionary"` rather than `"pursue"`: the budget is '
-        "still safe to spend, but not recommended (§14)."
-    ),
-)
+@router.get("/accounts/{account_id}/planner/recommendation", response_model=RecommendationView)
 def planner_recommendation(
-    runs: int = Query(DEFAULT_RUNS, description="Histories per candidate."),
-    seed: int | None = Query(
-        DEFAULT_SEED, description="Rng seed; null draws entropy from the OS."
-    ),
-    budgets: list[int] | None = Query(
-        None,
-        description=(
-            "Candidate spend caps to scan. Defaults to every spend from the "
-            "account's wishes down to 0."
-        ),
-    ),
-    minimum_outcome_probability: float = Query(
-        MINIMUM_OUTCOME_PROBABILITY,
-        description=(
-            "Minimum outcome probability for an ordinary recommendation "
-            '(§14); below it a feasible outcome is reported as '
-            '"discretionary" instead of "pursue".'
-        ),
-    ),
+    runs: int = Query(DEFAULT_RUNS),
+    seed: int | None = Query(DEFAULT_SEED),
+    budgets: list[int] | None = Query(None),
+    minimum_outcome_probability: float = Query(MINIMUM_OUTCOME_PROBABILITY),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> RecommendationView:
-    context, decision = _recommendation(
-        record, overrides, runs, seed, budgets, minimum_outcome_probability
-    )
+    context, decision = _recommendation(record, overrides, runs, seed, budgets, minimum_outcome_probability)
     return RecommendationView.from_domain(
         decision,
         confidence=context.confidence,
@@ -286,37 +228,14 @@ def planner_recommendation(
     )
 
 
-@router.get(
-    "/accounts/{account_id}/planner/stop-conditions",
-    response_model=StopConditionsView,
-    summary="Stop conditions for the current recommendation",
-    description=(
-        "The discipline attached to the current recommendation: stop on the "
-        "outcome, never exceed the cap, re-run after the banner resolves "
-        "(§1, §2). These are the stops of an actual recommendation, so they "
-        "cost the same as `/planner/recommendation`."
-    ),
-)
+@router.get("/accounts/{account_id}/planner/stop-conditions", response_model=StopConditionsView)
 def planner_stop_conditions(
-    runs: int = Query(DEFAULT_RUNS, description="Histories per candidate."),
-    seed: int | None = Query(
-        DEFAULT_SEED, description="Rng seed; null draws entropy from the OS."
-    ),
-    budgets: list[int] | None = Query(
-        None, description="Candidate spend caps to scan."
-    ),
-    minimum_outcome_probability: float = Query(
-        MINIMUM_OUTCOME_PROBABILITY,
-        description=(
-            "Minimum outcome probability for an ordinary recommendation "
-            '(§14); below it the stops describe a "discretionary" gamble '
-            'instead of a "pursue".'
-        ),
-    ),
+    runs: int = Query(DEFAULT_RUNS),
+    seed: int | None = Query(DEFAULT_SEED),
+    budgets: list[int] | None = Query(None),
+    minimum_outcome_probability: float = Query(MINIMUM_OUTCOME_PROBABILITY),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> StopConditionsView:
-    _, decision = _recommendation(
-        record, overrides, runs, seed, budgets, minimum_outcome_probability
-    )
+    _, decision = _recommendation(record, overrides, runs, seed, budgets, minimum_outcome_probability)
     return StopConditionsView.from_domain(decision.stops)
