@@ -35,6 +35,9 @@ class StrategyStep:
     safe_spend: int | None = None
     outcome_probability: float | None = None
     protected_probability: float | None = None
+    future_income: int | None = None
+    protected_starting_wishes: int | None = None
+    protected_total_wishes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,8 @@ class PullStrategy:
     reserve_probability: float | None
     runs: int
     seed: int | None
+    starting_wishes: int
+    future_income: int
 
 
 def _protection_plan(
@@ -321,6 +326,18 @@ def build_strategy(
                 for protected in protected_goals
             )
         reserve = context.account.wishes - spend
+        reserve_income = 0
+        if protected_goals:
+            reserve_banner = min(
+                (candidate for candidate in context.roadmap.banners
+                 if candidate.character == min(protected_goals, key=lambda item: item.priority).character
+                 and candidate.order_key > banner.order_key),
+                key=lambda candidate: candidate.order_key,
+            )
+            reserve_income = context.income_available_before(
+                reserve_banner.version, reserve_banner.phase
+            )
+        reserve_total = reserve + reserve_income
         if reserve_goal is None and protected_goals:
             reserve_goal = min(protected_goals, key=lambda item: item.priority)
             reserve_wishes = reserve
@@ -335,6 +352,9 @@ def build_strategy(
                 else 0.0
             ),
             protected_probability=protected_probability,
+            future_income=reserve_income,
+            protected_starting_wishes=reserve,
+            protected_total_wishes=reserve_total,
         ))
 
     if reserve_goal is not None:
