@@ -18,7 +18,7 @@ account update, and the previous recommendation is not a permanent plan
 
 from dataclasses import replace
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from api.auth import UserRecord
 
 from api.dependencies import get_current_user, get_record, get_repository
@@ -145,16 +145,16 @@ def record_pull_result(
     repository: AccountRepository = Depends(get_repository),
 ) -> AccountView:
     if payload.outcome not in {"featured", "lost_50_50", "stopped"}:
-        raise ValueError("outcome must be featured, lost_50_50, or stopped")
+        raise HTTPException(status_code=400, detail="outcome must be featured, lost_50_50, or stopped")
     if payload.wishes_used > record.account.wishes:
-        raise ValueError("wishes_used cannot exceed the account's wishes")
+        raise HTTPException(status_code=400, detail="wishes_used cannot exceed the account's wishes")
 
     account = record.account
     wishes = account.wishes - payload.wishes_used
 
     if payload.outcome == "stopped":
         if account.current_pity + payload.wishes_used > 89:
-            raise ValueError("stopped outcome cannot pass character hard pity")
+            raise HTTPException(status_code=400, detail="stopped outcome cannot pass character hard pity")
         updated_account = replace(account, wishes=wishes, current_pity=account.current_pity + payload.wishes_used)
     elif payload.outcome == "lost_50_50":
         updated_account = replace(
@@ -166,7 +166,7 @@ def record_pull_result(
         )
     else:
         if not payload.character:
-            raise ValueError("character is required for a featured outcome")
+            raise HTTPException(status_code=400, detail="character is required for a featured outcome")
         ownership = account.owned_characters
         current = ownership.owned_constellation(payload.character)
         updated_account = replace(
