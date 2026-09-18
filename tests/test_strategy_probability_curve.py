@@ -357,3 +357,17 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     # The isolated Vesna-C2 probability is materially higher; this assertion
     # prevents the old marginal probability from silently returning to the UI.
     assert vesna_c2.outcome_probability < 0.10
+
+
+def test_strategy_uses_one_total_current_phase_budget(capsys):
+    """The Vesna C2 frontier is the total Vodynista + Vesna phase budget."""
+    from optimizer.strategy import build_strategy
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    strategy = build_strategy(context, runs=10_000, seed=0)
+    vesna_c2 = next(step for step in strategy.steps if step.goal == Goal("Vesna", 2, 4))
+
+    assert vesna_c2.safe_spend in range(215, 224)
+    assert vesna_c2.reserve_wishes in range(227, 236)
+    assert 0.03 < vesna_c2.outcome_probability < 0.08
