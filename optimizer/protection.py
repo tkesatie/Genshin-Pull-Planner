@@ -63,7 +63,7 @@ class ProtectedGroup:
     uncapped_budget: int
 
 
-def protected_groups(context: PlannerContext) -> tuple[ProtectedGroup, ...]:
+def protected_groups(context: PlannerContext, banner: Banner | None = None) -> tuple[ProtectedGroup, ...]:
     """Protected goals grouped per banner, in chronological order (§13).
 
     Goals whose next banner is the current banner (including blocked ones
@@ -72,7 +72,7 @@ def protected_groups(context: PlannerContext) -> tuple[ProtectedGroup, ...]:
     excluded while remaining visible through `evaluate_goals` - "not
     protectable" is not "does not exist" (§8).
     """
-    current = current_banner(context)
+    current = banner if banner is not None else current_banner(context)
     buckets: dict[Banner, list[Goal]] = {}
     for evaluation in evaluate_goals(context):
         if evaluation.copies_needed == 0:
