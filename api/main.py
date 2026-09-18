@@ -20,7 +20,6 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
-from api.demo_data import create_demo_account
 from api.jobs import SimulationJobStore
 from api.repository import AccountNotFound, AccountRepository, InMemoryAccountRepository
 from api.routers import accounts, planner, probability, roadmap, simulation
@@ -73,8 +72,9 @@ def create_app(
         version="0.6.0",
     )
     if repository is None:
+        # Each app instance gets an isolated repository; test fixtures and
+        # callers that need seeded data must inject it explicitly.
         repository = InMemoryAccountRepository()
-        repository.create(create_demo_account())
     app.state.repository = repository
     app.state.jobs = SimulationJobStore() if jobs is None else jobs
 

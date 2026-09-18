@@ -406,6 +406,8 @@ def recommend(
             )
 
     if not opportunities:
+        if not any(available_outcomes(context, preferences, banner=banner) for banner in banners):
+            return _skip(context, "no active goal or preferred outcome to pursue", runs, seed)
         return _skip(
             context,
             f"no preferred outcome can be pursued while keeping every "
@@ -429,15 +431,23 @@ def recommend(
 
     winner_banner, _, winner_outcome, winner, winner_priority = opportunities[0]
 
-    # A deeper later-progression outcome on the same character may still
-    # legitimately supersede its nearer milestone when it clears the
-    # ordinary-recommendation threshold.
+    # A deeper same-character outcome is cumulative progress: reaching
+    # C2 necessarily reaches C0. If the deeper outcome is feasible and
+    # likely enough to be an ordinary recommendation at its protection-safe
+    # cap, it can supersede a shallower outcome even when the shallower
+    # roadmap goal has higher priority. A tagged later-progression outcome
+    # uses the same rule, but is additionally kept behind the current
+    # milestone when it is only a gamble.
     for banner, _, outcome, candidate, priority in opportunities[1:]:
         if (
             banner == winner_banner
-            and outcome.later_progression
-            and candidate.outcome_probability >= minimum_outcome_probability
+            and outcome.character == winner_outcome.character
             and outcome.constellation > winner_outcome.constellation
+            and candidate.outcome_probability >= minimum_outcome_probability
+            and (
+                not outcome.later_progression
+                or winner_outcome.later_progression
+            )
         ):
             winner_banner, winner_outcome, winner = banner, outcome, candidate
 
