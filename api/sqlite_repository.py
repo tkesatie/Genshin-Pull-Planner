@@ -191,6 +191,9 @@ class SQLiteAccountRepository:
                 )
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(accounts)")}
+            if "owner_id" not in columns:
+                connection.execute("ALTER TABLE accounts ADD COLUMN owner_id TEXT")
 
     @staticmethod
     def _validate(record: AccountRecord) -> None:
