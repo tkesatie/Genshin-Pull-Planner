@@ -36,6 +36,8 @@ from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.planner import (
     GoalEvaluationsView,
     GoalEvaluationView,
+    GoalStandingView,
+    OutcomeView,
     ProtectedGoalOutcomeView,
     RecommendationView,
     SafeSpendView,
