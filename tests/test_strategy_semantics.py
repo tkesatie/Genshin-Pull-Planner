@@ -338,6 +338,7 @@ def test_owned_skirk_c0_requires_two_copies_for_c2():
             banners=[SKIRK],
         ),
         current_version="7.1",
+        current_phase=2,
         mechanics=forced_mechanics(),
     )
     run = simulate_history(context, plan, __import__("numpy").random.default_rng(0))
