@@ -20,6 +20,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
+from api.demo_data import create_demo_account
 from api.jobs import SimulationJobStore
 from api.repository import AccountNotFound, AccountRepository, InMemoryAccountRepository
 from api.routers import accounts, planner, probability, roadmap, simulation
@@ -107,3 +108,7 @@ def create_app(
 
 
 app = create_app()
+# The module-level application is the local dashboard entry point. Seed its
+# isolated in-memory repository with the development account; create_app()
+# itself remains unseeded so tests and injected callers stay isolated.
+app.state.repository.create(create_demo_account())
