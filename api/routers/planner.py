@@ -43,7 +43,7 @@ from api.schemas.planner import (
     SpendTableView,
     StopConditionsView,
 )
-from optimizer import DEFAULT_RUNS, MINIMUM_OUTCOME_PROBABILITY, recommend
+from optimizer import DEFAULT_RUNS, MINIMUM_OUTCOME_PROBABILITY, evaluate_candidate, recommend
 from planner import (
     actionable_goals,
     current_banner,
@@ -51,8 +51,6 @@ from planner import (
     protected_goal_outcomes,
     relevant_goal_evaluations,
     safe_spend,
-    single_copy_active_goal,
-    spend_table,
 )
 from simulation import DEFAULT_SEED
 
@@ -130,18 +128,20 @@ def planner_safe_spend(
 @router.get(
     "/accounts/{account_id}/planner/spend-table",
     response_model=SpendTableView,
-    summary="Spend table for the current banner",
+    summary="How spending changes the current plan",
     description=(
-        "One row per candidate spend: the probability of the active goal's "
-        "copy, and what that spend does to every protected future goal - "
-        "spending now is an explicit tradeoff against future probability "
-        "(§1). Requires exactly one active single-copy goal on the current "
-        "banner; multi-copy targets are rejected rather than approximated "
-        "(§10.4)."
+        "Shows how candidate current-banner spending changes the selected "
+        "outcome probability and the simulated probability of every protected "
+        "future goal. Multi-copy targets are supported because each row uses "
+        "the same simulator and outcome semantics as the recommendation."
     ),
 )
 def planner_spend_table(
-    step: int = Query(1, description="Spend increment between rows."),
+    step: int = Query(10, description="Spend increment between rows."),
+    runs: int = Query(DEFAULT_RUNS, description="Histories per candidate."),
+    seed: int | None = Query(
+        DEFAULT_SEED, description="Rng seed; null draws entropy from the OS."
+    ),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> SpendTableView:
@@ -149,16 +149,58 @@ def planner_spend_table(
         confidence=overrides.confidence,
         income_scenario=overrides.income_scenario,
     )
-    evaluation = single_copy_active_goal(context)
+    if step < 1:
+        raise ValueError(f"step must be >= 1, got {step}")
+    if runs < 1:
+        raise ValueError(f"runs must be >= 1, got {runs}")
+
+    _, decision = _recommendation(
+        record, overrides, runs, seed, None, MINIMUM_OUTCOME_PROBABILITY
+    )
+    if decision.outcome is None:
+        return SpendTableView(
+            current_banner=BannerModel.from_domain(current_banner(context)),
+            outcome=None,
+            step=step,
+            confidence=context.confidence,
+            runs=runs,
+            seed=seed,
+            rows=[],
+        )
+
+    budgets = list(range(0, context.account.wishes + 1, step))
+    if budgets[-1] != context.account.wishes:
+        budgets.append(context.account.wishes)
+
+    rows = []
+    for budget in budgets:
+        candidate = evaluate_candidate(
+            context, decision.outcome, budget, runs=runs, seed=seed
+        )
+        rows.append(
+            SpendRowView(
+                wishes_spent=budget,
+                outcome_probability=candidate.outcome_probability,
+                protected=[
+                    GoalStandingView.from_domain(standing)
+                    for standing in candidate.protected
+                ],
+                all_protected_meet_threshold=all(
+                    standing.meets_threshold
+                    for standing in candidate.protected
+                    if standing.constraining
+                ),
+            )
+        )
+
     return SpendTableView(
         current_banner=BannerModel.from_domain(current_banner(context)),
-        goal=GoalModel.from_domain(evaluation.goal),
-        copies_needed=evaluation.copies_needed,
+        outcome=OutcomeView.from_domain(decision.outcome),
         step=step,
         confidence=context.confidence,
-        rows=[
-            SpendRowView.from_domain(row) for row in spend_table(context, step=step)
-        ],
+        runs=runs,
+        seed=seed,
+        rows=rows,
     )
 
 
