@@ -658,7 +658,16 @@ async function loadPlanner(source = "unknown") {
 /* ---------- rendering ---------- */
 
 function resetVerdict() {
-  $("verdict").textContent = "Run the planner to see the current recommendation.";
+  // renderRecommendation replaces the contents of #strategy, including the
+  // initial #verdict placeholder. Recreate it when clearing a completed run.
+  const strategy = $("strategy");
+  strategy.innerHTML = "";
+  const verdict = document.createElement("p");
+  verdict.className = "verdict";
+  verdict.id = "verdict";
+  verdict.textContent = "Run the planner to see the current recommendation.";
+  strategy.append(verdict);
+
   $("verdict-detail").textContent =
     "Every candidate spend is simulated, so this takes a few seconds.";
   $("provenance").textContent = "";
