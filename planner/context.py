@@ -78,6 +78,20 @@ class PlannerContext:
                 f"({self.mechanics.hard_pity}), got {self.account.current_pity}"
             )
 
+    def income_available_before(self, version: str, phase: int) -> int:
+        """Future income available before a later roadmap slot.
+
+        Current-version income is not available to the current phase. It
+        becomes usable when the roadmap advances beyond the current
+        version/phase, so forecast income can protect later goals without
+        inflating the current banner's spendable wishes.
+        """
+        current = (parse_version(self.current_version), self.current_phase)
+        target = (parse_version(version), phase)
+        if target <= current:
+            return 0
+        return self.income_credit(version)
+
     def income_credit(self, up_to_version: str) -> int:
         """Future income credited from the current version through
         `up_to_version`, under the configured scenario (§16).
