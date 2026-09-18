@@ -1,9 +1,4 @@
-"""The application (Design Document §3, §18 Phase 6).
-
-create_app wires storage and routers into a FastAPI application. Tests can
-inject an in-memory repository, while the normal application uses SQLite so
-saved accounts survive process restarts.
-"""
+"""The application (Design Document §3, §18 Phase 6)."""
 
 import os
 import time
@@ -12,11 +7,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
+from api.auth import InMemoryAuthRepository, SQLiteAuthRepository
 from api.demo_data import create_demo_account
 from api.jobs import SimulationJobStore
 from api.repository import AccountNotFound, AccountRepository, InMemoryAccountRepository
 from api.sqlite_repository import SQLiteAccountRepository
-from api.routers import accounts, planner, probability, roadmap, simulation
+from api.routers import accounts, auth, planner, probability, roadmap, simulation
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 DEFAULT_DATABASE_PATH = Path(os.environ.get("GENSHIN_PLANNER_DB", "data/planner.sqlite3"))
@@ -75,11 +71,17 @@ def create_app(
             else InMemoryAccountRepository()
         )
     app.state.repository = repository
+    app.state.auth_repository = (
+        SQLiteAuthRepository(database_path or DEFAULT_DATABASE_PATH)
+        if database_path is not None
+        else InMemoryAuthRepository()
+    )
     app.state.jobs = SimulationJobStore() if jobs is None else jobs
 
     app.add_exception_handler(AccountNotFound, _not_found_handler)
     app.add_exception_handler(ValueError, _value_error_handler)
 
+    app.include_router(auth.router)
     app.include_router(accounts.router)
     app.include_router(roadmap.router)
     app.include_router(probability.router)
@@ -106,7 +108,5 @@ def create_app(
 
 app = create_app(database_path=DEFAULT_DATABASE_PATH)
 
-# Keep the local development account available on first startup, but don't
-# overwrite it on subsequent restarts.
 if not app.state.repository.list():
     app.state.repository.create(create_demo_account())
