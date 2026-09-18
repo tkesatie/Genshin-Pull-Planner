@@ -481,7 +481,9 @@ function renderRecommendation(rec) {
   $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
   $("metric-target").textContent = `${rec.outcome.character} ${rec.outcome.label}`;
   $("metric-budget").textContent = wishWord(rec.budget);
-  $("metric-probability").textContent = pct(rec.outcome_probability);\n  $("decision-label").className = `decision-label ${rec.action}`;\n  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
+  $("metric-probability").textContent = pct(rec.outcome_probability);
+  $("decision-label").className = `decision-label ${rec.action}`;
+  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
   const nonGating = rec.protected.filter((standing) => standing.constraining === false);
   if (rec.action === "pursue") {
     $("verdict").innerHTML =
