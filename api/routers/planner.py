@@ -22,7 +22,6 @@ from optimizer import (
     DEFAULT_RUNS,
     MINIMUM_OUTCOME_PROBABILITY,
     OutcomeOption,
-    available_outcomes,
     evaluate_candidate,
     recommend,
 )
