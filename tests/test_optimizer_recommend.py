@@ -27,6 +27,7 @@ from domain import (
     WishMechanics,
 )
 from optimizer import (
+    OutcomeOption,
     available_outcomes,
     constraining_goals,
     evaluate_skip_baseline,
