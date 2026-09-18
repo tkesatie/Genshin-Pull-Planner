@@ -366,7 +366,7 @@ def recommend(
             outcome_priority = priority_for_outcome(context, outcome)
             caps = (
                 all_caps
-                if constraining_goals(context, priority=outcome_priority)
+                if constraining_goals(context, priority=outcome_priority, banner=banner)
                 else all_caps[:1]
             )
             diagnostic_best: CandidateStrategy | None = None
