@@ -171,9 +171,17 @@ def _evaluate_spend(
                 budget=spend,
             ),
             *future_plan.entries,
-        )
+        ),
+        shared_current_budget=spend,
     )
-    return simulate(context, plan, runs=runs, seed=seed), protected_goals
+    joint_goals = tuple(required_goals) + (goal,)
+    return simulate(
+        context,
+        plan,
+        runs=runs,
+        seed=seed,
+        joint_goals=joint_goals,
+    ), protected_goals
 
 
 def _safe_spend(
@@ -321,10 +329,10 @@ def build_strategy(
             action="pursue_until_reserve", goal=evaluation.goal, banner=banner,
             reserve_wishes=reserve,
             safe_spend=spend,
-            outcome_probability=next(
-                aggregate.target_met_probability
-                for aggregate in result.banners
-                if aggregate.banner == banner
+            outcome_probability=(
+                result.joint_goal_probability.probability
+                if result.joint_goal_probability is not None
+                else 0.0
             ),
             protected_probability=protected_probability,
         ))
