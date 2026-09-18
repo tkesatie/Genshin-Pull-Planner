@@ -96,6 +96,7 @@ from dataclasses import dataclass
 
 from domain import Banner, Preference
 from planner import PlannerContext
+from planner.banners import available_banners
 from planner.banners import current_banner
 from simulation import DEFAULT_SEED, SpendPlan
 
@@ -342,62 +343,67 @@ def recommend(
             "minimum_outcome_probability must be in [0, 1], got "
             f"{minimum_outcome_probability}"
         )
-    outcomes = available_outcomes(context, preferences)
-    all_caps = _caps(context, budgets)
-    if not outcomes:
+    banners = available_banners(context)
+    if not banners:
         return _skip(
             context,
-            "no outcome to pursue on this banner: no preference chain and "
-            "no active goal for the current banner character",
+            "no roadmap banner at the current version/phase",
             runs,
             seed,
         )
 
-    evaluated: list[tuple[OutcomeOption, CandidateStrategy]] = []
+    all_caps = _caps(context, budgets)
+    opportunities = []
     rejected: list[RejectedOutcome] = []
-    for outcome in outcomes:
-        # The cap-scan shortcut is per outcome, not global (§14): a deeper
-        # reach on the same character can be its own, lower-priority
-        # objective (optimizer.protection.priority_for_outcome), so one
-        # outcome may have nothing constraining it while another does.
-        outcome_priority = priority_for_outcome(context, outcome)
-        caps = (
-            all_caps
-            if constraining_goals(context, priority=outcome_priority)
-            else all_caps[:1]  # the largest cap dominates (see docstring)
-        )
-        diagnostic_best: CandidateStrategy | None = None
-        first_feasible: CandidateStrategy | None = None
-        for cap in caps:
-            candidate = evaluate_candidate(
-                context, outcome, cap, runs=runs, seed=seed
-            )
-            if (
-                diagnostic_best is None
-                or _diagnostic_key(candidate) > _diagnostic_key(diagnostic_best)
-            ):
-                diagnostic_best = candidate
-            if candidate.feasible:
-                # First feasible cap in a descending scan = the largest
-                # feasible cap among the scanned caps (§14): this outcome's
-                # whole case - its cap, and its own probability at that cap.
-                first_feasible = candidate
-                break
-        if first_feasible is None:
-            shortfalls = tuple(
-                standing
-                for standing in diagnostic_best.protected
-                if standing.constraining and not standing.meets_threshold
-            )
-            rejected.append(
-                RejectedOutcome(
-                    outcome=outcome, best=diagnostic_best, shortfalls=shortfalls
-                )
-            )
-            continue
-        evaluated.append((outcome, first_feasible))
 
-    if not evaluated:
+    # Each current banner is an independent decision opportunity. The
+    # roadmap priority of its active goal determines which opportunity gets
+    # first consideration; preferences still determine how far to pursue
+    # within that character.
+    for banner in banners:
+        outcomes = available_outcomes(context, preferences, banner=banner)
+        for outcome_index, outcome in enumerate(outcomes):
+            outcome_priority = priority_for_outcome(context, outcome)
+            caps = (
+                all_caps
+                if constraining_goals(context, priority=outcome_priority)
+                else all_caps[:1]
+            )
+            diagnostic_best: CandidateStrategy | None = None
+            first_feasible: CandidateStrategy | None = None
+            for cap in caps:
+                candidate = evaluate_candidate(
+                    context, outcome, cap, banner=banner, runs=runs, seed=seed
+                )
+                if (
+                    diagnostic_best is None
+                    or _diagnostic_key(candidate) > _diagnostic_key(diagnostic_best)
+                ):
+                    diagnostic_best = candidate
+                if candidate.feasible:
+                    first_feasible = candidate
+                    break
+
+            if first_feasible is None:
+                shortfalls = tuple(
+                    standing
+                    for standing in diagnostic_best.protected
+                    if standing.constraining and not standing.meets_threshold
+                )
+                rejected.append(
+                    RejectedOutcome(
+                        outcome=outcome, best=diagnostic_best, shortfalls=shortfalls
+                    )
+                )
+                continue
+
+            # Lower priority number is the higher-priority roadmap objective.
+            # Within one banner, preserve the existing outcome menu order.
+            opportunities.append(
+                (banner, outcome_index, outcome, first_feasible, outcome_priority)
+            )
+
+    if not opportunities:
         return _skip(
             context,
             f"no preferred outcome can be pursued while keeping every "
@@ -408,32 +414,36 @@ def recommend(
             rejected=tuple(rejected),
         )
 
-    # Winner selection (§13 step 7): the first feasible outcome in menu
-    # order wins - except that a later-progression outcome takes the lead
-    # when pursuing it now is an ordinary recommendation (its probability
-    # at its largest protection-respecting cap clears
-    # `minimum_outcome_probability`) and it is the deeper constellation:
-    # one plan entry targeting it lets the Phase 4 simulator pull through
-    # the nearer milestones toward it (§4.2, §12 - the cumulative
-    # progression; the acquisition point of each nearer milestone varies
-    # by history and the remaining spend continues toward the target).
-    # Below that bar the reach stays the gamble the roadmap scheduled for
-    # a later banner: the nearer objective leads, and the later one is
-    # pursued on its own banner after the re-run (§2).
-    winner_outcome, winner = evaluated[0]
-    for outcome, candidate in evaluated[1:]:
+    def opportunity_key(item):
+        banner, outcome_index, outcome, candidate, priority = item
+        return (
+            priority is None,
+            priority if priority is not None else 10**9,
+            banner.order_key,
+            outcome_index,
+        )
+
+    opportunities.sort(key=opportunity_key)
+
+    winner_banner, _, winner_outcome, winner, winner_priority = opportunities[0]
+
+    # A deeper later-progression outcome on the same character may still
+    # legitimately supersede its nearer milestone when it clears the
+    # ordinary-recommendation threshold.
+    for banner, _, outcome, candidate, priority in opportunities[1:]:
         if (
-            outcome.later_progression
+            banner == winner_banner
+            and outcome.later_progression
             and candidate.outcome_probability >= minimum_outcome_probability
             and outcome.constellation > winner_outcome.constellation
         ):
-            winner_outcome, winner = outcome, candidate
+            winner_banner, winner_outcome, winner = banner, outcome, candidate
 
     # The presentation check (step 4) settles only how the winner is
     # reported - never which outcome or cap won (module docstring).
     if winner.outcome_probability >= minimum_outcome_probability:
         return Recommendation(
-            banner=current_banner(context),
+            banner=winner_banner,
             action="pursue",
             outcome=winner_outcome,
             budget=winner.budget,
@@ -453,7 +463,7 @@ def recommend(
         minimum_outcome_probability,
     )
     return Recommendation(
-        banner=current_banner(context),
+        banner=winner_banner,
         action="discretionary",
         outcome=winner_outcome,
         budget=winner.budget,
