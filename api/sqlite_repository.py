@@ -212,11 +212,17 @@ class SQLiteAccountRepository:
                 raise ValueError(f"account {record.id!r} already exists") from exc
         return record
 
-    def list(self) -> list[AccountRecord]:
+    def list(self, owner_id: str | None = None) -> list[AccountRecord]:
         with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                "SELECT payload FROM accounts ORDER BY rowid"
-            ).fetchall()
+            if owner_id is None:
+                rows = connection.execute(
+                    "SELECT payload FROM accounts ORDER BY rowid"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT payload FROM accounts WHERE owner_id = ? ORDER BY rowid",
+                    (owner_id,),
+                ).fetchall()
         return [_record_from_dict(json.loads(row["payload"])) for row in rows]
 
     def get(self, account_id: str) -> AccountRecord:
