@@ -50,11 +50,9 @@ so wishes never go negative and a cap never forces overspending.
 Income timing (§16) - the Phase 3/4 version-level approximation, stated
 explicitly so it never reads as an accident:
 
-    Version-level income becomes available when the simulation first
-    reaches the first processed banner in that version. Banners in the
-    same version therefore never credit it twice, and the current banner -
-    the first processed - spends only the account's existing wishes. This
-    matches PlannerContext.income_credit and planner.protection exactly.
+    Forecast income for the current version is not available to the current
+    phase. It becomes usable when the roadmap advances beyond the current
+    version/phase, so it cannot inflate the current banner's spendable wishes.
     Within-version arrival order (phase 1 vs phase 2, commissions, events)
     is deliberately not modeled; that granularity is out of Phase 4 scope.
     Income forecast for versions before the current version is presumed
@@ -192,8 +190,8 @@ def _run_history(
         # banner of its version. The current banner - the first processed -
         # gets nothing, matching Phase 3's budget accounting exactly.
         income_credited = 0
-        if banner_results:
-            credit = context.income_credit(banner.version)
+        credit = context.income_available_before(banner.version, banner.phase)
+        if credit > credited_so_far:
             income_credited = credit - credited_so_far
             credited_so_far = credit
             if income_credited > 0:
