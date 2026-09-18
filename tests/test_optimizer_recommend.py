@@ -1079,3 +1079,46 @@ class TestNothingToPursue:
         assert standing.meets_threshold is False
         assert standing.probability < 0.9
 
+
+
+class TestPullStrategy:
+    def test_current_progression_precedes_future_goal_by_banner_availability(self):
+        from optimizer import build_strategy
+
+        context = PlannerContext(
+            account=Account(
+                wishes=450,
+                current_pity=27,
+                character_guarantee=False,
+                owned_characters=Ownership({"Skirk": 0}),
+            ),
+            roadmap=Roadmap(
+                goals=[
+                    Goal("Vodynista", 0, 1),
+                    Goal("Vesna", 0, 2),
+                    Goal("Skirk", 2, 3),
+                    Goal("Vesna", 2, 4),
+                ],
+                banners=[
+                    Banner("Vodynista", "7.1", 1),
+                    Banner("Vesna", "7.1", 1),
+                    Banner("Skirk", "7.1", 2),
+                ],
+            ),
+            current_version="7.1",
+            current_phase=1,
+        )
+
+        strategy = build_strategy(context, runs=20, seed=7)
+
+        assert [(step.action, step.goal.character, step.goal.constellation) for step in strategy.steps] == [
+            ("get", "Vodynista", 0),
+            ("get", "Vesna", 0),
+            ("pursue_until_reserve", "Vesna", 2),
+            ("save", "Skirk", 2),
+        ]
+        assert strategy.reserve_goal == Goal("Skirk", 2, 3)
+        assert strategy.reserve_wishes is not None
+        assert strategy.reserve_probability is not None
+        assert strategy.reserve_probability >= context.confidence
+        assert strategy.steps[2].reserve_wishes == strategy.reserve_wishes
