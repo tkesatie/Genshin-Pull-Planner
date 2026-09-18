@@ -219,6 +219,15 @@
   @media (max-width: 720px) { .account-form { grid-template-columns:1fr 1fr; } }
   .empty { padding:3rem 0; }
   .empty .verdict { font-size:2rem; }
+  .auth-panel { max-width: 28rem; margin: 5rem auto 0; }
+  .auth-panel h2 { margin-bottom: 1rem; }
+  .auth-form { display:grid; gap:.8rem; }
+  .auth-form label { display:grid; gap:.3rem; align-items:start; }
+  .auth-form input { width:100%; }
+  .auth-actions { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+  .auth-switch { background:none; border:0; color:var(--gold-bright); padding:.48rem .2rem; }
+  .user-controls { display:flex; align-items:center; gap:.7rem; }
+  .user-name { color:var(--text); font-size:.8rem; }
   code { color:var(--gold-bright); }
   @media (max-width: 720px) {
     main { padding:1rem .85rem 4rem; }
@@ -236,7 +245,8 @@
 <main>
   <header>
     <div class="brand"><span class="brand-mark"></span><h1>Pull Planner</h1></div>
-    <div class="controls">
+    <div id="user-controls" class="user-controls" hidden><span id="user-name" class="user-name"></span><button id="logout">Log out</button></div>
+    <div id="planner-controls" class="controls" hidden>
       <label>Account
         <select id="account-picker"><option value="">Loading</option></select>
       </label>
@@ -249,6 +259,19 @@
   </header>
 
   <div id="status" class="status" role="alert"></div>
+
+  <section id="auth" class="auth-panel panel" hidden>
+    <h2 id="auth-title">Sign in</h2>
+    <p class="muted" id="auth-description">Sign in to access your saved Genshin accounts.</p>
+    <form id="auth-form" class="auth-form">
+      <label>Username <input id="auth-username" name="username" autocomplete="username" required minlength="3"></label>
+      <label>Password <input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+      <div class="auth-actions">
+        <button id="auth-submit" class="primary" type="submit">Sign in</button>
+        <button id="auth-switch" class="auth-switch" type="button">Create an account</button>
+      </div>
+    </form>
+  </section>
 
   <div id="empty" class="empty" hidden>
     <p class="verdict">No accounts yet.</p>
@@ -332,7 +355,7 @@
 <script>
 "use strict";
 
-const state = { account: null, planner: null, runOptions: {}, plannerLoading: false, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
+const state = { user: null, authMode: "login", account: null, planner: null, runOptions: {}, plannerLoading: false, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -369,6 +392,87 @@ async function api(path, options) {
     );
   }
   return body;
+}
+
+/* ---------- authentication ---------- */
+
+function renderAuth() {
+  const login = state.authMode === "login";
+  $("auth").hidden = !!state.user;
+  $("planner-controls").hidden = !state.user;
+  $("user-controls").hidden = !state.user;
+  $("auth-title").textContent = login ? "Sign in" : "Create account";
+  $("auth-description").textContent = login
+    ? "Sign in to access your saved Genshin accounts."
+    : "Create a login for your saved Genshin accounts.";
+  $("auth-submit").textContent = login ? "Sign in" : "Create account";
+  $("auth-switch").textContent = login ? "Create an account" : "Back to sign in";
+  $("auth-password").autocomplete = login ? "current-password" : "new-password";
+}
+
+async function loadCurrentUser() {
+  try {
+    state.user = await api("/auth/me");
+    $("user-name").textContent = state.user.username;
+    renderAuth();
+    await loadAccounts();
+  } catch (error) {
+    if (error.message === "authentication required" || error.message === "session expired") {
+      state.user = null;
+      renderAuth();
+      return;
+    }
+    showError(error.message);
+  }
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  clearError();
+  $("auth-submit").disabled = true;
+  try {
+    const username = $("auth-username").value.trim();
+    const password = $("auth-password").value;
+    const endpoint = state.authMode === "login" ? "/auth/login" : "/auth/register";
+    const user = await api(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (state.authMode === "register") {
+      await api("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+    }
+    state.user = user;
+    $("user-name").textContent = user.username;
+    $("auth-form").reset();
+    renderAuth();
+    await loadAccounts();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    $("auth-submit").disabled = false;
+  }
+}
+
+async function logout() {
+  clearError();
+  try {
+    await api("/auth/logout", { method: "POST" });
+    state.user = null;
+    state.account = null;
+    state.planner = null;
+    $("account-picker").innerHTML = "<option value=\"\">Sign in to continue</option>";
+    $("account-picker").hidden = false;
+    $("empty").hidden = true;
+    $("dashboard").hidden = true;
+    renderAuth();
+  } catch (error) {
+    showError(error.message);
+  }
 }
 
 /* ---------- loading ---------- */
@@ -1009,6 +1113,13 @@ async function run() {
 }
 
 $("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
+$("auth-form").addEventListener("submit", submitAuth);
+$("auth-switch").addEventListener("click", () => {
+  state.authMode = state.authMode === "login" ? "register" : "login";
+  clearError();
+  renderAuth();
+});
+$("logout").addEventListener("click", logout);
 $("save").addEventListener("click", saveAccount);
 $("run").addEventListener("click", run);
 $("confidence").addEventListener("change", () => {
@@ -1016,7 +1127,8 @@ $("confidence").addEventListener("change", () => {
   console.log("Confidence changed — planner results cleared; run the planner to recalculate");
 });
 
-loadAccounts().catch((error) => showError(error.message));
+renderAuth();
+loadCurrentUser();
 </script>
 </body>
 </html>
