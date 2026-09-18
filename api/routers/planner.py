@@ -229,7 +229,7 @@ def _select_banner(banners, character):
         )
     return matches[0]
 
-_recommendation(
+def _recommendation(
     record: AccountRecord,
     overrides: ContextOverrides,
     runs: int,
