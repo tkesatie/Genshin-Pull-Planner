@@ -242,10 +242,18 @@
 
   <div id="dashboard" hidden>
     <section id="verdict-section">
-      <div class="panel">
-        <p class="verdict" id="verdict">Run the planner to see the current recommendation.</p>
-        <p id="verdict-detail" class="muted">Every candidate spend is simulated, so this takes a few seconds.</p>
-        <p class="provenance" id="provenance"></p>
+      <div class="hero">
+        <div class="hero-top">
+          <div><div class="eyebrow">Current banner</div><div class="banner-name">Current banner</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
+          <div class="resources"><div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div><div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div></div>
+        </div>
+        <div class="decision">
+          <div id="decision-label" class="decision-label">Recommendation</div>
+          <p class="verdict" id="verdict">Run the planner to see the current recommendation.</p>
+          <p id="verdict-detail" class="decision-detail">Every candidate spend is simulated, so this takes a few seconds.</p>
+          <div class="metrics"><div class="metric"><span class="metric-label">Target</span><span class="metric-value" id="metric-target">—</span></div><div class="metric"><span class="metric-label">Maximum spend</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of target</span><span class="metric-value" id="metric-probability">—</span></div></div>
+          <p class="provenance" id="provenance"></p>
+        </div>
       </div>
     </section>
 
@@ -377,8 +385,11 @@ async function loadAccounts() {
 
 async function selectAccount(id) {
   clearError();
-  state.account = await api(`/accounts/${id}`);\n  $("hero-wishes").textContent = state.account.account.wishes;\n  $("hero-pity").textContent = state.account.account.current_pity;
+  state.account = await api(`/accounts/${id}`);
   $("confidence").value = state.account.settings.confidence;
+  $("hero-wishes").textContent = state.account.account.wishes;
+  $("hero-pity").textContent = state.account.account.current_pity;
+  $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   resetVerdict();
   await loadPlanner();
@@ -465,7 +476,12 @@ function barRow(label, sublabel, probability, threshold, meets) {
 }
 
 function renderRecommendation(rec) {
-  const banner = bannerName(rec.banner);\n  $("decision-label").className = `decision-label ${rec.action}`;\n  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
+  const banner = bannerName(rec.banner);
+  $("decision-label").className = `decision-label ${rec.action}`;
+  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
+  $("metric-target").textContent = `${rec.outcome.character} ${rec.outcome.label}`;
+  $("metric-budget").textContent = wishWord(rec.budget);
+  $("metric-probability").textContent = pct(rec.outcome_probability);\n  $("decision-label").className = `decision-label ${rec.action}`;\n  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
   const nonGating = rec.protected.filter((standing) => standing.constraining === false);
   if (rec.action === "pursue") {
     $("verdict").innerHTML =
