@@ -343,3 +343,20 @@ def test_owned_skirk_c0_requires_two_copies_for_c2():
     run = simulate_history(context, plan, __import__("numpy").random.default_rng(0))
 
     assert run.banner_results[0].copies_needed == 2
+
+
+def test_strategy_frontier_does_not_simulate_every_possible_spend(monkeypatch):
+    """The optimized frontier search must not regress to 451 full simulations."""
+    context = strategy_context()
+    calls = 0
+
+    def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
+        nonlocal calls
+        calls += 1
+        return fake_strategy_result(plan, 0.91)
+
+    monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
+
+    strategy_module.build_strategy(context, runs=1, seed=0)
+
+    assert calls <= 20
