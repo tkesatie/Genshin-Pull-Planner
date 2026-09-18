@@ -17,6 +17,7 @@ from api.schemas.planner import (
     SpendRowView,
     SpendTableView,
     StopConditionsView,
+    PullStrategyView,
 )
 from optimizer import (
     DEFAULT_RUNS,
@@ -24,6 +25,7 @@ from optimizer import (
     OutcomeOption,
     evaluate_candidate,
     recommend,
+    build_strategy,
 )
 from planner import (
     actionable_goals,
@@ -268,6 +270,30 @@ def planner_recommendation(
         decision,
         confidence=context.confidence,
         minimum_outcome_probability=minimum_outcome_probability,
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/planner/strategy",
+    response_model=PullStrategyView,
+    summary="Build the current multi-step pull strategy",
+)
+def planner_strategy(
+    runs: int = Query(DEFAULT_RUNS),
+    seed: int | None = Query(DEFAULT_SEED),
+    record: AccountRecord = Depends(get_record),
+    overrides: ContextOverrides = Depends(context_overrides),
+) -> PullStrategyView:
+    context = record.context(
+        confidence=overrides.confidence,
+        income_scenario=overrides.income_scenario,
+    )
+    if runs < 1:
+        raise ValueError(f"runs must be >= 1, got {runs}")
+    strategy = build_strategy(context, runs=runs, seed=seed)
+    return PullStrategyView.from_domain(
+        strategy,
+        confidence=context.confidence,
     )
 
 
