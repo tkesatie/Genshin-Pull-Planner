@@ -42,7 +42,8 @@ class GoalEvaluationView(BaseModel):
 
 
 class GoalEvaluationsView(BaseModel):
-    current_banner: BannerModel
+    current_banner: BannerModel | None
+    available_banners: list[BannerModel]
     goals: list[GoalEvaluationView]
 
 
@@ -67,7 +68,8 @@ class ProtectedGoalOutcomeView(BaseModel):
 
 
 class SafeSpendView(BaseModel):
-    current_banner: BannerModel
+    current_banner: BannerModel | None
+    available_banners: list[BannerModel]
     safe_spend: int
     account_wishes: int
     confidence: float
