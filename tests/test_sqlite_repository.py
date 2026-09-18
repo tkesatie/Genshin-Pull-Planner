@@ -19,15 +19,16 @@ def test_sqlite_repository_round_trips_account(tmp_path):
 
 def test_sqlite_repository_round_trips_owner_id(tmp_path):
     repository = SQLiteAccountRepository(tmp_path / "planner.sqlite3")
-    record = create_demo_account().__class__(
-        id=create_demo_account().id,
-        label=create_demo_account().label,
-        account=create_demo_account().account,
-        settings=create_demo_account().settings,
-        goals=create_demo_account().goals,
-        banners=create_demo_account().banners,
-        preferences=create_demo_account().preferences,
-        income=create_demo_account().income,
+    base = create_demo_account()
+    record = base.__class__(
+        id=base.id,
+        label=base.label,
+        account=base.account,
+        settings=base.settings,
+        goals=base.goals,
+        banners=base.banners,
+        preferences=base.preferences,
+        income=base.income,
         owner_id="user-123",
     )
     repository.create(record)
