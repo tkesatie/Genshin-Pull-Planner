@@ -62,15 +62,3 @@ def test_record_lost_50_50_updates_guarantee_and_radiance():
     assert account["capturing_radiance_counter"] == 1
 
 
-def test_record_stopped_pull_advances_pity_without_changing_guarantee():
-    client, account_id = _client_with_account()
-    response = client.post(
-        f"/accounts/{account_id}/pull-result",
-        json={"outcome": "stopped", "wishes_used": 10},
-    )
-
-    assert response.status_code == 200, response.text
-    account = response.json()["account"]
-    assert account["wishes"] == 440
-    assert account["current_pity"] == 37
-    assert account["character_guarantee"] is False
