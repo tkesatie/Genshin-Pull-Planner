@@ -184,42 +184,79 @@ def _safe_spend(
     runs: int,
     seed: int | None,
 ) -> tuple[int, SimulationResult, tuple[Goal, ...]]:
-    """Find the largest current budget that preserves every constraint."""
-    import time
+    """Find the largest current budget that preserves every constraint.
 
-    started = time.perf_counter()
-    candidates = 0
-    observations: list[tuple[int, float]] = []
+    The protected probability is empirically monotonic with spend, but Monte
+    Carlo introduces small local fluctuations. Use coarse sampling to bracket
+    the frontier, binary search to narrow it, then exhaustively test a small
+    window around the boundary so the returned value is directly verified.
+    """
+    max_spend = context.account.wishes
+    cache: dict[int, tuple[SimulationResult, tuple[Goal, ...]]] = {}
 
-    for spend in range(context.account.wishes, -1, -1):
-        candidates += 1
-        result, protected_goals = _evaluate_spend(
-            context, goal, banner, spend, runs=runs, seed=seed
-        )
-        if not protected_goals:
-            elapsed = time.perf_counter() - started
-            print(
-                f"_safe_spend: goal={goal.character} C{goal.constellation}, "
-                f"candidates={candidates}, elapsed={elapsed:.3f}s, safe_spend={spend}"
+    def evaluate(spend: int) -> tuple[SimulationResult, tuple[Goal, ...]]:
+        if spend not in cache:
+            cache[spend] = _evaluate_spend(
+                context, goal, banner, spend, runs=runs, seed=seed
             )
-            return spend, result, protected_goals
+        return cache[spend]
+
+    def is_safe(spend: int) -> bool:
+        result, protected_goals = evaluate(spend)
+        if not protected_goals:
+            return True
         probabilities = [
             next(item for item in result.goals if item.goal == protected).probability
             for protected in protected_goals
         ]
-        if protected_goals:
-            observations.append((spend, min(probabilities)))
-        if all(probability >= context.confidence for probability in probabilities):
-            elapsed = time.perf_counter() - started
-            print(
-                f"_safe_spend: goal={goal.character} C{goal.constellation}, "
-                f"candidates={candidates}, elapsed={elapsed:.3f}s, safe_spend={spend}"
-            )
-            print(
-                "_safe_spend observations:",
-                ", ".join(f"{spend}={prob:.3f}" for spend, prob in observations)
-            )
+        return all(probability >= context.confidence for probability in probabilities)
+
+    # First find a safe/unsafe bracket with a small number of broad samples.
+    if is_safe(max_spend):
+        safe = max_spend
+        unsafe = None
+    else:
+        safe = 0
+        unsafe = max_spend
+        step = max(25, max_spend // 8)
+        spend = max_spend - step
+
+        while spend > 0:
+            if is_safe(spend):
+                safe = spend
+                break
+            unsafe = spend
+            spend -= step
+
+        if spend == 0 and safe == 0:
+            evaluate(0)
+        elif safe == 0 and is_safe(0):
+            evaluate(0)
+        elif safe == 0:
+            raise RuntimeError("safe-spend search must find the zero-spend candidate")
+
+    # Narrow the bracket using the monotonic trend observed in Monte Carlo.
+    if unsafe is not None:
+        low = safe
+        high = unsafe
+        while high - low > 1:
+            mid = (low + high) // 2
+            if is_safe(mid):
+                low = mid
+            else:
+                high = mid
+        safe = low
+
+    # Verify the boundary directly. A few noisy Monte Carlo points should not
+    # determine the answer solely through the binary search.
+    window = 5
+    lower = max(0, safe - window)
+    upper = min(max_spend, safe + window)
+    for spend in range(upper, lower - 1, -1):
+        if is_safe(spend):
+            result, protected_goals = evaluate(spend)
             return spend, result, protected_goals
+
     raise RuntimeError("safe-spend search must find the zero-spend candidate")
 
 
