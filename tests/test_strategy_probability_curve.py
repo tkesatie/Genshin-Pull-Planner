@@ -343,15 +343,13 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
         if step.goal == Goal("Vesna", 2, 4)
     )
 
-    print("\nVesna C2 strategy probability with shared phase-1 budget")
+    print("\nVesna C2 joint strategy probability")
     print(f"safe spend: {vesna_c2.safe_spend}")
     print(f"reserve: {vesna_c2.reserve_wishes}")
     print(f"joint probability: {vesna_c2.outcome_probability:.2%}")
 
-    # The advertised frontier should leave the Skirk C2 reserve intact while
-    # requiring the same shared current-phase budget to obtain Vodynista C0
-    # and Vesna C2. The resulting joint probability is only a few percent,
-    # not the isolated Vesna-C2 probability that previously appeared here.
+    # Vodynista C0 and Vesna C2 must fit the strategy's sequential current-
+    # banner allocation. Skirk C2 remains the separate 90% reserve constraint.
     assert vesna_c2.safe_spend in range(215, 224)
     assert vesna_c2.reserve_wishes in range(227, 236)
     assert 0.03 < vesna_c2.outcome_probability < 0.08
