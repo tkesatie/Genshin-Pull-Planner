@@ -145,6 +145,10 @@
   .strategy-item.recommended .strategy-action { color:var(--gold-bright); }
   .strategy-outcomes { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.65rem; }
   .strategy-outcomes button { font-size:.76rem; padding:.35rem .55rem; }
+  .owned-list { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .owned-card { min-width:8rem; padding:.65rem .75rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
+  .owned-card strong { display:block; color:var(--text); }
+  .owned-card span { color:var(--muted); font-size:.75rem; }
   .strategy-frontier { margin-top:.55rem; display:flex; flex-wrap:wrap; gap:.5rem 1.25rem; align-items:baseline; }
   .strategy-frontier strong { color:var(--gold-bright); font-size:1.2rem; }
   .strategy-frontier .frontier-label { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
@@ -295,6 +299,12 @@
         <div class="account-form-actions"><button id="save" class="primary">Save account state</button><span id="save-note" class="muted"></span></div>
       </div>
     </details>
+    <section>
+      <h2>Owned characters</h2>
+      <p class="muted">Characters currently recorded on this account.</p>
+      <div class="panel"><div id="owned-characters" class="owned-list"></div></div>
+    </section>
+
     <section id="verdict-section">
       <div class="hero">
         <div class="hero-top">
@@ -510,6 +520,7 @@ async function selectAccount(id) {
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   resetVerdict();
+  renderOwnedCharacters();
   await loadGoals();
 }
 
@@ -556,11 +567,9 @@ async function loadPlanner(source = "unknown") {
       throw new Error("Planner goals are not loaded. Select the account again.");
     }
 
-    const recommendationPromise = Object.keys(state.runOptions || {}).length
-      ? api(
-          `/accounts/${id}/planner/recommendation${query(state.runOptions)}`
-        )
-      : Promise.resolve(state.planner && state.planner.recommendation);
+    const recommendationPromise = api(
+      `/accounts/${id}/planner/recommendation${query(state.runOptions)}`
+    );
     const strategyPromise = api(`/accounts/${id}/planner/strategy${query()}`);
 
     // Recommendation and strategy are independent backend calculations, so
@@ -754,10 +763,7 @@ function renderRecommendation(rec, strategy) {
       const lost = document.createElement("button");
       lost.textContent = "Lost 50/50";
       lost.addEventListener("click", () => recordPullOutcome(step.goal.character, "lost_50_50"));
-      const stopped = document.createElement("button");
-      stopped.textContent = "Stopped pulling";
-      stopped.addEventListener("click", () => recordPullOutcome(step.goal.character, "stopped"));
-      outcomes.append(pulled, lost, stopped);
+      outcomes.append(pulled, lost);
       body.append(outcomes);
     }
 
@@ -1052,6 +1058,30 @@ function renderRoadmap(view) {
 
 /* ---------- account editing ---------- */
 
+function renderOwnedCharacters() {
+  const host = $("owned-characters");
+  host.innerHTML = "";
+  const characters = Object.entries(state.account.account.owned_characters || {})
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (characters.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "No characters recorded yet.";
+    host.append(empty);
+    return;
+  }
+  for (const [character, constellation] of characters) {
+    const card = document.createElement("div");
+    card.className = "owned-card";
+    const name = document.createElement("strong");
+    name.textContent = character;
+    const level = document.createElement("span");
+    level.textContent = `C${constellation}`;
+    card.append(name, level);
+    host.append(card);
+  }
+}
+
 function fillAccountForm() {
   const account = state.account.account;
   const settings = state.account.settings;
@@ -1108,7 +1138,7 @@ async function saveAccount() {
 
 
 async function recordPullOutcome(character, outcome) {
-  const label = outcome === "featured" ? `Pulled ${character}` : outcome === "lost_50_50" ? "Lost 50/50" : "Stopped pulling";
+  const label = outcome === "featured" ? `Pulled ${character}` : "Lost 50/50";
   const value = window.prompt(`${label}. How many wishes did you use?`, "0");
   if (value === null) return;
   const wishesUsed = Number(value);
@@ -1125,6 +1155,7 @@ async function recordPullOutcome(character, outcome) {
     });
     state.planner = null;
     fillAccountForm();
+    renderOwnedCharacters();
     $("confidence").value = state.account.settings.confidence;
     $("hero-wishes").textContent = state.account.account.wishes;
     $("hero-pity").textContent = state.account.account.current_pity;
