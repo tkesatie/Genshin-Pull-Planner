@@ -11,7 +11,8 @@ from dataclasses import replace
 from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Ownership, Roadmap, VersionIncome
 from planner import PlannerContext
 from simulation import PlannedSpend, SpendPlan, simulate
-
+from dataclasses import replace
+import numpy as np
 
 VODYNISTA = Banner("Vodynista", "7.1", 1)
 VESNA = Banner("Vesna", "7.1", 1)
