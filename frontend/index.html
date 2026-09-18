@@ -565,6 +565,7 @@ function renderRecommendation(rec, strategy) {
 
       frontier.append(keep, probability);
       body.append(action, meta, frontier);
+      item.append(index, body);
       item.classList.add("recommended");
       strategyList.append(item);
       continue;
@@ -867,6 +868,8 @@ async function saveAccount() {
         },
       }),
     });
+    state.planner = null;
+    fillAccountForm();
     $("save-note").textContent = "Saved. Run the planner again.";
     $("confidence").value = state.account.settings.confidence;
     $("hero-wishes").textContent = state.account.account.wishes;
