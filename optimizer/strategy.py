@@ -240,8 +240,12 @@ def _protected_requirement(
                     ),
                 )
             )
-            result = simulate(
+            simulation_context = replace(
                 future_context,
+                account=replace(future_context.account, wishes=wishes),
+            )
+            result = simulate(
+                simulation_context,
                 plan,
                 runs=runs,
                 seed=seed,
