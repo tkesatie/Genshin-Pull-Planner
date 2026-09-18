@@ -282,6 +282,7 @@ def simulate(
     plan: SpendPlan,
     runs: int = DEFAULT_RUNS,
     seed: int | None = DEFAULT_SEED,
+    joint_goals=(),
 ) -> SimulationResult:
     """Simulate `runs` possible futures and aggregate them (§11).
 
@@ -298,5 +299,5 @@ def simulate(
     plan.require_valid_for(context)
     rng = np.random.default_rng(seed)
     histories = [_run_history(context, plan, rng) for _ in range(runs)]
-    return aggregate_runs(histories, plan, seed)
+    return aggregate_runs(histories, plan, seed, joint_goals=joint_goals)
 
