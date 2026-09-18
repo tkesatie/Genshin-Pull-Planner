@@ -185,7 +185,7 @@ def test_skirk_c2_probability_by_starting_pity(capsys):
                 account = replace(
                     context.account,
                     wishes=budget,
-                    character_pity=starting_pity,
+                    current_pity=starting_pity,
                     character_guarantee=False,
                 )
                 _, copies, _, _ = _pull_toward_target(
