@@ -210,7 +210,15 @@ def test_reserve_first_with_future_income_gives_275_current_spend_ceiling(monkey
             vesna = plan.entry_for(VESNA)
             assert vesna is not None
             probability = 0.91 if vesna.budget <= 275 else 0.89
-        return fake_strategy_result(plan, probability)
+        return fake_strategy_result(
+            plan,
+            probability,
+            joint_probability=probability if entry is not None else 0.42,
+            joint_goals=(Goal("Skirk", 2, 3),) if entry is not None else (
+                Goal("Vodynista", 0, 1),
+                Goal("Vesna", 2, 4),
+            ),
+        )
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
 
