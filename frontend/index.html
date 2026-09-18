@@ -277,7 +277,7 @@
           </div>
           <p id="verdict-detail" class="decision-detail">The strategy is based on your goal priorities, available banners, and protection thresholds.</p>
           <div class="metrics"><div class="metric"><span class="metric-label">Spend boundary</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of full roadmap</span><span class="metric-value" id="metric-roadmap-probability">—</span></div></div>
-          <p class="provenance" id="provenance"></p>
+          <div class="resource-breakdown" id="resource-breakdown"></div><p class="provenance" id="provenance"></p>
         </div>
       </div>
     </section>
@@ -459,7 +459,7 @@ function resetVerdict() {
   $("verdict").textContent = "Run the planner to see the current recommendation.";
   $("verdict-detail").textContent =
     "Every candidate spend is simulated, so this takes a few seconds.";
-  $("provenance").textContent = "";
+  $("provenance").textContent = "";\n  $("resource-breakdown").innerHTML = "";
   $("why-section").hidden = true;
   $("protected-section").hidden = true;
   $("stops-section").hidden = true;
@@ -520,6 +520,14 @@ function renderRecommendation(rec, strategy) {
   const steps = strategy && strategy.steps ? strategy.steps : [];
   let number = 1;
 
+  if (strategy) {
+    $("resource-breakdown").innerHTML = `
+      <div class="resource-card"><span>Available now</span><strong>${wishWord(strategy.starting_wishes)}</strong></div>
+      <div class="resource-card"><span>Expected future income</span><strong>+${wishWord(strategy.future_income)}</strong></div>
+      <div class="resource-card"><span>Current-phase spend</span><strong>${wishWord(strategy.starting_wishes)}</strong></div>
+    `;
+  }
+
   for (const step of steps) {
     const item = document.createElement("div");
     item.className = "strategy-item";
@@ -555,6 +563,14 @@ function renderRecommendation(rec, strategy) {
       const frontier = document.createElement("div");
       frontier.className = "strategy-frontier";
 
+      const accounting = document.createElement("div");
+      accounting.className = "strategy-accounting";
+      accounting.innerHTML = `
+        <span>Starting reserve</span><strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>
+        <span>Future income before ${goalName(step.goal)}</span><strong>+${wishWord(step.future_income ?? 0)}</strong>
+        <span>Total resources for future protection</span><strong>${wishWord(step.protected_total_wishes ?? step.reserve_wishes)}</strong>
+      `;
+
       const keep = document.createElement("div");
       keep.innerHTML =
         `<span class="frontier-label">Spend down to</span> <strong>${wishWord(step.safe_spend)}</strong>`;
@@ -563,7 +579,7 @@ function renderRecommendation(rec, strategy) {
       probability.innerHTML =
         `<span class="frontier-label">Chance of ${goalName(step.goal)}</span> <span class="frontier-probability">${pct(step.outcome_probability)}</span>`;
 
-      frontier.append(keep, probability);
+      frontier.append(keep, probability);\n      body.append(accounting);
       body.append(action, meta, frontier);
       item.append(index, body);
       item.classList.add("recommended");
