@@ -20,6 +20,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
+from api.demo_data import create_demo_account
 from api.jobs import SimulationJobStore
 from api.repository import AccountNotFound, AccountRepository, InMemoryAccountRepository
 from api.routers import accounts, planner, probability, roadmap, simulation
@@ -71,9 +72,10 @@ def create_app(
         description=DESCRIPTION,
         version="0.6.0",
     )
-    app.state.repository = (
-        InMemoryAccountRepository() if repository is None else repository
-    )
+    if repository is None:
+        repository = InMemoryAccountRepository()
+        repository.create(create_demo_account())
+    app.state.repository = repository
     app.state.jobs = SimulationJobStore() if jobs is None else jobs
 
     app.add_exception_handler(AccountNotFound, _not_found_handler)
