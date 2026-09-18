@@ -528,7 +528,7 @@ def test_vodynista_vesna_spend_cap_for_90_percent_skirk(capsys):
     context = make_context()
     mechanics = context.mechanics
     runs = 20_000
-    caps = (180, 190, 200, 210, 220, 230, 240, 250, 260, 270, 275)
+    caps = (280, 290, 300, 310, 320, 330, 340, 350, 360, 370, 380, 390, 400)
 
     print("\nCurrent-phase cap vs downstream Skirk C2 (20,000 runs, seed=0)")
     print("cap | Vesna C2 | avg wishes at Skirk | Skirk C2")
