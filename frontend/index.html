@@ -383,8 +383,11 @@ function clearError() {
   $("status").textContent = "";
 }
 
-async function api(path, options) {
-  const response = await fetch(path, options);
+async function api(path, options = {}) {
+  // Planner/account GETs must reflect state changes immediately after a pull result.
+  // Disable browser caching so a re-run cannot reuse the previous planner response.
+  const request = { ...options, cache: "no-store" };
+  const response = await fetch(path, request);
   if (path.includes("/planner/") && !path.includes("/planner/timing")) {
     const requestElapsed = state.plannerStarted === null
       ? null
