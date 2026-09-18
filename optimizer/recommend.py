@@ -34,13 +34,31 @@ necessarily reaches C0). That tuple is therefore ordered by descending
 constellation - the furthest target first - not by the user's stated
 preference rank: a same-character chain is a progression of how far to
 go, never a set of mutually exclusive alternatives, so the outcome that
-subsumes the most of the chain is tried first. This function simply
-walks that order front-to-back; a nearer target never displaces a
-further one this function has already found feasible. Within the
-winning outcome, the candidate caps are scanned from the account's
-wishes down to 0 and the first feasible cap is recommended: the largest
-feasible cap (§14's safe spending, evaluated at roadmap level through
-simulation).
+subsumes the most of the chain is tried first. One scheduling exception
+(optimizer.outcomes' later-progression rule): a chain constellation whose
+roadmap goal is BLOCKED (§9) and whose character has a strictly later
+banner is a later progression objective - the roadmap schedules that
+reach for the later banner - so it sorts behind the current-banner
+objectives and carries a `later_progression` tag. Selection is
+two-phase. Phase one evaluates every outcome to its first feasible cap
+in a descending scan - for an unconstrained outcome the cap-scan
+shortcut makes that the whole pool. Phase two picks the winner: the
+first feasible outcome in menu order, except that a tagged
+later-progression outcome takes the lead when pursuing it NOW is an
+ordinary recommendation (its probability at that cap is at or above
+`minimum_outcome_probability`) and it is the deeper constellation. That
+is the cumulative-progression rule (§4.2, §12): pulling toward the
+active milestone is also progress toward the later objective, and one
+plan entry targeting the deeper constellation lets the Phase 4
+simulator pull through C0 toward C2 within each history - each
+future's C0 acquisition point varies naturally and the remaining spend
+continues toward C2. When the surplus makes the progression likely
+enough at a protection-respecting cap, the plan targets it; below that
+bar the reach stays the gamble the roadmap scheduled for later, the
+active milestone leads, and the objective is pursued on its own banner
+after the re-run (§2). The winning outcome's reported cap is its first
+feasible cap: the largest cap (§14's safe spending, evaluated at
+roadmap level through simulation).
 
 The scan is exhaustive over the given caps and never binary-searches:
 feasibility is not monotone in the cap. Spending one more wish can lose
@@ -151,12 +169,14 @@ class Recommendation:
             carries whether it gates the decision (§2's priority gate), so
             a lower-priority goal shows its probability without vetoing
             the spend.
-        rejected: outcomes tried before the winner (or before giving up),
-            in the same order `available_outcomes` returns them - furthest
-            constellation first - the "why" behind the recommendation. A
-            "discretionary" winner is never itself listed here: the 25%
-            check decides how to present the winning outcome, not whether
-            it is the winner (module docstring).
+        rejected: outcomes that could not be pursued at any scanned cap,
+            in the order `available_outcomes` returns them - the "why"
+            behind the recommendation. A feasible outcome is never listed
+            here: not a "discretionary" winner (the 25% check decides how
+            to present the winning outcome, module docstring) and not a
+            later-progression outcome that yielded to the winner -
+            yielding is the outcome-order eligibility rule, not a
+            feasibility verdict.
         skip_reason: why nothing can be pursued; None unless skipping.
         discretionary_reason: why a feasible outcome was downgraded to a
             disclosed gamble instead of an ordinary recommendation; None
@@ -286,14 +306,25 @@ def recommend(
     not. Lower-priority protected goals may still exist and are still
     reported - they simply do not gate the spend (§2).
 
-    `minimum_outcome_probability` never changes which outcome wins or its
-    cap (module docstring: it is not an outcome-selection rule) - it only
-    decides whether the winning candidate is reported as `action="pursue"`
-    or the disclosed-gamble `action="discretionary"`.
+    Selection is two-phase (module docstring): every outcome is evaluated
+    to its first feasible cap - the largest cap that keeps the roadmap
+    safe - and the winner is the first feasible outcome in menu order,
+    unless a tagged later-progression outcome is the deeper constellation
+    AND an ordinary recommendation at its cap, in which case it leads.
 
-    Cost: a pursue or discretionary recommendation stops at its first
-    feasible cap, so it probes only the rejected upper caps. A skip must
-    scan every cap of every outcome to report the rejections, which costs
+    `minimum_outcome_probability` never changes which outcome a chosen
+    winner is, or its cap (module docstring: for a chosen winner it is not
+    an outcome-selection rule) - it only decides whether the winning
+    candidate is reported as `action="pursue"` or the disclosed-gamble
+    `action="discretionary"`. Its one ordering interaction is the
+    later-progression eligibility rule: a roadmap-scheduled later
+    objective leads only when pursuing it now clears the minimum at its
+    protection-respecting cap.
+
+    Cost: each outcome is probed down to its first feasible cap, so a
+    pursue or discretionary recommendation probes the rejected upper caps
+    of every outcome it considered. A skip must scan every cap of every
+    outcome to report the rejections, which costs
     `outcomes x caps x runs` histories - seconds, not milliseconds, at the
     defaults. Pass a coarser `budgets` list when latency matters, keeping
     in mind that a coarse list can miss a narrow feasible window
@@ -322,6 +353,7 @@ def recommend(
             seed,
         )
 
+    evaluated: list[tuple[OutcomeOption, CandidateStrategy]] = []
     rejected: list[RejectedOutcome] = []
     for outcome in outcomes:
         # The cap-scan shortcut is per outcome, not global (§14): a deeper
@@ -335,6 +367,7 @@ def recommend(
             else all_caps[:1]  # the largest cap dominates (see docstring)
         )
         diagnostic_best: CandidateStrategy | None = None
+        first_feasible: CandidateStrategy | None = None
         for cap in caps:
             candidate = evaluate_candidate(
                 context, outcome, cap, runs=runs, seed=seed
@@ -346,68 +379,96 @@ def recommend(
                 diagnostic_best = candidate
             if candidate.feasible:
                 # First feasible cap in a descending scan = the largest
-                # feasible cap among the scanned caps (§14). Which outcome
-                # won and what it costs are already settled at this point;
-                # the only thing left to decide is how to present it (module
-                # docstring step 4) - never whether to keep scanning.
-                if candidate.outcome_probability >= minimum_outcome_probability:
-                    return Recommendation(
-                        banner=current_banner(context),
-                        action="pursue",
-                        outcome=outcome,
-                        budget=cap,
-                        plan=candidate.plan,
-                        outcome_probability=candidate.outcome_probability,
-                        protected=candidate.protected,
-                        rejected=tuple(rejected),
-                        skip_reason=None,
-                        stops=for_pursue(outcome.label, cap),
-                        runs=runs,
-                        seed=seed,
-                        discretionary_reason=None,
-                    )
-                reason = _discretionary_reason(
-                    outcome.label,
-                    candidate.outcome_probability,
-                    minimum_outcome_probability,
-                )
-                return Recommendation(
-                    banner=current_banner(context),
-                    action="discretionary",
-                    outcome=outcome,
-                    budget=cap,
-                    plan=candidate.plan,
-                    outcome_probability=candidate.outcome_probability,
-                    protected=candidate.protected,
-                    rejected=tuple(rejected),
-                    skip_reason=None,
-                    stops=for_discretionary(
-                        outcome.label,
-                        cap,
-                        candidate.outcome_probability,
-                        minimum_outcome_probability,
-                    ),
-                    runs=runs,
-                    seed=seed,
-                    discretionary_reason=reason,
-                )
-        shortfalls = tuple(
-            standing
-            for standing in diagnostic_best.protected
-            if standing.constraining and not standing.meets_threshold
-        )
-        rejected.append(
-            RejectedOutcome(
-                outcome=outcome, best=diagnostic_best, shortfalls=shortfalls
+                # feasible cap among the scanned caps (§14): this outcome's
+                # whole case - its cap, and its own probability at that cap.
+                first_feasible = candidate
+                break
+        if first_feasible is None:
+            shortfalls = tuple(
+                standing
+                for standing in diagnostic_best.protected
+                if standing.constraining and not standing.meets_threshold
             )
+            rejected.append(
+                RejectedOutcome(
+                    outcome=outcome, best=diagnostic_best, shortfalls=shortfalls
+                )
+            )
+            continue
+        evaluated.append((outcome, first_feasible))
+
+    if not evaluated:
+        return _skip(
+            context,
+            f"no preferred outcome can be pursued while keeping every "
+            f"higher-priority protected goal at or above the "
+            f"{context.confidence:.0%} confidence threshold",
+            runs,
+            seed,
+            rejected=tuple(rejected),
         )
 
-    return _skip(
-        context,
-        f"no preferred outcome can be pursued while keeping every "
-        f"higher-priority protected goal at or above the "
-        f"{context.confidence:.0%} confidence threshold",
-        runs,
-        seed,
+    # Winner selection (§13 step 7): the first feasible outcome in menu
+    # order wins - except that a later-progression outcome takes the lead
+    # when pursuing it now is an ordinary recommendation (its probability
+    # at its largest protection-respecting cap clears
+    # `minimum_outcome_probability`) and it is the deeper constellation:
+    # one plan entry targeting it lets the Phase 4 simulator pull through
+    # the nearer milestones toward it (§4.2, §12 - the cumulative
+    # progression; the acquisition point of each nearer milestone varies
+    # by history and the remaining spend continues toward the target).
+    # Below that bar the reach stays the gamble the roadmap scheduled for
+    # a later banner: the nearer objective leads, and the later one is
+    # pursued on its own banner after the re-run (§2).
+    winner_outcome, winner = evaluated[0]
+    for outcome, candidate in evaluated[1:]:
+        if (
+            outcome.later_progression
+            and candidate.outcome_probability >= minimum_outcome_probability
+            and outcome.constellation > winner_outcome.constellation
+        ):
+            winner_outcome, winner = outcome, candidate
+
+    # The presentation check (step 4) settles only how the winner is
+    # reported - never which outcome or cap won (module docstring).
+    if winner.outcome_probability >= minimum_outcome_probability:
+        return Recommendation(
+            banner=current_banner(context),
+            action="pursue",
+            outcome=winner_outcome,
+            budget=winner.budget,
+            plan=winner.plan,
+            outcome_probability=winner.outcome_probability,
+            protected=winner.protected,
+            rejected=tuple(rejected),
+            skip_reason=None,
+            stops=for_pursue(winner_outcome.label, winner.budget),
+            runs=runs,
+            seed=seed,
+            discretionary_reason=None,
+        )
+    reason = _discretionary_reason(
+        winner_outcome.label,
+        winner.outcome_probability,
+        minimum_outcome_probability,
+    )
+    return Recommendation(
+        banner=current_banner(context),
+        action="discretionary",
+        outcome=winner_outcome,
+        budget=winner.budget,
+        plan=winner.plan,
+        outcome_probability=winner.outcome_probability,
+        protected=winner.protected,
         rejected=tuple(rejected),
+        skip_reason=None,
+        stops=for_discretionary(
+            winner_outcome.label,
+            winner.budget,
+            winner.outcome_probability,
+            minimum_outcome_probability,
+        ),
+        runs=runs,
+        seed=seed,
+        discretionary_reason=reason,
     )

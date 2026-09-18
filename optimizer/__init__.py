@@ -85,11 +85,22 @@ Phase 5 invariants:
    order, then feasibility, then the largest feasible cap. Outcome order
    is descending constellation within the current character's chain, not
    raw preference rank - a same-character chain is a progression (reaching
-   C2 necessarily reaches C0), so the most-inclusive target is tried
-   first; rank still decides which constellations are in scope and how
-   duplicates collapse (optimizer.outcomes). The cap scan is exhaustive
-   over the given caps - feasibility is not monotone in the cap (a lost
-   50/50 carried forward can protect a future goal), so no binary search.
+   C2 necessarily reaches C0), so the most-inclusive current-banner target
+   is tried first. One scheduling exception: a chain constellation whose
+   roadmap goal is blocked (§9) and whose character has a strictly later
+   banner is a later progression objective - it sorts behind the nearer
+   objectives and takes the lead only when pursuing it now is an ordinary
+   recommendation (probability at or above MINIMUM_OUTCOME_PROBABILITY at
+   the largest cap that keeps every higher-priority protected goal safe)
+   and it is the deeper constellation. Then one plan entry targets it and
+   the Phase 4 simulator pulls through the nearer milestones toward it -
+   the cumulative progression (§4.2, §12); below that bar the active
+   milestone leads and the later objective is pursued on its own banner
+   after the re-run (§2). Rank still decides which constellations are in
+   scope and how duplicates collapse (optimizer.outcomes). The cap scan
+   is exhaustive over the given caps - feasibility is not monotone in the
+   cap (a lost 50/50 carried forward can protect a future goal), so no
+   binary search.
 10. Monte Carlo results are seed-deterministic; the Recommendation carries
    runs and seed so its probabilities are never mistaken for exact values
    (§2, §11 invariant 10).
@@ -103,10 +114,15 @@ Phase 5 invariants:
     questions (§2, §14). The confidence threshold protects higher-priority
     future goals; `MINIMUM_OUTCOME_PROBABILITY` (default 0.25) asks whether
     the winning outcome's own empirical probability, at its largest feasible
-    cap, is high enough to present as an ordinary recommendation. It is
-    never an outcome-selection rule - it does not reopen the choice of
-    outcome or cap, and it never causes a fall-through to a different,
-    more-conservative outcome (optimizer.recommend module docstring). Below
+    cap, is high enough to present as an ordinary recommendation. For a
+    chosen winner it is never an outcome-selection rule - it does not
+    reopen the choice of outcome or cap, and it never causes a fall-through
+    to a different, more-conservative outcome (optimizer.recommend module
+    docstring). The one ordering interaction is the later-progression
+    eligibility rule (invariant 9): a roadmap-scheduled later objective
+    yields to the nearer objectives unless pursuing it now clears the
+    minimum at its protection-respecting cap - decided before a winner
+    exists, and never changing the presentation of a chosen winner. Below
     the minimum, the same winning (outcome, cap) is reported as
     `action="discretionary"`: the spend is disclosed as available and safe
     for the roadmap, but not recommended, because "allowed to spend" and

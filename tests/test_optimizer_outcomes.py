@@ -135,3 +135,64 @@ class TestGoalFallback:
         chain = (Preference("Vesna", 1, 2),)
         outcomes = available_outcomes(context_with(account, goals), chain)
         assert [o.constellation for o in outcomes] == [2]
+
+
+class TestLaterProgressionObjectives:
+    """A chain constellation whose roadmap goal is BLOCKED (§9) and whose
+    character has a strictly later banner is a later progression objective:
+    it stays in the menu but sorts behind the nearer objectives it must
+    not displace (reported Phase 5 bug: the later C2 preference replaced
+    the current C0 candidate as the evaluated outcome).
+    """
+
+    def _navia_context(self, goals: list[Goal]) -> PlannerContext:
+        roadmap = Roadmap(
+            goals=goals,
+            banners=[Banner("Navia", "7.0", 1), Banner("Navia", "7.2", 1)],
+        )
+        return PlannerContext(
+            account=Account(wishes=200), roadmap=roadmap, current_version="7.0"
+        )
+
+    def test_blocked_goal_with_later_banner_sorts_behind_the_active_milestone(
+        self,
+    ):
+        """Goals Navia C0 (P1, active) and Navia C2 (P2, blocked behind
+        it) with a later Navia banner: the current outcome is C0 - the C2
+        preference is a later progression step, not a replacement (§9,
+        §2)."""
+        goals = [Goal("Navia", 0, 1), Goal("Navia", 2, 2)]
+        chain = (Preference("Navia", 1, 0), Preference("Navia", 2, 2))
+        outcomes = available_outcomes(self._navia_context(goals), chain)
+        assert [o.label for o in outcomes] == ["C0", "C2"]
+        assert [o.rank for o in outcomes] == [1, 2]
+        # The demotion is carried as a tag for recommend()'s
+        # later-progression eligibility rule, not by dropping the outcome.
+        assert outcomes[0].later_progression is False
+        assert outcomes[1].later_progression is True
+
+    def test_blocked_goal_without_later_banner_stays_in_front(self):
+        """No later Navia banner: the deeper reach is this banner's only
+        remaining opportunity (§2/§13's worked example) and keeps the
+        front of the menu."""
+        roadmap = Roadmap(
+            goals=[Goal("Navia", 0, 1), Goal("Navia", 2, 3)],
+            banners=[Banner("Navia", "6.1", 1)],
+        )
+        context = PlannerContext(
+            account=Account(wishes=40), roadmap=roadmap, current_version="6.1"
+        )
+        chain = (Preference("Navia", 1, 0), Preference("Navia", 2, 2))
+        outcomes = available_outcomes(context, chain)
+        assert [o.label for o in outcomes] == ["C2", "C0"]
+        assert all(not o.later_progression for o in outcomes)
+
+    def test_chain_only_constellations_are_never_demoted(self):
+        """The C2 preference matches no roadmap goal: the chain alone
+        defined it (§15), so plain descending-constellation order applies
+        even with a later banner present."""
+        goals = [Goal("Navia", 0, 1)]
+        chain = (Preference("Navia", 1, 0), Preference("Navia", 2, 2))
+        outcomes = available_outcomes(self._navia_context(goals), chain)
+        assert [(o.label, o.rank) for o in outcomes] == [("C2", 2), ("C0", 1)]
+        assert all(not o.later_progression for o in outcomes)

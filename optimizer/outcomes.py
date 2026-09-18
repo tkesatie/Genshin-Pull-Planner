@@ -20,14 +20,41 @@ Rules:
   along the way (§4.2, §12) - so a same-character chain is never a set
   of mutually exclusive alternatives to pick by rank. It is a menu of
   how far to go, and outcomes are therefore ordered by DESCENDING
-  constellation (the furthest target first), not by preference rank:
-  pursuing the higher constellation subsumes every lower one the chain
-  also names, so it can never be worse than pursuing the lower one
-  alone. `rank` is retained on each `OutcomeOption` for display and
-  provenance (§15) and decides which constellations are in scope at all
-  (see the duplicate-collapse rule below), but it is not the evaluation
-  order - optimizer.recommend walks this tuple front-to-back and the
-  front must be the most-inclusive target.
+  constellation within each scheduling class (see the later-progression
+  rule below), not by preference rank: pursuing the higher constellation
+  subsumes every lower one the chain also names, so it can never be
+  worse than pursuing the lower one alone. `rank` is retained on each
+  `OutcomeOption` for display and provenance (§15) and decides which
+  constellations are in scope at all (see the duplicate-collapse rule
+  below), but it is not the evaluation order - optimizer.recommend
+  walks this tuple front-to-back and the front must be the
+  most-inclusive current-banner target.
+* A chain constellation whose roadmap goal is currently BLOCKED (§9: an
+  unsatisfied lower-constellation goal for the same character exists)
+  AND whose character also has a banner strictly after the current one
+  is a LATER PROGRESSION objective, not current-banner business: the
+  roadmap itself schedules that reach for the later opportunity, the
+  current banner belongs to the active milestone, and the planner is
+  re-run after every account update (§2). Such an outcome is still
+  offered - the chain is a menu and the planner invents or drops
+  nothing - but it sorts BEHIND the nearer objectives, tagged
+  `later_progression`. optimizer.recommend promotes it back to the lead
+  only under the eligibility rule: pursuing it NOW must be an ordinary
+  recommendation (probability at or above MINIMUM_OUTCOME_PROBABILITY)
+  at the largest cap that still keeps every higher-priority protected
+  goal safe, and it must be the deeper constellation. That is the
+  cumulative progression of §4.2/§12 - pulling toward the active
+  milestone is also progress toward the later objective, and one plan
+  entry targeting the deeper constellation lets the Phase 4 simulator
+  pull through C0 toward C2 within each history. Below that bar the
+  reach stays the gamble the roadmap scheduled for later: the active
+  milestone leads and the objective is pursued on its own banner after
+  the re-run (§2). Without a strictly later banner the deeper reach is
+  this banner's only remaining chance and stays at the front (§2/§13's
+  worked example: Vesna C0 at Priority 1, Vesna C2 at Priority 3,
+  gated by an intervening Priority 2 goal). A chain constellation with
+  no matching roadmap goal is never demoted: the chain alone defined
+  it (§15).
 * Duplicate constellations are collapsed to their best rank: "C2R1"
   before "C2" keeps the C2R1 outcome; both express the same target
   constellation. Labels are display-only (§15).
@@ -50,7 +77,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from domain import Preference, sort_by_rank
-from planner import PlannerContext, actionable_goals
+from planner import (
+    PlannerContext,
+    GoalState,
+    actionable_goals,
+    relevant_goal_evaluations,
+)
 from planner.banners import current_banner
 
 
@@ -66,12 +98,19 @@ class OutcomeOption:
         rank: preference rank; 1 is most preferred (§15).
         weapon_refinement: the wanted refinement ("R1" -> 1), or None when
             the preference asks for none. Display-only (§17, §19).
+        later_progression: True when the roadmap schedules this objective
+            for a strictly later banner (its goal is BLOCKED behind an
+            unsatisfied lower milestone, §9). The outcome stays in the
+            menu, sorted behind the nearer objectives; only
+            optimizer.recommend's later-progression eligibility rule may
+            promote it to the lead.
     """
 
     character: str
     constellation: int
     rank: int
     weapon_refinement: int | None = None
+    later_progression: bool = False
 
     @property
     def label(self) -> str:
@@ -80,6 +119,31 @@ class OutcomeOption:
         if self.weapon_refinement is not None:
             label += f"R{self.weapon_refinement}"
         return label
+
+
+def _later_progression_constellations(context: PlannerContext) -> frozenset[int]:
+    """Chain constellations the roadmap schedules as a later progression step.
+
+    A roadmap goal that is BLOCKED (§9) names a progression objective that
+    cannot be treated as independent while its lower milestone is
+    incomplete. When the goal's character also has a banner strictly after
+    the current one, that goal's pursuit belongs to the later banner - the
+    current banner belongs to the active milestone, and the planner is
+    re-run after every account update (§2). Without a strictly later
+    banner the current banner is the goal's only remaining opportunity and
+    nothing is demoted.
+    """
+    current = current_banner(context)
+    if not any(
+        banner.order_key > current.order_key
+        for banner in context.roadmap.banners_for(current.character)
+    ):
+        return frozenset()
+    return frozenset(
+        evaluation.goal.constellation
+        for evaluation in relevant_goal_evaluations(context)
+        if evaluation.state is GoalState.BLOCKED
+    )
 
 
 def available_outcomes(
@@ -110,7 +174,8 @@ def available_outcomes(
         best_by_constellation: dict[int, Preference] = {}
         for preference in chain:
             best_by_constellation.setdefault(preference.constellation, preference)
-        options = tuple(
+        later_progression = _later_progression_constellations(context)
+        eligible = tuple(
             OutcomeOption(
                 character=character,
                 constellation=preference.constellation,
@@ -120,18 +185,26 @@ def available_outcomes(
                     if preference.weapon_refinement > 0
                     else None
                 ),
+                later_progression=preference.constellation in later_progression,
             )
             for preference in best_by_constellation.values()
+            if preference.constellation > owned
         )
-        eligible = tuple(
-            option for option in options if option.constellation > owned
-        )
-        # Descending constellation, not rank order (see module docstring):
-        # a same-character chain is a progression, and the furthest
-        # attainable target always subsumes every nearer one the chain
-        # also names.
+        # Descending constellation within each scheduling class (see the
+        # module docstring): a same-character chain is a progression, and
+        # the furthest attainable target subsumes every nearer one the
+        # chain also names - except that a blocked goal with a strictly
+        # later banner is a later progression objective. Such an outcome
+        # sorts behind the current-banner objectives, tagged so
+        # optimizer.recommend can apply the eligibility rule (it leads
+        # only when pursuing it now is an ordinary recommendation at the
+        # largest cap that keeps every higher-priority protected goal
+        # safe - the cumulative progression, §4.2/§12).
         return tuple(
-            sorted(eligible, key=lambda option: option.constellation, reverse=True)
+            sorted(
+                eligible,
+                key=lambda option: (option.later_progression, -option.constellation),
+            )
         )
 
     # No preference chain for this character: fall back to the roadmap

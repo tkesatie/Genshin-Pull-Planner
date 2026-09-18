@@ -505,6 +505,198 @@ class TestSameCharacterProgression:
         assert rec.rejected == ()
 
 
+class TestLaterProgressionObjective:
+    """Regression (reported Phase 5 bug): a preference chain may name a
+    deeper constellation for the current character whose roadmap goal is
+    BLOCKED (§9) and scheduled on a strictly later banner - a later
+    progression objective, not current-banner business.
+
+        Current banner: Navia 7.0; later banner: Navia 7.2
+        Priority 1 -> Navia C0   (the active milestone, this banner)
+        Priority 2 -> Navia C2   (a later progression objective, 7.2)
+        Preferences: Navia C0 (rank 1), Navia C2 (rank 2)
+
+    The later C2 preference must not replace the current C0 candidate:
+    the optimizer pursues Navia C0, and the C2 objective is pursued on
+    its own banner after the account update (§2). Before the fix, the
+    descending-constellation menu evaluated C2 first, found it feasible
+    at ~15% (below the 25% minimum) and early-returned a discretionary
+    "do not spend" recommendation - C0 was never evaluated.
+    """
+
+    def _context(self, wishes: int) -> PlannerContext:
+        roadmap = Roadmap(
+            goals=[Goal("Navia", 0, 1), Goal("Navia", 2, 2)],
+            banners=[Banner("Navia", "7.0", 1), Banner("Navia", "7.2", 1)],
+        )
+        return PlannerContext(
+            account=Account(wishes=wishes),
+            roadmap=roadmap,
+            current_version="7.0",
+            confidence=0.9,
+        )
+
+    def _chain(self) -> tuple[Preference, ...]:
+        return (Preference("Navia", 1, 0), Preference("Navia", 2, 2))
+
+    def test_pursues_the_current_milestone_not_the_later_objective(self):
+        """200 wishes reach C0 in 100% of simulated futures (C2 is a ~15%
+        shot at the same cap): the recommendation is the ordinary C0
+        pursuit, not the C2 gamble."""
+        rec = recommend(self._context(wishes=200), self._chain(), runs=2_000, seed=0)
+        assert rec.action == "pursue"
+        assert rec.outcome.character == "Navia"
+        assert rec.outcome.label == "C0"
+        assert rec.budget == 200
+        assert rec.outcome_probability == 1.0
+        assert rec.plan.entries[0].target_constellation == 0
+        # C0 leads: the tagged C2 progression is evaluated at its largest
+        # protection-respecting cap (here the whole pool - nothing
+        # protected outranks its Priority 2 goal) but stays a gamble
+        # there (~15%, below the 25% minimum), so the later-progression
+        # eligibility rule does not promote it. It yielded by ordering,
+        # not by rejection.
+        assert rec.rejected == ()
+        assert rec.skip_reason is None
+        assert rec.discretionary_reason is None
+        assert rec.stops.action == "pursue"
+        assert rec.stops.outcome_label == "C0"
+        assert rec.stops.spend_cap == 200
+
+    def test_removing_the_deeper_preference_changes_nothing(self):
+        """Repro B: with only the C0 preference the recommendation is the
+        same pursuit - the C2 preference must not change the decision."""
+        rec = recommend(
+            self._context(wishes=200), (Preference("Navia", 1, 0),),
+            runs=2_000, seed=0,
+        )
+        assert rec.action == "pursue"
+        assert rec.outcome.label == "C0"
+        assert rec.budget == 200
+        assert rec.outcome_probability == 1.0
+
+
+class TestCumulativeLaterProgression:
+    """Regression (reported Phase 5 follow-up): the later-progression
+    objective must be promotable, not permanently suppressed.
+
+        Current banner: Navia 7.0
+        Future banners: Arlecchino 7.1, Navia 7.2
+        Priority 1 -> Navia C0        (active milestone, this banner)
+        Priority 2 -> Arlecchino C0   (future, protected)
+        Priority 3 -> Navia C2        (later progression, Navia 7.2)
+        Preferences: Navia C0 (rank 1), Arlecchino C0 (rank 2),
+                     Navia C2 (rank 3)
+        Confidence 90%; seed 0, 2,000 futures.
+
+    Two behaviors must hold at once:
+
+    * The later C2 preference must not displace the C0 milestone while
+      pursuing the progression is only a gamble: at 200 wishes the
+      largest Arlecchino-safe Navia cap leaves C2 a fraction-of-a-percent
+      shot, far below the 25% minimum, so C0 stays the recommendation.
+    * With substantially more resources (400 wishes), pulling toward C0
+      is also progress toward C2 (§4.2/§12 cumulative progression): one
+      plan entry targeting C2 lets the Phase 4 simulator pull through C0
+      toward C2 within each history, each future's C0 acquisition point
+      varying naturally. The later-progression outcome then takes the
+      lead at the largest cap that still keeps Arlecchino C0 at or above
+      the threshold - the maximum total Navia spend that preserves the
+      P2 protection.
+
+    Before the follow-up fix the demoted C2 outcome could never lead at
+    all: the 400-wish case stayed "pursue C0, up to 400" with the C2
+    objective never advanced - C0 acted as a terminal target.
+    """
+
+    def _context(self, wishes: int) -> PlannerContext:
+        roadmap = Roadmap(
+            goals=[
+                Goal("Navia", 0, 1),
+                Goal("Arlecchino", 0, 2),
+                Goal("Navia", 2, 3),
+            ],
+            banners=[
+                Banner("Navia", "7.0", 1),
+                Banner("Arlecchino", "7.1", 1),
+                Banner("Navia", "7.2", 1),
+            ],
+        )
+        return PlannerContext(
+            account=Account(wishes=wishes),
+            roadmap=roadmap,
+            current_version="7.0",
+            confidence=0.9,
+        )
+
+    def _chain(self) -> tuple[Preference, ...]:
+        return (
+            Preference("Navia", 1, 0),
+            Preference("Arlecchino", 2, 0),
+            Preference("Navia", 3, 2),
+        )
+
+    def test_200_wishes_keeps_the_c0_milestone(self):
+        """200 wishes: the Arlecchino-safe Navia cap leaves the C2
+        progression a ~0.2% shot - a gamble, not an ordinary
+        recommendation - so the later-progression outcome yields and the
+        C0 milestone leads with the whole pool (§2: a Priority 2 future
+        goal cannot veto the Priority 1 current objective)."""
+        rec = recommend(self._context(wishes=200), self._chain(), runs=2_000, seed=0)
+        assert rec.action == "pursue"
+        assert rec.outcome.character == "Navia"
+        assert rec.outcome.label == "C0"
+        assert rec.outcome.later_progression is False
+        assert rec.budget == 200
+        assert rec.outcome_probability == 1.0
+        assert rec.plan.entries[0].target_constellation == 0
+        assert rec.rejected == ()
+        assert rec.skip_reason is None
+        assert rec.discretionary_reason is None
+        assert rec.stops.action == "pursue"
+        assert rec.stops.outcome_label == "C0"
+        assert rec.stops.spend_cap == 200
+        # Arlecchino (Priority 2) is reported and pursued but cannot veto
+        # the Priority 1 objective (§2).
+        (arlecchino,) = [s for s in rec.protected if s.goal.character == "Arlecchino"]
+        assert arlecchino.constraining is False
+
+    def test_400_wishes_promotes_the_c2_progression(self):
+        """400 wishes: at the largest Arlecchino-safe Navia cap the C2
+        progression is an ordinary recommendation (well above the 25%
+        minimum), so the later-progression outcome takes the lead. One
+        plan entry targets C2 - the Phase 4 simulator pulls through C0
+        toward C2 within each history - and the cap is the maximum total
+        Navia spend that preserves the P2 protection."""
+        rec = recommend(self._context(wishes=400), self._chain(), runs=2_000, seed=0)
+        assert rec.action == "pursue"
+        assert rec.outcome.character == "Navia"
+        assert rec.outcome.label == "C2"
+        assert rec.outcome.later_progression is True
+        # The cap is the maximum total Navia spend that still keeps
+        # Arlecchino at the threshold: bounded by the pool, and beyond
+        # the budget Case A's pool could offer.
+        assert 200 < rec.budget < 400
+        assert rec.plan.entries[0].target_constellation == 2
+        assert rec.plan.entries[0].budget == rec.budget
+        # The progression is an ordinary recommendation, not a gamble.
+        assert rec.outcome_probability >= 0.25
+        assert rec.skip_reason is None
+        assert rec.discretionary_reason is None
+        # Arlecchino C0 (Priority 2) gates the deeper reach and holds at
+        # the confidence threshold.
+        (arlecchino,) = [s for s in rec.protected if s.goal.character == "Arlecchino"]
+        assert arlecchino.constraining is True
+        assert arlecchino.meets_threshold is True
+        # C0 (feasible at the whole pool) was displaced by the deeper
+        # pursue-tier progression, not rejected - and C0 is subsumed:
+        # reaching C2 necessarily reaches C0.
+        assert rec.rejected == ()
+        assert rec.stops.action == "pursue"
+        assert rec.stops.outcome_label == "C2"
+        assert rec.stops.spend_cap == rec.budget
+
+
 class TestPriorityGatedProgression:
     """The design document's own worked example, applied to this bug:
 
