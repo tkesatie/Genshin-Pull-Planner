@@ -130,19 +130,26 @@ class TestSpendTable:
             params={"step": 10, "runs": 200, "seed": 5},
         ).json()
 
-        assert body["outcome"]["character"] == "Vesna"
-        assert body["outcome"]["constellation"] == 2
+        assert [outcome["label"] for outcome in body["outcomes"]] == ["C0", "C2"]
         assert body["runs"] == 200
         assert body["seed"] == 5
         assert [row["wishes_spent"] for row in body["rows"]] == [0, 10, 20, 30, 40]
 
-        # C2 is a cumulative three-copy target, so the section reports the
-        # probability of reaching the resulting constellation rather than a
-        # single-copy curve.
-        probabilities = [row["outcome_probability"] for row in body["rows"]]
-        assert probabilities == sorted(probabilities)
-        assert probabilities[0] == 0.0
-        assert probabilities[-1] > probabilities[0]
+        # The table shows cumulative constellation milestones, not mutually
+        # exclusive outcomes: reaching C2 necessarily also reaches C0.
+        probabilities = {
+            outcome["outcome"]["label"]: [
+                item["probability"] for item in row["outcomes"]
+            ]
+            for outcome in body["rows"]
+            for _ in [0]
+        }
+        assert probabilities["C0"] == sorted(probabilities["C0"])
+        assert probabilities["C2"] == sorted(probabilities["C2"])
+        assert probabilities["C0"][0] == 0.0
+        assert probabilities["C2"][0] == 0.0
+        assert probabilities["C0"][-1] >= probabilities["C2"][-1]
+        assert probabilities["C2"][-1] > 0.0
 
         # Future protection is evaluated against the same simulated spend.
         assert body["rows"][0]["protected"]
@@ -158,9 +165,8 @@ class TestSpendTable:
             params={"step": 20, "runs": 100, "seed": 7},
         ).json()
 
-        assert body["outcome"] is not None
-        assert body["outcome"]["character"] == "Vesna"
-        assert body["outcome"]["label"] in {"C2", "C1", "C0"}
+        assert body["outcomes"]
+        assert [outcome["label"] for outcome in body["outcomes"]] == ["C0", "C2"]
 
 
 class TestRecommendation:
