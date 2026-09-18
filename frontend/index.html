@@ -353,7 +353,7 @@ async function api(path, options) {
 
 /* ---------- loading ---------- */
 
-async async function loadAccounts() {
+async function loadAccounts() {
   const accounts = await api("/accounts");
   const picker = $("account-picker");
   picker.innerHTML = "";
@@ -401,7 +401,7 @@ function query(extra) {
   return text ? `?${text}` : "";
 }
 
-async async function loadPlanner() {
+async function loadPlanner() {
   const id = state.account.id;
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
@@ -825,7 +825,7 @@ function fillAccountForm() {
   $("save-note").textContent = "";
 }
 
-async async function saveAccount() {
+async function saveAccount() {
   clearError();
   $("save").disabled = true;
   $("save-note").textContent = "Saving";
