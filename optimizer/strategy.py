@@ -254,9 +254,22 @@ def _protected_requirement(
             cache[wishes] = result.joint_goal_probability.probability
         return cache[wishes]
 
+    # A character target has a finite worst-case guarantee: each missing
+    # copy can require at most two hard-pity cycles (one non-featured 5-star
+    # followed by the guaranteed featured 5-star). Use that as a hard search
+    # bound so a low-confidence/low-run simulation can never make the
+    # exponential search grow without limit.
+    maximum = (
+        evaluation.copies_needed
+        * context.mechanics.hard_pity
+        * 2
+    )
+    if probability(maximum) < context.confidence:
+        return None
+
     high = 1
-    while probability(high) < context.confidence:
-        high *= 2
+    while high < maximum and probability(high) < context.confidence:
+        high = min(high * 2, maximum)
 
     low = 0
     while low < high:
