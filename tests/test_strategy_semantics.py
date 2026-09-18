@@ -252,7 +252,15 @@ def test_future_income_increases_current_spend_ceiling(monkeypatch):
                 vesna = plan.entry_for(VESNA)
                 assert vesna is not None
                 probability = 0.91
-            return fake_strategy_result(plan, probability)
+            return fake_strategy_result(
+                plan,
+                probability,
+                joint_probability=probability if entry is not None else 0.42,
+                joint_goals=(Goal("Skirk", 2, 3),) if entry is not None else (
+                    Goal("Vodynista", 0, 1),
+                    Goal("Vesna", 2, 4),
+                ),
+            )
 
         monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
         result = strategy_module.build_strategy(context, runs=1, seed=0)
