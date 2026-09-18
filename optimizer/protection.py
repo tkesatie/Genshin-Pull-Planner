@@ -78,7 +78,11 @@ def protected_groups(context: PlannerContext, banner: Banner | None = None) -> t
         if evaluation.copies_needed == 0:
             continue
         banner = evaluation.next_banner
-        if banner is None or banner.order_key <= current.order_key:
+        # A different banner in the same version/phase is an alternative
+        # current opportunity. It must remain in the candidate plan so a
+        # higher-priority goal there can constrain this decision. The
+        # selected banner itself is current-banner business, not protection.
+        if banner is None or banner.order_key < current.order_key or banner == current:
             continue
         buckets.setdefault(banner, []).append(evaluation.goal)
 
@@ -90,8 +94,11 @@ def protected_groups(context: PlannerContext, banner: Banner | None = None) -> t
                 banner=banner,
                 goals=goals,
                 target_constellation=max(goal.constellation for goal in goals),
-                uncapped_budget=context.account.wishes
-                + context.income_credit(banner.version),
+                uncapped_budget=(
+                    context.account.wishes
+                    if banner.order_key == current.order_key
+                    else context.account.wishes + context.income_credit(banner.version)
+                ),
             )
         )
     return tuple(groups)
