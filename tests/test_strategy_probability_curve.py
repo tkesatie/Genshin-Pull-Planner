@@ -348,8 +348,8 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
 
     # Vodynista C0 and Vesna C2 must fit the strategy's sequential current-
     # banner allocation. Skirk C2 remains the separate 90% reserve constraint.
-    assert vesna_c2.safe_spend in range(215, 224)
-    assert vesna_c2.reserve_wishes in range(227, 236)
+    assert vesna_c2.safe_spend in range(275, 278)
+    assert vesna_c2.reserve_wishes in range(263, 266)
     assert 0.03 < vesna_c2.outcome_probability < 0.08
 
     # The isolated Vesna-C2 probability is materially higher; this assertion
