@@ -61,7 +61,7 @@ class ProtectedGoalOutcome:
 
 
 def protected_goal_outcomes(
-    context: PlannerContext, spent: int = 0
+    context: PlannerContext, spent: int = 0, banner: Banner | None = None
 ) -> list[ProtectedGoalOutcome]:
     """Protected future goals after spending `spent` wishes on the
     current banner (§13 step 5).
@@ -84,13 +84,13 @@ def protected_goal_outcomes(
             f"({context.account.wishes})"
         )
 
-    current = current_banner(context)
+    current = banner if banner is not None else current_banner(context)
     schedulable: list[tuple[Banner, GoalEvaluation]] = []
     for evaluation in evaluate_goals(context):
         if evaluation.copies_needed == 0:
             continue
         banner = evaluation.next_banner
-        if banner is None or banner.order_key <= current.order_key:
+        if banner is None or banner.order_key < current.order_key or banner == current:
             continue
         schedulable.append((banner, evaluation))
     schedulable.sort(key=lambda item: (item[0].order_key, item[1].goal.priority))
