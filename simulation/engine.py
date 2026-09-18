@@ -185,10 +185,8 @@ def _run_history(
         satisfied_after[goal] = None
 
     for banner in banners:
-        # Income timing (§16; module docstring): version-level income becomes
-        # available when the simulation first reaches the first processed
-        # banner of its version. The current banner - the first processed -
-        # gets nothing, matching Phase 3's budget accounting exactly.
+        # Forecast income is future resource: it cannot fund the current
+        # phase, but becomes available when the roadmap reaches a later slot.
         income_credited = 0
         credit = context.income_available_before(banner.version, banner.phase)
         if credit > credited_so_far:
