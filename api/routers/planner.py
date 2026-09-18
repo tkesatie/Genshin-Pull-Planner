@@ -1,6 +1,6 @@
 """Planner endpoints."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import ContextOverrides, context_overrides, get_record
 from api.repository import AccountRecord
@@ -214,18 +214,20 @@ def _spend_table_outcomes(context, preferences, banner) -> tuple[OutcomeOption, 
 
 def _select_banner(banners, character):
     if not banners:
-        raise ValueError("no roadmap banner at the current version/phase")
+        raise HTTPException(status_code=422, detail="no roadmap banner at the current version/phase")
     if character is None:
         if len(banners) > 1:
-            raise ValueError(
-                "multiple banners are active; select a character explicitly: "
-                + ", ".join(banner.character for banner in banners)
+            raise HTTPException(
+                status_code=422,
+                detail="multiple banners are active; select a character explicitly: "
+                + ", ".join(banner.character for banner in banners),
             )
         return banners[0]
     matches = [banner for banner in banners if banner.character == character]
     if not matches:
-        raise ValueError(
-            f"character {character!r} is not an available banner at the current version/phase"
+        raise HTTPException(
+            status_code=422,
+            detail=f"character {character!r} is not an available banner at the current version/phase",
         )
     return matches[0]
 
