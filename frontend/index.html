@@ -314,9 +314,10 @@
     </section>
 
     <section>
-      <h2>How spending changes your odds</h2>
-      <p class="muted" id="spend-caption"></p>
-      <div class="panel table-panel" id="spend-table"></div>
+      <h2>Spending analysis</h2>
+      <div class="panel">
+        <p class="muted">Placeholder — this section is temporarily disabled while the spending-analysis view is redesigned.</p>
+      </div>
     </section>
 
     <section>
@@ -463,16 +464,14 @@ async function loadPlanner(source = "unknown") {
     }
 
     const bannerQuery = character ? { character } : {};
-    const [safe, table, strategy] = await Promise.all([
+    const [safe, strategy] = await Promise.all([
       api(`/accounts/${id}/planner/safe-spend${query(bannerQuery)}`),
-      api(`/accounts/${id}/planner/spend-table${query({ ...bannerQuery, step })}`).catch((error) => error),
       api(`/accounts/${id}/planner/strategy${query()}`),
     ]);
 
-    state.planner = { recommendation, goals, safe, table, strategy };
+    state.planner = { recommendation, goals, safe, strategy };
     if (recommendation) renderRecommendation(recommendation, strategy);
     renderSafeSpend(safe);
-    renderSpendTable(table);
     renderRoadmap(goals);
 
     await new Promise((resolve) =>
