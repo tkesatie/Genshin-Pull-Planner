@@ -139,7 +139,7 @@ def test_planner_protection_matches_skirk_threshold(capsys):
 
     rows = []
     for spent in spends:
-        outcomes = protected_goal_outcomes(context, spent=spent)
+        outcomes = protected_goal_outcomes(context, spent=spent, banner=VODYNISTA)
         skirk = next(
             outcome for outcome in outcomes
             if outcome.goal == Goal("Skirk", 2, 3)
