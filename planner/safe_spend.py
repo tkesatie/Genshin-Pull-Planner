@@ -28,7 +28,7 @@ from planner.context import PlannerContext
 from planner.protection import protected_goal_outcomes
 
 
-def safe_spend(context: PlannerContext) -> int:
+def safe_spend(context: PlannerContext, banner=None) -> int:
     """Largest current-banner spend that protects all protected goals
     (§14).
 
@@ -38,7 +38,7 @@ def safe_spend(context: PlannerContext) -> int:
     floor of 0 means.
     """
     wishes = context.account.wishes
-    outcomes = protected_goal_outcomes(context, spent=0)
+    outcomes = protected_goal_outcomes(context, spent=0, banner=banner)
     if not outcomes:
         return wishes
 
