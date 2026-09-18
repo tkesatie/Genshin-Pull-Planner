@@ -76,8 +76,11 @@ class SpendPlan:
     """
 
     entries: tuple[PlannedSpend, ...] = ()
+    shared_current_phase_budget: int | None = None
 
     def __post_init__(self) -> None:
+        if self.shared_current_phase_budget is not None and self.shared_current_phase_budget < 0:
+            raise ValueError("shared_current_phase_budget must be >= 0 when provided")
         seen: set[Banner] = set()
         duplicates: set[Banner] = set()
         for entry in self.entries:
