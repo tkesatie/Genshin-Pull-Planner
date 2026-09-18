@@ -406,6 +406,8 @@ def recommend(
             )
 
     if not opportunities:
+        if not any(available_outcomes(context, preferences, banner=banner) for banner in banners):
+            return _skip(context, "no active goal or preferred outcome to pursue", runs, seed)
         return _skip(
             context,
             f"no preferred outcome can be pursued while keeping every "
