@@ -303,10 +303,8 @@ def test_combined_current_banner_frontier(capsys):
                 account, "Vodynista", 1, cap, mechanics, rng
             )
 
-            # 7.1 income arrives at the second processed banner. It is
-            # available to Vesna, but cannot increase the original 450-wish
-            # phase-1 spending cap.
-            account = replace(account, wishes=account.wishes + 90)
+            # 7.1 income is future income. It cannot fund either Phase 1
+            # banner, but will be available when Skirk's later phase arrives.
             vesna_budget = max(cap - vod_spent, 0)
             _, vesna_copies, _, account = _pull_toward_target(
                 account, "Vesna", 3, vesna_budget, mechanics, rng
@@ -359,8 +357,8 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     assert vesna_c2.outcome_probability < 0.10
 
 
-def test_strategy_uses_one_total_current_phase_budget(capsys):
-    """The Vesna C2 frontier is the total Vodynista + Vesna phase budget."""
+def test_future_income_cannot_fund_current_phase(capsys):
+    """Current-phase spending uses only wishes already available now."""
     from optimizer.strategy import build_strategy
     from simulation.engine import _pull_toward_target
 
