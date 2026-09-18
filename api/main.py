@@ -15,6 +15,7 @@ already explains the rule and the section it comes from. Re-wording them
 here would be a second, drifting copy of the domain's vocabulary.
 """
 
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -54,6 +55,19 @@ async def _not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=404, content={"detail": str(exc)}
     )
+
+
+async def _planner_timing_middleware(request: Request, call_next):
+    """Measure server-side planner request time for local performance diagnostics."""
+    if "/planner/" not in request.url.path or request.url.path.endswith("/planner/timing"):
+        return await call_next(request)
+
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed = time.perf_counter() - started
+    response.headers["X-Planner-Process-Time"] = f"{elapsed:.6f}"
+    print(f"Planner API {request.url.path}: {elapsed:.2f}s")
+    return response
 
 
 def create_app(
