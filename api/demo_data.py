@@ -16,7 +16,7 @@ def create_demo_account() -> AccountRecord:
     """Return the representative Navia current-banner demo account."""
     return AccountRecord(
         id=DEMO_ACCOUNT_ID,
-        label="Demo — Navia Priority 1",
+        label="Demo — Vesna Roadmap",
         account=Account(
             wishes=180,
             current_pity=0,
@@ -30,15 +30,16 @@ def create_demo_account() -> AccountRecord:
             income_scenario="expected",
         ),
         goals=(
-            Goal(character="Navia", constellation=2, priority=1),
+            Goal(character="Vesna", constellation=0, priority=1),
             Goal(character="Tsaritsa", constellation=0, priority=2),
+            Goal(character="Vesna", constellation=2, priority=3),
         ),
         banners=(
-            Banner(character="Navia", version="7.0", phase=1),
+            Banner(character="Vesna", version="7.0", phase=1),
             Banner(character="Tsaritsa", version="7.1", phase=1),
         ),
         preferences=(
-            Preference(character="Navia", rank=1, constellation=2),
+            Preference(character="Vesna", rank=1, constellation=2),
         ),
         income=IncomeForecast(
             versions=(
