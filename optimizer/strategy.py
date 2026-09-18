@@ -54,14 +54,25 @@ def _protection_plan(
     priority: int,
     *,
     current_banner: Banner,
+    excluded_goals: frozenset[Goal] = frozenset(),
 ) -> tuple[SpendPlan, tuple[Goal, ...]]:
-    """Build the future plan required to protect a current decision."""
+    """Build the future plan required to protect a current decision.
+
+    Goals already represented by higher-priority current-banner allocations
+    are not also treated as protected future goals. In particular, an
+    alternative banner in the current phase may appear in
+    ``protected_groups()`` but is already handled by ``_current_required_plan``.
+    Adding it again would create duplicate plan entries for the same banner.
+    """
     constraining = constraining_goals(context, priority=priority, banner=current_banner)
     entries: list[PlannedSpend] = []
     protected: list[Goal] = []
 
     for group in protected_groups(context, banner=current_banner):
-        goals = tuple(goal for goal in group.goals if goal in constraining)
+        goals = tuple(
+            goal for goal in group.goals
+            if goal in constraining and goal not in excluded_goals
+        )
         if not goals:
             continue
         protected.extend(goals)
@@ -73,7 +84,6 @@ def _protection_plan(
             )
         )
     return SpendPlan(entries=tuple(entries)), tuple(protected)
-
 
 def _current_required_plan(
     context: PlannerContext,
@@ -138,8 +148,19 @@ def _evaluate_spend(
     required_plan = _current_required_plan(
         context, goal, current_banner=banner
     )
+    required_goals = frozenset(
+        evaluation.goal
+        for evaluation in evaluate_goals(context)
+        if evaluation.goal.priority < goal.priority
+        and evaluation.goal.character != goal.character
+        and evaluation.goal.constellation == 0
+        and evaluation.copies_needed > 0
+    )
     future_plan, protected_goals = _protection_plan(
-        context, goal.priority, current_banner=banner
+        context,
+        goal.priority,
+        current_banner=banner,
+        excluded_goals=required_goals,
     )
     plan = SpendPlan(
         entries=(
