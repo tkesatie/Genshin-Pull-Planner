@@ -330,3 +330,28 @@ def test_combined_current_banner_frontier(capsys):
 
     assert rows[-1][1] > rows[0][1]
     assert rows[-1][2] < rows[0][2]
+
+
+def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
+    """The Vesna C2 strategy probability must require Vodynista C0 too."""
+    from optimizer.strategy import build_strategy
+
+    context = make_context()
+    strategy = build_strategy(context, runs=10_000, seed=0)
+    vesna_c2 = next(
+        step for step in strategy.steps
+        if step.goal == Goal("Vesna", 2, 4)
+    )
+
+    print("\nVesna C2 strategy probability with shared phase-1 budget")
+    print(f"safe spend: {vesna_c2.safe_spend}")
+    print(f"reserve: {vesna_c2.reserve_wishes}")
+    print(f"joint probability: {vesna_c2.outcome_probability:.2%}")
+
+    # The advertised frontier should leave the Skirk C2 reserve intact while
+    # requiring the same shared current-phase budget to obtain Vodynista C0
+    # and Vesna C2. The resulting joint probability is only a few percent,
+    # not the isolated Vesna-C2 probability that previously appeared here.
+    assert vesna_c2.safe_spend in range(215, 224)
+    assert vesna_c2.reserve_wishes in range(227, 236)
+    assert 0.03 < vesna_c2.outcome_probability < 0.08
