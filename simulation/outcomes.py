@@ -19,16 +19,12 @@ from simulation.results import (
     GoalProbability,
     RunResult,
     SimulationResult,
-    GoalJointProbability,
 )
 from simulation.strategy import SpendPlan
 
 
 def aggregate_runs(
-    runs: Sequence[RunResult],
-    plan: SpendPlan,
-    seed: int | None,
-    joint_goals: Sequence = (),
+    runs: Sequence[RunResult], plan: SpendPlan, seed: int | None
 ) -> SimulationResult:
     """Aggregate simulated histories into roadmap outcome probabilities (§11).
 
@@ -88,19 +84,6 @@ def aggregate_runs(
         )
 
     final_wishes = [run.account_after.wishes for run in runs]
-    joint = tuple(joint_goals)
-    joint_probability = None
-    if joint:
-        joint_probability = GoalJointProbability(
-            goals=joint,
-            probability=sum(
-                1 for run in runs
-                if all(
-                    next(outcome for outcome in run.goal_outcomes if outcome.goal == goal).satisfied
-                    for goal in joint
-                )
-            ) / count,
-        )
     all_goals_probability = sum(
         1
         for run in runs
@@ -114,7 +97,6 @@ def aggregate_runs(
         goals=goal_probabilities,
         banners=tuple(banner_aggregates),
         all_goals_probability=all_goals_probability,
-        joint_goal_probability=joint_probability,
         final_wishes_mean=sum(final_wishes) / count,
         final_wishes_min=min(final_wishes),
         final_wishes_max=max(final_wishes),
