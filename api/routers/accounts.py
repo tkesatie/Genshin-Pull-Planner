@@ -28,6 +28,7 @@ from api.schemas.accounts import (
     AccountSummary,
     AccountUpdate,
     AccountView,
+    PullResultModel,
 )
 
 router = APIRouter(tags=["accounts"])
@@ -125,3 +126,61 @@ def delete_account(
     repository: AccountRepository = Depends(get_repository),
 ) -> None:
     repository.delete(record.id)
+
+
+@router.post(
+    "/accounts/{account_id}/pull-result",
+    response_model=AccountView,
+    summary="Record a character-banner outcome",
+    description=(
+        "Records a meaningful character-banner outcome without requiring "
+        "one update per individual wish. Use featured for a pulled featured "
+        "character, lost_50_50 for an off-banner 5-star, or stopped for "
+        "wishes spent without a 5-star."
+    ),
+)
+def record_pull_result(
+    payload: PullResultModel,
+    record: AccountRecord = Depends(get_record),
+    repository: AccountRepository = Depends(get_repository),
+) -> AccountView:
+    if payload.outcome not in {"featured", "lost_50_50", "stopped"}:
+        raise ValueError("outcome must be featured, lost_50_50, or stopped")
+    if payload.wishes_used > record.account.wishes:
+        raise ValueError("wishes_used cannot exceed the account's wishes")
+
+    account = record.account
+    wishes = account.wishes - payload.wishes_used
+
+    if payload.outcome == "stopped":
+        if account.current_pity + payload.wishes_used > 89:
+            raise ValueError("stopped outcome cannot pass character hard pity")
+        updated_account = replace(account, wishes=wishes, current_pity=account.current_pity + payload.wishes_used)
+    elif payload.outcome == "lost_50_50":
+        updated_account = replace(
+            account,
+            wishes=wishes,
+            current_pity=0,
+            character_guarantee=True,
+            capturing_radiance_counter=min(3, account.capturing_radiance_counter + 1),
+        )
+    else:
+        if not payload.character:
+            raise ValueError("character is required for a featured outcome")
+        ownership = account.owned_characters
+        current = ownership.owned_constellation(payload.character)
+        updated_account = replace(
+            account,
+            wishes=wishes,
+            current_pity=0,
+            character_guarantee=False,
+            capturing_radiance_counter=(
+                account.capturing_radiance_counter
+                if account.character_guarantee
+                else max(0, account.capturing_radiance_counter - 1)
+            ),
+            owned_characters=ownership.with_constellation(payload.character, current + 1),
+        )
+
+    updated = repository.save(replace(record, account=updated_account))
+    return AccountView.from_record(updated)
