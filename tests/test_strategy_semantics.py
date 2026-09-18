@@ -85,7 +85,6 @@ def strategy_context(
 def fake_strategy_result(plan: SpendPlan, skirk_probability: float):
     """Minimal result shape needed by build_strategy/_safe_spend."""
     vesna_entry = plan.entry_for(VESNA)
-    assert vesna_entry is not None
     return SimpleNamespace(
         goals=(GoalProbability(Goal("Skirk", 2, 3), skirk_probability),),
         joint_goal_probability=GoalJointProbability(
@@ -105,7 +104,7 @@ def fake_strategy_result(plan: SpendPlan, skirk_probability: float):
             BannerAggregate(
                 banner=VESNA,
                 target_constellation=2,
-                planned_budget=vesna_entry.budget,
+                planned_budget=vesna_entry.budget if vesna_entry is not None else 0,
                 mean_income_credited=0.0,
                 mean_wishes_spent=0.0,
                 target_met_probability=0.42,
@@ -195,9 +194,13 @@ def test_reserve_first_with_future_income_gives_275_current_spend_ceiling(monkey
     context = strategy_context(income=90)
 
     def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
-        entry = plan.entry_for(VESNA)
-        assert entry is not None
-        probability = 0.91 if entry.budget <= 275 else 0.89
+        entry = plan.entry_for(SKIRK)
+        if entry is not None:
+            probability = 0.91 if entry.budget >= 265 else 0.89
+        else:
+            vesna = plan.entry_for(VESNA)
+            assert vesna is not None
+            probability = 0.91 if vesna.budget <= 275 else 0.89
         return fake_strategy_result(plan, probability)
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
@@ -225,10 +228,13 @@ def test_future_income_increases_current_spend_ceiling(monkeypatch):
         context = strategy_context(income=income)
 
         def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
-            entry = plan.entry_for(VESNA)
-            assert entry is not None
-            # Mock a protected requirement of exactly 265 wishes.
-            probability = 0.91 if entry.budget <= expected else 0.89
+            entry = plan.entry_for(SKIRK)
+            if entry is not None:
+                probability = 0.91 if entry.budget >= 265 else 0.89
+            else:
+                vesna = plan.entry_for(VESNA)
+                assert vesna is not None
+                probability = 0.91
             return fake_strategy_result(plan, probability)
 
         monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
