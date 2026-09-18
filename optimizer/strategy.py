@@ -15,7 +15,7 @@ After an actual pull, rerun the planner so pity, guarantee, ownership, and
 wishes are reflected in the new frontier.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from domain import Banner, Goal
 from optimizer.protection import constraining_goals, protected_groups
@@ -189,6 +189,81 @@ def _evaluate_spend(
     ), protected_goals
 
 
+def _protected_requirement(
+    context: PlannerContext,
+    protected_goals: tuple[Goal, ...],
+    *,
+    runs: int,
+    seed: int | None,
+) -> int | None:
+    """Find the smallest future resource pool that protects every goal.
+
+    The reserve is measured independently of current spending. The future
+    state starts at zero pity, with no guarantee or Capturing Radiance. This
+    is the conservative post-character state: obtaining the current target
+    ends that banner at zero pity, while future guarantee/Radiance advantages
+    should not be required to justify spending now.
+    """
+    if not protected_goals:
+        return None
+
+    required = min(protected_goals, key=lambda goal: goal.priority)
+    evaluation = next(
+        item for item in evaluate_goals(context) if item.goal == required
+    )
+    banner = evaluation.next_banner
+    if banner is None:
+        return None
+
+    future_context = replace(
+        context,
+        account=replace(
+            context.account,
+            wishes=0,
+            current_pity=0,
+            character_guarantee=False,
+            capturing_radiance_counter=0,
+        ),
+        income=None,
+    )
+
+    cache: dict[int, float] = {}
+
+    def probability(wishes: int) -> float:
+        if wishes not in cache:
+            plan = SpendPlan(
+                entries=(
+                    PlannedSpend(
+                        banner=banner,
+                        target_constellation=required.constellation,
+                        budget=wishes,
+                    ),
+                )
+            )
+            result = simulate(
+                future_context,
+                plan,
+                runs=runs,
+                seed=seed,
+                joint_goals=(required,),
+            )
+            cache[wishes] = result.joint_goal_probability.probability
+        return cache[wishes]
+
+    high = 1
+    while probability(high) < context.confidence:
+        high *= 2
+
+    low = 0
+    while low < high:
+        mid = (low + high) // 2
+        if probability(mid) >= context.confidence:
+            high = mid
+        else:
+            low = mid + 1
+    return low
+
+
 def _safe_spend(
     context: PlannerContext,
     goal: Goal,
@@ -197,79 +272,47 @@ def _safe_spend(
     runs: int,
     seed: int | None,
 ) -> tuple[int, SimulationResult, tuple[Goal, ...]]:
-    """Find the largest current budget that preserves every constraint.
-
-    Feasibility is not assumed to be monotonic: spending can change the
-    carried pity/guarantee state for a future banner, so a larger current cap
-    can occasionally be worse for a protected goal than a smaller cap. The
-    search therefore checks candidate caps from largest to smallest using the
-    same Phase 4 simulation that evaluates recommendations.
-    """
-    max_spend = context.account.wishes
-    cache: dict[int, tuple[SimulationResult, tuple[Goal, ...]]] = {}
-
-    def evaluate(spend: int) -> tuple[SimulationResult, tuple[Goal, ...]]:
-        if spend not in cache:
-            cache[spend] = _evaluate_spend(
-                context, goal, banner, spend, runs=runs, seed=seed
-            )
-        return cache[spend]
-
+    """Calculate the current spend ceiling from the protected reserve."""
     constraining = constraining_goals(
         context, priority=goal.priority, banner=banner
     )
+    protected_goals = tuple(sorted(constraining, key=lambda item: item.priority))
+    requirement = _protected_requirement(
+        context,
+        protected_goals,
+        runs=runs,
+        seed=seed,
+    )
 
-    def protection_at(spend: int) -> tuple[bool, SimulationResult, tuple[Goal, ...]]:
-        result, protected_goals = evaluate(spend)
-        probability_by_goal = {
-            item.goal: item.probability for item in result.goals
-        }
-        relevant = [
-            probability_by_goal[protected]
-            for protected in protected_goals
-            if protected in constraining
-        ]
-        return (
-            all(probability >= context.confidence for probability in relevant),
-            result,
-            protected_goals,
+    if requirement is None:
+        spend = context.account.wishes
+    else:
+        protected = min(protected_goals, key=lambda item: item.priority)
+        evaluation = next(
+            item for item in evaluate_goals(context) if item.goal == protected
+        )
+        assert evaluation.next_banner is not None
+        future_income = context.income_available_before(
+            evaluation.next_banner.version,
+            evaluation.next_banner.phase,
+        )
+        spend = min(
+            context.account.wishes,
+            max(
+                0,
+                context.account.wishes + future_income - requirement,
+            ),
         )
 
-    # Feasibility is deliberately not treated as monotonic. A current spend
-    # can create a carried guarantee/pity state that makes a later protected
-    # goal easier or harder, so binary search can skip a feasible cap. Check
-    # from the largest cap downward and return the first simulated-safe cap.
-    for spend in range(max_spend, -1, -1):
-        safe, result, protected_goals = protection_at(spend)
-        if safe:
-            return spend, result, protected_goals
-
-    raise RuntimeError("safe-spend search must find the zero-spend candidate")
-
-    # Narrow the bracket using the monotonic trend observed in Monte Carlo.
-    if unsafe is not None:
-        low = safe
-        high = unsafe
-        while high - low > 1:
-            mid = (low + high) // 2
-            if is_safe(mid):
-                low = mid
-            else:
-                high = mid
-        safe = low
-
-    # Verify the boundary directly. A few noisy Monte Carlo points should not
-    # determine the answer solely through the binary search.
-    window = 5
-    lower = max(0, safe - window)
-    upper = min(max_spend, safe + window)
-    for spend in range(upper, lower - 1, -1):
-        if is_safe(spend):
-            result, protected_goals = evaluate(spend)
-            return spend, result, protected_goals
-
-    raise RuntimeError("safe-spend search must find the zero-spend candidate")
-
+    result, _ = _evaluate_spend(
+        context,
+        goal,
+        banner,
+        spend,
+        runs=runs,
+        seed=seed,
+    )
+    return spend, result, protected_goals
 
 def build_strategy(
     context: PlannerContext,
