@@ -138,11 +138,11 @@ class TestSpendTable:
         # The table shows cumulative constellation milestones, not mutually
         # exclusive outcomes: reaching C2 necessarily also reaches C0.
         probabilities = {
-            outcome["outcome"]["label"]: [
-                item["probability"] for item in row["outcomes"]
+            outcome["label"]: [
+                row["outcomes"][index]["probability"]
+                for row in body["rows"]
             ]
-            for outcome in body["rows"]
-            for _ in [0]
+            for index, outcome in enumerate(body["outcomes"])
         }
         assert probabilities["C0"] == sorted(probabilities["C0"])
         assert probabilities["C2"] == sorted(probabilities["C2"])
