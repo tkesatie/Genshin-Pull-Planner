@@ -137,6 +137,10 @@
   .strategy-action { color:var(--text); font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; font-size:1.35rem; line-height:1.2; }
   .strategy-meta { color:var(--muted); font: .78rem/1.4 system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; margin-top:.2rem; }
   .strategy-item.recommended .strategy-action { color:var(--gold-bright); }
+  .strategy-frontier { margin-top:.55rem; display:flex; flex-wrap:wrap; gap:.5rem 1.25rem; align-items:baseline; }
+  .strategy-frontier strong { color:var(--gold-bright); font-size:1.2rem; }
+  .strategy-frontier .frontier-label { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
+  .strategy-frontier .frontier-probability { color:var(--text); font-size:.95rem; font-weight:650; }
   .metrics {
     display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
     margin-top:1.6rem; border-top:1px solid var(--border);
@@ -544,7 +548,26 @@ function renderRecommendation(rec, strategy) {
       `Priority ${step.goal.priority} · ${bannerName(step.banner)}`;
 
     if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
-      meta.textContent += ` · up to ${wishWord(step.safe_spend)}`;
+      const startingWishes = state.account.account.wishes;
+      const spend = Math.max(0, startingWishes - step.safe_spend);
+      meta.textContent += ` · ${wishWord(spend)} spent`;
+
+      const frontier = document.createElement("div");
+      frontier.className = "strategy-frontier";
+
+      const keep = document.createElement("div");
+      keep.innerHTML =
+        `<span class="frontier-label">Spend down to</span> <strong>${wishWord(step.safe_spend)}</strong>`;
+
+      const probability = document.createElement("div");
+      probability.innerHTML =
+        `<span class="frontier-label">Chance of ${goalName(step.goal)}</span> <span class="frontier-probability">${pct(step.outcome_probability)}</span>`;
+
+      frontier.append(keep, probability);
+      body.append(action, meta, frontier);
+      item.classList.add("recommended");
+      strategyList.append(item);
+      continue;
     } else if (step.action === "save" && step.reserve_wishes !== null) {
       meta.textContent += ` · keep ${wishWord(step.reserve_wishes)}`;
     }
