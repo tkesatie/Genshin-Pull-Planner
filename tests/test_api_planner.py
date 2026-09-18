@@ -122,41 +122,45 @@ class TestSafeSpend:
 
 
 class TestSpendTable:
-    def test_rows_cover_every_spend_and_report_both_sides(
+    def test_multi_copy_outcome_shows_spending_tradeoff(
         self, api_client, doc_account_id
     ):
         body = api_client.get(
             f"/accounts/{doc_account_id}/planner/spend-table",
-            params={"step": 10},
+            params={"step": 10, "runs": 200, "seed": 5},
         ).json()
-        assert body["goal"]["character"] == "Vesna"
-        assert body["copies_needed"] == 1
-        assert [row["wishes_spent"] for row in body["rows"]] == [0, 10, 20, 30, 40]
-        # Spending more raises the goal's probability (§10.2 is monotone)...
-        confidences = [row["goal_confidence"] for row in body["rows"]]
-        assert confidences == sorted(confidences)
-        # ...and is an explicit tradeoff against the protected roadmap (§1).
-        assert body["rows"][0]["protected"][0]["budget_at_banner"] > (
-            body["rows"][-1]["protected"][0]["budget_at_banner"]
-        )
 
-    def test_a_multi_copy_goal_is_rejected_not_approximated(
+        assert body["outcome"]["character"] == "Vesna"
+        assert body["outcome"]["constellation"] == 2
+        assert body["runs"] == 200
+        assert body["seed"] == 5
+        assert [row["wishes_spent"] for row in body["rows"]] == [0, 10, 20, 30, 40]
+
+        # C2 is a cumulative three-copy target, so the section reports the
+        # probability of reaching the resulting constellation rather than a
+        # single-copy curve.
+        probabilities = [row["outcome_probability"] for row in body["rows"]]
+        assert probabilities == sorted(probabilities)
+        assert probabilities[0] == 0.0
+        assert probabilities[-1] > probabilities[0]
+
+        # Future protection is evaluated against the same simulated spend.
+        assert body["rows"][0]["protected"]
+        assert body["rows"][0]["protected"][0]["goal"]["character"] == "Tsaritsa"
+        assert body["rows"][0]["protected"][0]["constraining"] is True
+        assert body["rows"][-1]["protected"][0]["probability"] <= body["rows"][0]["protected"][0]["probability"]
+
+    def test_spend_analysis_uses_selected_outcome_even_when_recommendation_is_discretionary(
         self, api_client, doc_account_id
     ):
-        """Multi-copy targets are simulation territory (§10.4, §18)."""
-        api_client.put(
-            f"/accounts/{doc_account_id}/goals",
-            json={
-                "goals": [
-                    {"character": "Vesna", "constellation": 2, "priority": 1}
-                ]
-            },
-        )
-        response = api_client.get(
-            f"/accounts/{doc_account_id}/planner/spend-table"
-        )
-        assert response.status_code == 422
-        assert "single-copy" in response.json()["detail"]
+        body = api_client.get(
+            f"/accounts/{doc_account_id}/planner/spend-table",
+            params={"step": 20, "runs": 100, "seed": 7},
+        ).json()
+
+        assert body["outcome"] is not None
+        assert body["outcome"]["character"] == "Vesna"
+        assert body["outcome"]["label"] in {"C2", "C1", "C0"}
 
 
 class TestRecommendation:
