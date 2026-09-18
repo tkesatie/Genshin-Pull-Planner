@@ -172,7 +172,6 @@ def _evaluate_spend(
             ),
             *future_plan.entries,
         ),
-        shared_current_budget=spend,
     )
     joint_goals = tuple(required_goals) + (goal,)
     return simulate(
