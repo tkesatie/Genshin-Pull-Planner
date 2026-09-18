@@ -122,7 +122,7 @@ def test_frontier_is_monotonic_and_does_not_scan_every_spend(monkeypatch):
         calls += 1
         skirk = plan.entry_for(SKIRK)
         if skirk is not None:
-            probability = min(1.0, skirk.budget / 265)
+            probability = 0.91 if skirk.budget >= 265 else 0.89
         else:
             probability = 1.0
         return SimpleNamespace(
