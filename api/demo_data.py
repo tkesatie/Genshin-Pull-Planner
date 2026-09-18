@@ -5,7 +5,7 @@ usable during local UI development. A caller that injects its own repository
 is never seeded by this module.
 """
 
-from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Preference, Ownership, VersionIncome
+from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Ownership, VersionIncome
 from api.repository import AccountRecord, PlannerSettings
 
 
@@ -21,7 +21,7 @@ def create_demo_account() -> AccountRecord:
             wishes=450,
             current_pity=27,
             character_guarantee=False,
-            owned_characters=Ownership({"Skirk": 2}),
+            owned_characters=Ownership({"Skirk": 0}),
         ),
         settings=PlannerSettings(
             current_version="7.1",
@@ -40,10 +40,7 @@ def create_demo_account() -> AccountRecord:
             Banner(character="Vodynista", version="7.1", phase=1),
             Banner(character="Skirk", version="7.1", phase=2),
         ),
-        preferences=(
-            Preference(character="Vesna", rank=1, constellation=2),
-            Preference(character="Skirk", rank=2, constellation=2),
-        ),
+        preferences=(),
         income=IncomeForecast(
             versions=(
                 VersionIncome(
