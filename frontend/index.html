@@ -246,6 +246,20 @@
   </div>
 
   <div id="dashboard" hidden>
+
+    <details class="account-editor">
+      <summary>Account state</summary>
+      <div class="panel account-form">
+        <label>Wishes <input id="f-wishes" type="number" min="0" step="1"></label>
+        <label>Character pity <input id="f-pity" type="number" min="0" max="89" step="1"></label>
+        <label>Version <input id="f-version" type="text" inputmode="decimal"></label>
+        <label>Phase <input id="f-phase" type="number" min="1" step="1"></label>
+        <label>Income scenario <select id="f-scenario"><option value="low">Low</option><option value="expected">Expected</option><option value="high">High</option></select></label>
+        <label>Confidence <input id="f-confidence" type="number" min="0.01" max="1" step="0.05"></label>
+        <label class="check"><input id="f-guarantee" type="checkbox"> Character guarantee</label>
+        <div class="account-form-actions"><button id="save" class="primary">Save account state</button><span id="save-note" class="muted"></span></div>
+      </div>
+    </details>
     <section id="verdict-section">
       <div class="hero">
         <div class="hero-top">
@@ -339,7 +353,7 @@ async function api(path, options) {
 
 /* ---------- loading ---------- */
 
-async function loadAccounts() {
+async async function loadAccounts() {
   const accounts = await api("/accounts");
   const picker = $("account-picker");
   picker.innerHTML = "";
