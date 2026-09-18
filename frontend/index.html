@@ -4,18 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pull Planner</title>
-<!--
-  Phase 7 dashboard (Design Document §18 Phase 7).
-
-  Reads the Phase 6 API from the same origin and renders the primary
-  dashboard in the document's own order: the recommendation, why, safe
-  spending, the spend table, protected future goals, the roadmap. Account
-  editing is a secondary view below them.
-
-  No logic lives here. Every number on this page is one the API computed;
-  the page's job is to make the decision legible and to let the user re-run
-  the planner after an account update (§2).
--->
 <style>
   :root {
     color-scheme: dark;
@@ -198,8 +186,11 @@
   .chip.active { border-color:var(--gold); color:var(--text); }
   .chip.blocked { opacity:.6; } .chip.satisfied { border-color:var(--green); color:var(--green); }
 
-  .grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); }
-  .field { display:grid; gap:.25rem; font-size:.8rem; }
+  .table-panel { overflow-x:auto; }
+  .table-panel table { min-width:38rem; }
+  .table-panel th, .table-panel td { white-space:nowrap; }
+  .table-panel tr.boundary { background:rgba(217,170,82,.06); }
+  .table-panel tr.boundary td:first-child { color:var(--gold-bright); font-weight:700; }
   .empty { padding:3rem 0; }
   .empty .verdict { font-size:2rem; }
   code { color:var(--gold-bright); }
@@ -235,9 +226,7 @@
 
   <div id="empty" class="empty" hidden>
     <p class="verdict">No accounts yet.</p>
-    <p>Create one through the API to start planning: <code>POST /accounts</code>
-      with your account state, goals and expected banners. The full request
-      shape is in <a href="/docs">the API docs</a>.</p>
+    <p>Create an account through the API to start planning: <code>POST /accounts</code>.</p>
   </div>
 
   <div id="dashboard" hidden>
@@ -258,9 +247,8 @@
     </section>
 
     <div class="split"><section id="why-section" hidden>
-      <h2>Why not something better</h2>
-      <p class="muted">Outcomes you prefer more, and the protected goal each one
-        would put below your threshold.</p>
+      <h2>Why this is the recommendation</h2>
+      <p class="muted">More-preferred outcomes that were considered, and the future goals that prevent them.</p>
       <div id="why"></div>
     </section>
 
@@ -276,7 +264,7 @@
     </section>
 
     <section>
-      <h2>Safe spending</h2>
+      <h2>Quick reserve check</h2>
       <p class="muted" id="safe-caption"></p>
       <div class="panel">
         <p class="verdict" id="safe-spend" style="font-size: 1.8rem"></p>
@@ -285,45 +273,17 @@
     </section>
 
     <section>
-      <h2>Spend table</h2>
+      <h2>How spending changes your odds</h2>
       <p class="muted" id="spend-caption"></p>
-      <div class="panel" id="spend-table"></div>
+      <div class="panel table-panel" id="spend-table"></div>
     </section>
 
     <section>
-      <h2>Roadmap</h2>
-      <p class="muted">Your banner schedule, with each goal's state against it.
-        Goals in bold type can be pursued now.</p>
+      <h2>Upcoming goals</h2>
+      <p class="muted">Your banner schedule and the goals attached to each banner.</p>
       <div class="panel timeline" id="roadmap"></div>
     </section>
 
-    <section>
-      <h2>Account</h2>
-      <p class="muted">The planner is a living tool: update what you own and
-        re-run it after every banner (§2).</p>
-      <div class="panel">
-        <div class="grid">
-          <label class="field">Wishes<input id="f-wishes" type="number" min="0"></label>
-          <label class="field">Pity<input id="f-pity" type="number" min="0"></label>
-          <label class="field">Version<input id="f-version"></label>
-          <label class="field">Phase<input id="f-phase" type="number" min="1"></label>
-          <label class="field">Stored confidence<input id="f-confidence" type="number" min="0.01" max="1" step="0.05"></label>
-          <label class="field">Income scenario
-            <select id="f-scenario">
-              <option value="low">low</option>
-              <option value="expected">expected</option>
-              <option value="high">high</option>
-            </select>
-          </label>
-        </div>
-        <p style="margin-top: 1rem">
-          <label><input id="f-guarantee" type="checkbox"> Next 5-star is guaranteed featured</label>
-        </p>
-        <p id="owned-note" class="muted"></p>
-        <button id="save">Save account</button>
-        <span id="save-note" class="muted"></span>
-      </div>
-    </section>
   </div>
 </main>
 
@@ -499,7 +459,7 @@ function renderRecommendation(rec) {
   }
   $("provenance").textContent =
     `${rec.runs.toLocaleString()} simulated futures, seed ${rec.seed === null ? "random" : rec.seed}. ` +
-    `Re-run after the banner resolves.`;
+    `Run again when your account or banner assumptions change.`;
 
   const why = $("why");
   why.innerHTML = "";
@@ -548,7 +508,7 @@ function renderRecommendation(rec) {
       ? "Goals the user ranked below this banner's goal are shown, but only " +
         "higher-priority goals cap the spend. "
       : "") +
-    `The dashed line is your ${pct(rec.confidence)} threshold.`;
+    `The dashed line is your ${pct(rec.confidence)} protection threshold.`;
   $("protected-section").hidden = rec.protected.length === 0;
 
   const stops = $("stops");
@@ -567,7 +527,7 @@ function renderSafeSpend(safe) {
       ? "Nothing is safe to spend."
       : `${wishWord(safe.safe_spend)} of ${safe.account_wishes}.`;
   $("safe-caption").textContent =
-    `A quick analytical bound on ${bannerName(safe.current_banner)}: ${safe.approximation}.`;
+    `A quick estimate of how many wishes can be spent while preserving protected future goals. ${safe.approximation}.`;
 
   const bars = $("safe-bars");
   bars.innerHTML = "";
@@ -601,8 +561,8 @@ function renderSpendTable(table) {
     return;
   }
   $("spend-caption").textContent =
-    `Spending on ${goalName(table.goal)} against everything you are protecting. ` +
-    `The gold rule is the last spend that keeps the roadmap above ${pct(table.confidence)}.`;
+    `Shows how different current-banner spending levels change your target odds and the odds of your protected future goals. ` +
+    `The highlighted row is the last tested spend where every protected goal stays above ${pct(table.confidence)}.`;
 
   const protectedGoals = table.rows[0] ? table.rows[0].protected : [];
   const head = ["Spend", `${goalName(table.goal)} odds`]
@@ -687,22 +647,7 @@ function renderRoadmap(view) {
 
 /* ---------- account editing ---------- */
 
-function fillAccountForm() {
-  const { account, settings } = state.account;
-  $("f-wishes").value = account.wishes;
-  $("f-pity").value = account.current_pity;
-  $("f-guarantee").checked = account.character_guarantee;
-  $("f-version").value = settings.current_version;
-  $("f-phase").value = settings.current_phase;
-  $("f-confidence").value = settings.confidence;
-  $("f-scenario").value = settings.income_scenario;
-  const owned = Object.entries(account.owned_characters)
-    .map(([character, constellation]) => `${character} C${constellation}`)
-    .join(", ");
-  $("owned-note").textContent = owned
-    ? `You own ${owned}. Editing ownership, goals, preferences and income lands in the next slice; use the API meanwhile.`
-    : "Nothing owned yet. Editing ownership, goals, preferences and income lands in the next slice; use the API meanwhile.";
-}
+function fillAccountForm() {}
 
 async function saveAccount() {
   clearError();
@@ -773,7 +718,6 @@ async function run() {
 
 $("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
 $("run").addEventListener("click", run);
-$("save").addEventListener("click", saveAccount);
 $("confidence").addEventListener("change", () => { resetVerdict(); loadPlanner(); });
 
 loadAccounts().catch((error) => showError(error.message));
