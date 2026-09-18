@@ -36,7 +36,7 @@ just spends nothing and remains in the run's history.
 from dataclasses import dataclass
 
 from domain import Banner
-from planner.banners import current_banner
+from planner.banners import available_banners, current_banner
 from planner.context import PlannerContext
 
 
@@ -112,7 +112,11 @@ class SpendPlan:
                 `current_banner`, also raised when the context has no
                 matching roadmap banner at all).
         """
-        current = current_banner(context)
+        matches = available_banners(context)
+        if not matches:
+            current = current_banner(context)
+        else:
+            current = matches[0]
         known = set(context.roadmap.banners)
         for entry in self.entries:
             banner = entry.banner
