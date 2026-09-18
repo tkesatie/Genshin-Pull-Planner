@@ -146,7 +146,7 @@ class SimulationResult:
     goals: tuple[GoalProbability, ...]
     banners: tuple[BannerAggregate, ...]
     all_goals_probability: float
-    joint_goal_probability: GoalJointProbability | None
     final_wishes_mean: float
     final_wishes_min: int
     final_wishes_max: int
+    joint_goal_probability: GoalJointProbability | None = None
