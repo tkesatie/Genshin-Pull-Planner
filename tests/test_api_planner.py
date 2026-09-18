@@ -169,6 +169,60 @@ class TestSpendTable:
         assert [outcome["label"] for outcome in body["outcomes"]] == ["C0", "C2"]
 
 
+class TestMultipleCurrentBanners:
+    def test_recommendation_selects_highest_priority_current_banner(self, api_client):
+        response = api_client.post(
+            "/accounts",
+            json={
+                "label": "simultaneous banners",
+                "account": {
+                    "wishes": 450,
+                    "current_pity": 27,
+                    "character_guarantee": False,
+                    "owned_characters": {"Skirk": 0},
+                },
+                "settings": {
+                    "current_version": "7.1",
+                    "current_phase": 1,
+                },
+                "banners": [
+                    {"character": "Vodynista", "version": "7.1", "phase": 1},
+                    {"character": "Vesna", "version": "7.1", "phase": 1},
+                    {"character": "Skirk", "version": "7.1", "phase": 2},
+                ],
+                "goals": [
+                    {"character": "Vodynista", "constellation": 0, "priority": 1},
+                    {"character": "Vesna", "constellation": 0, "priority": 2},
+                    {"character": "Skirk", "constellation": 2, "priority": 3},
+                    {"character": "Vesna", "constellation": 2, "priority": 4},
+                ],
+            },
+        )
+        assert response.status_code == 201, response.text
+        account_id = response.json()["id"]
+
+        goals = api_client.get(f"/accounts/{account_id}/planner/goals").json()
+        assert goals["current_banner"] is None
+        assert {
+            banner["character"] for banner in goals["available_banners"]
+        } == {"Vodynista", "Vesna"}
+        assert {
+            (goal["goal"]["character"], goal["goal"]["constellation"])
+            for goal in goals["goals"]
+            if goal["actionable"]
+        } == {("Vodynista", 0), ("Vesna", 0)}
+
+        recommendation = api_client.get(
+            f"/accounts/{account_id}/planner/recommendation",
+            params={"runs": 100, "seed": 7, "budgets": [450, 0]},
+        )
+        assert recommendation.status_code == 200, recommendation.text
+        body = recommendation.json()
+        assert body["banner"]["character"] == "Vodynista"
+        assert body["outcome"]["character"] == "Vodynista"
+        assert body["outcome"]["label"] == "C0"
+
+
 class TestRecommendation:
     def test_matches_the_optimizer_for_the_same_runs_and_seed(
         self, api_client, doc_account_id
