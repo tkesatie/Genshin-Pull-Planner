@@ -126,6 +126,28 @@ def test_skirk_c2_probability_sanity_curve(capsys):
     assert rows[-1][1] > rows[0][1]
 
 
+def test_multi_copy_confidence_is_explicit(capsys):
+    """Show the probability API's behavior for a two-copy target."""
+    from probability import cumulative_probability, wishes_for_confidence
+
+    context = make_context()
+    one_copy = wishes_for_confidence(
+        context.confidence, 0, False, context.mechanics
+    )
+    two_copy_curve = cumulative_probability(
+        180, 0, False, context.mechanics
+    )
+
+    print("\\nMulti-copy confidence diagnostic")
+    print(f"one-copy 90% reserve: {one_copy}")
+    print(f"two-copy probability at 155 wishes: {two_copy_curve[155]:.2%}")
+    print(f"two-copy probability at 180 wishes: {two_copy_curve[180]:.2%}")
+
+    assert one_copy == 155
+    assert 0.0 <= two_copy_curve[155] <= 1.0
+    assert 0.0 <= two_copy_curve[180] <= 1.0
+
+
 def test_planner_protection_matches_skirk_threshold(capsys):
     """Inspect the planner's protected Skirk reserve at representative spend levels."""
     from planner.protection import protected_goal_outcomes
