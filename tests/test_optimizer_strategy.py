@@ -78,9 +78,9 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
 
     result = strategy_module.build_strategy(context, runs=1, seed=0)
 
-    assert result.safe_spend if False else True
     assert result.reserve_wishes == 150
     assert result.reserve_goal == Goal("Skirk", 2, 3)
+    assert result.steps[-1].safe_spend == 300
 
     plan = captured[300]
     assert plan.entries == (
