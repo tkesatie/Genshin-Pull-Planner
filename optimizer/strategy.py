@@ -5,9 +5,9 @@ changing optimizer.recommend(), whose job remains evaluating one current
 decision.
 
 A spend frontier is calculated for the current decision's priority. Higher-
-priority C0 goals on the current banner are included in the same simulated
-plan with an uncapped budget, so their random pull costs are accounted for
-before evaluating how much can be spent on the current progression goal.
+priority C0 goals on the current phase are included in the same simulated
+plan and share the current-phase spend cap, so their random pull costs are
+accounted for before evaluating progression.
 Higher-priority future goals are then protected at the configured confidence
 threshold.
 
@@ -172,6 +172,7 @@ def _evaluate_spend(
             ),
             *future_plan.entries,
         ),
+        shared_current_phase_budget=spend,
     )
     joint_goals = tuple(required_goals) + (goal,)
     return simulate(
