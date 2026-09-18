@@ -221,11 +221,11 @@ class TestSpendCapsAndTargets:
             roadmap=Roadmap(goals=[Goal("Vesna", 0, 1)], banners=[VESNA]),
             current_version="7.0",
             income=income,
-            # Target C20 needs 21 copies = 42 forced pulls: more than any
-            # pool, so the cap is what stops the spending.
+            # Target C40 needs 41 copies, so no 40-wish pool can finish it;
+            # the cap, rather than current-version income, must stop spending.
             mechanics=forced_mechanics(featured_rate=1e-9),
         )
-        plan = SpendPlan(entries=(PlannedSpend(VESNA, 20, 40),))
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 40, 40),))
         run = simulate_history(context, plan, np.random.default_rng(0))
         first = run.banner_results[0]
         assert first.income_credited == 0
