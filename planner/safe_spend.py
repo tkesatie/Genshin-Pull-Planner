@@ -43,10 +43,19 @@ def safe_spend(context: PlannerContext, banner=None) -> int:
         return wishes
 
     worst_deficit = 0
+    current = banner
+    if current is None:
+        from planner.banners import available_banners
+        matches = available_banners(context)
+        current = matches[0] if matches else None
+
     for index, outcome in enumerate(outcomes, start=1):
         cumulative_required = index * outcome.required_wishes
-        deficit = cumulative_required - context.income_credit(
-            outcome.banner.version
+        credit = (
+            0
+            if current is not None and outcome.banner.order_key == current.order_key
+            else context.income_credit(outcome.banner.version)
         )
+        deficit = cumulative_required - credit
         worst_deficit = max(worst_deficit, deficit)
     return max(0, min(wishes, wishes - worst_deficit))
