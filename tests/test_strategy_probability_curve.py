@@ -353,3 +353,7 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     assert vesna_c2.safe_spend in range(215, 224)
     assert vesna_c2.reserve_wishes in range(227, 236)
     assert 0.03 < vesna_c2.outcome_probability < 0.08
+
+    # The isolated Vesna-C2 probability is materially higher; this assertion
+    # prevents the old marginal probability from silently returning to the UI.
+    assert vesna_c2.outcome_probability < 0.10
