@@ -160,7 +160,11 @@ GET /accounts/{id}/planner/goals
 
 ~~~json
 {
-  "current_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "current_banner": null,
+  "available_banners": [
+    {"character": "Navia", "version": "7.0", "phase": 1},
+    {"character": "Arlecchino", "version": "7.0", "phase": 1}
+  ],
   "goals": [
     {
       "goal": {"character": "Navia", "constellation": 0, "priority": 1},
@@ -199,18 +203,22 @@ States:
 - active: unsatisfied and not blocked by an earlier same-character constellation.
 - blocked: an earlier same-character constellation must be reached first.
 - next_banner null: the goal still exists, but no matching scheduled banner exists.
-- relevant: goal character matches the current banner.
+- relevant: goal character matches one of the currently available banners.
 - actionable: relevant + active.
+- when multiple banners share the current version/phase, current_banner is null and available_banners lists every simultaneous opportunity.
 
 A blocked goal remains part of the roadmap.
 
 ## 6. Safe-spend response
 
-GET /accounts/{id}/planner/safe-spend
+GET /accounts/{id}/planner/safe-spend?character=Navia
+
+When multiple banners are active, `character` selects the banner being analyzed. The response includes all `available_banners`.
 
 ~~~json
 {
   "current_banner": {"character": "Navia", "version": "7.0", "phase": 1},
+  "available_banners": [{"character": "Navia", "version": "7.0", "phase": 1}],
   "safe_spend": 84,
   "account_wishes": 180,
   "confidence": 0.9,
@@ -232,7 +240,7 @@ safe_spend is an analytical Phase 3 approximation, not the optimizer's exact max
 
 ## 7. Spending analysis
 
-GET /accounts/{id}/planner/spend-table?step=10&runs=2000&seed=0
+GET /accounts/{id}/planner/spend-table?character=Vesna&step=10&runs=2000&seed=0
 
 Shows how different current-banner spending levels affect the selected current-banner outcome and every protected future goal. It uses the same Monte Carlo simulation and multi-copy outcome semantics as the recommendation; it is not limited to single-copy goals.
 
@@ -241,7 +249,14 @@ Response:
 ~~~json
 {
   "current_banner": {"character": "Vesna", "version": "7.0", "phase": 1},
-  "outcome": {"character": "Vesna", "constellation": 2, "rank": 1, "weapon_refinement": 0, "label": "C2"},
+  "available_banners": [
+    {"character": "Vesna", "version": "7.0", "phase": 1},
+    {"character": "Navia", "version": "7.0", "phase": 1}
+  ],
+  "outcomes": [
+    {"character": "Vesna", "constellation": 0, "rank": 1, "weapon_refinement": null, "label": "C0"},
+    {"character": "Vesna", "constellation": 2, "rank": 3, "weapon_refinement": null, "label": "C2"}
+  ],
   "step": 10,
   "confidence": 0.9,
   "runs": 2000,
@@ -249,17 +264,12 @@ Response:
   "rows": [
     {
       "wishes_spent": 80,
-      "outcome_probability": 0.31,
-      "all_protected_meet_threshold": true,
-      "protected": [
-        {
-          "goal": {"character": "Tsaritsa", "constellation": 0, "priority": 2},
-          "banner": {"character": "Tsaritsa", "version": "7.1", "phase": 1},
-          "probability": 0.94,
-          "meets_threshold": true,
-          "constraining": true
-        }
-      ]
+      "outcomes": [
+        {"outcome": {"character": "Vesna", "constellation": 0, "rank": 1, "weapon_refinement": null, "label": "C0"}, "probability": 0.94},
+        {"outcome": {"character": "Vesna", "constellation": 2, "rank": 3, "weapon_refinement": null, "label": "C2"}, "probability": 0.31}
+      ],
+      "protected": [],
+      "all_protected_meet_threshold": true
     }
   ]
 }
