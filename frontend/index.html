@@ -852,8 +852,10 @@ async function saveAccount() {
     });
     $("save-note").textContent = "Saved. Run the planner again.";
     $("confidence").value = state.account.settings.confidence;
+    $("hero-wishes").textContent = state.account.account.wishes;
+    $("hero-pity").textContent = state.account.account.current_pity;
+    $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
     resetVerdict();
-    await loadPlanner();
   } catch (error) {
     $("save-note").textContent = "";
     showError(error.message);
