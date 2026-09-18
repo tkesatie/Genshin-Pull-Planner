@@ -3,9 +3,9 @@
 This is intentionally a diagnostic test rather than a brittle regression
 against exact Monte Carlo percentages. It measures how increasing the Vesna
 spend cap changes Vesna C2 and protected Skirk C2 outcomes under the same
-shared 450-wish pool.
+shared 450-wish pool, including the expected 90 wishes of 7.1 income.
 """
-from domain import Account, Banner, Goal, Ownership, Roadmap
+from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Ownership, Roadmap, VersionIncome
 from planner import PlannerContext
 from simulation import PlannedSpend, SpendPlan, simulate
 
@@ -34,6 +34,14 @@ def make_context() -> PlannerContext:
         current_version="7.1",
         current_phase=1,
         confidence=0.90,
+        income=IncomeForecast(
+            versions=[
+                VersionIncome(
+                    "7.1",
+                    estimate=IncomeEstimate(90, 90, 90),
+                )
+            ]
+        ),
     )
 
 
@@ -42,7 +50,7 @@ def test_vesna_spend_curve(capsys):
     context = make_context()
     budgets = (0, 100, 150, 200, 219, 250, 300, 350, 400, 450)
 
-    print("\nVesna spend curve (10,000 runs, seed=0)")
+    print("\nVesna spend curve with 90 expected 7.1 income (10,000 runs, seed=0)")
     print("budget | Vesna C2 | Skirk C2 | all goals | final wishes")
     print("-------+-----------+----------+-----------+-------------")
 
