@@ -760,10 +760,13 @@ function renderRecommendation(rec, strategy) {
       const pulled = document.createElement("button");
       pulled.textContent = `Pulled ${step.goal.character}`;
       pulled.addEventListener("click", () => recordPullOutcome(step.goal.character, "featured"));
-      const lost = document.createElement("button");
-      lost.textContent = "Lost 50/50";
-      lost.addEventListener("click", () => recordPullOutcome(step.goal.character, "lost_50_50"));
-      outcomes.append(pulled, lost);
+      if (!state.account.account.character_guarantee) {
+        const lost = document.createElement("button");
+        lost.textContent = "Lost 50/50";
+        lost.addEventListener("click", () => recordPullOutcome(step.goal.character, "lost_50_50"));
+        outcomes.append(lost);
+      }
+      outcomes.prepend(pulled);
       body.append(outcomes);
     }
 
