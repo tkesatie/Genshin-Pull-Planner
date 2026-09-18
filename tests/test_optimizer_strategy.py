@@ -118,3 +118,56 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
             budget=450,
         ),
     )
+
+
+def test_safe_spend_uses_simulation_for_non_monotonic_frontier(monkeypatch):
+    """A feasible cap can sit below an unsafe cap; binary search must not skip it."""
+    context = make_context()
+    probabilities = {
+        450: 0.89,
+        400: 0.89,
+        350: 0.89,
+        300: 0.89,
+        275: 0.91,
+    }
+
+    def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
+        vesna_entry = plan.entry_for(Banner("Vesna", "7.1", 1))
+        skirk = Goal("Skirk", 2, 3)
+        probability = probabilities.get(vesna_entry.budget, 0.91)
+        return SimpleNamespace(
+            goals=(GoalProbability(skirk, probability),),
+            banners=(
+                BannerAggregate(
+                    banner=Banner("Vodynista", "7.1", 1),
+                    target_constellation=0,
+                    planned_budget=450,
+                    mean_income_credited=0.0,
+                    mean_wishes_spent=0.0,
+                    target_met_probability=1.0,
+                    mean_copies_obtained=0.0,
+                ),
+                BannerAggregate(
+                    banner=Banner("Vesna", "7.1", 1),
+                    target_constellation=2,
+                    planned_budget=vesna_entry.budget,
+                    mean_income_credited=0.0,
+                    mean_wishes_spent=0.0,
+                    target_met_probability=0.42,
+                    mean_copies_obtained=0.0,
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
+
+    result = strategy_module.build_strategy(context, runs=1, seed=0)
+
+    vesna_step = next(
+        step
+        for step in result.steps
+        if step.goal == Goal("Vesna", 2, 4)
+        and step.action == "pursue_until_reserve"
+    )
+    assert vesna_step.safe_spend == 275
+    assert vesna_step.reserve_wishes == 175
