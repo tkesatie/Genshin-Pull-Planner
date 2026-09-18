@@ -4,13 +4,15 @@ This layer answers the UI question "what should I do in sequence?" without
 changing optimizer.recommend(), whose job remains evaluating one current
 decision.
 
-A reserve is now calculated for the *current decision's priority*: it is the
-smallest wish balance that allows every higher-priority future protected goal
-to be pursued on its future banner while meeting the configured confidence
-threshold. Lower-priority future goals do not consume the protection reserve.
+A spend frontier is calculated for the current decision's priority. Higher-
+priority C0 goals on the current banner are included in the same simulated
+plan with an uncapped budget, so their random pull costs are accounted for
+before evaluating how much can be spent on the current progression goal.
+Higher-priority future goals are then protected at the configured confidence
+threshold.
 
 After an actual pull, rerun the planner so pity, guarantee, ownership, and
-wishes are reflected in the new reserve.
+wishes are reflected in the new frontier.
 """
 
 from dataclasses import dataclass
@@ -73,6 +75,50 @@ def _protection_plan(
     return SpendPlan(entries=tuple(entries)), tuple(protected)
 
 
+def _current_required_plan(
+    context: PlannerContext,
+    goal: Goal,
+    *,
+    current_banner: Banner,
+) -> SpendPlan:
+    """Build the higher-priority allocations that precede the current goal.
+
+    A same-character C0 goal is intentionally omitted because a progression
+    target on that banner already pursues the C0 first. Its budget is therefore
+    the total cap for that banner, not an additional spend after C0.
+    """
+    evaluations = evaluate_goals(context)
+    entries: list[PlannedSpend] = []
+
+    for evaluation in evaluations:
+        required = evaluation.goal
+        if required.priority >= goal.priority:
+            continue
+        if required.character == goal.character:
+            continue
+        if required.constellation != 0 or evaluation.copies_needed <= 0:
+            continue
+        banner = next(
+            (
+                candidate
+                for candidate in available_banners(context)
+                if candidate.character == required.character
+            ),
+            None,
+        )
+        if banner is None or banner == current_banner:
+            continue
+        entries.append(
+            PlannedSpend(
+                banner=banner,
+                target_constellation=0,
+                budget=context.account.wishes,
+            )
+        )
+
+    return SpendPlan(entries=tuple(entries))
+
+
 def _evaluate_spend(
     context: PlannerContext,
     goal: Goal,
@@ -82,12 +128,22 @@ def _evaluate_spend(
     runs: int,
     seed: int | None,
 ) -> tuple[SimulationResult, tuple[Goal, ...]]:
-    """Evaluate one current spend against all higher-priority future goals."""
+    """Evaluate a current spend after higher-priority C0 allocations.
+
+    The current progression goal's budget is a total cap on its banner. If
+    that goal is Vesna C2, for example, the simulator spends toward Vesna C0
+    first and then continues toward C2 while the same budget remains. This
+    avoids pretending we know the exact number of wishes consumed by the C0.
+    """
+    required_plan = _current_required_plan(
+        context, goal, current_banner=banner
+    )
     future_plan, protected_goals = _protection_plan(
         context, goal.priority, current_banner=banner
     )
     plan = SpendPlan(
         entries=(
+            *required_plan.entries,
             PlannedSpend(
                 banner=banner,
                 target_constellation=goal.constellation,
@@ -107,7 +163,7 @@ def _safe_spend(
     runs: int,
     seed: int | None,
 ) -> tuple[int, SimulationResult, tuple[Goal, ...]]:
-    """Find the largest current spend that preserves every constraint."""
+    """Find the largest current budget that preserves every constraint."""
     for spend in range(context.account.wishes, -1, -1):
         result, protected_goals = _evaluate_spend(
             context, goal, banner, spend, runs=runs, seed=seed
