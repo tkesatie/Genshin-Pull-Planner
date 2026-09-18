@@ -332,7 +332,7 @@
 <script>
 "use strict";
 
-const state = { account: null, planner: null, runOptions: {} };
+const state = { account: null, planner: null, runOptions: {}, plannerTiming: [] };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -350,6 +350,10 @@ function clearError() {
 
 async function api(path, options) {
   const response = await fetch(path, options);
+  if (path.includes("/planner/") && !path.includes("/planner/timing")) {
+    const seconds = Number(response.headers.get("X-Planner-Process-Time"));
+    if (Number.isFinite(seconds)) state.plannerTiming.push(seconds);
+  }
   if (response.status === 204) return null;
   const body = await response.json().catch(() => null);
   if (!response.ok) {
@@ -412,6 +416,8 @@ function query(extra) {
 }
 
 async function loadPlanner() {
+  const plannerStarted = performance.now();
+  state.plannerTiming = [];
   const id = state.account.id;
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
@@ -452,6 +458,34 @@ async function loadPlanner() {
     renderSafeSpend(safe);
     renderSpendTable(table);
     renderRoadmap(goals);
+
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const frontendFinished = performance.now();
+    const apiResponseSeconds = (frontendFinished - plannerStarted) / 1000;
+    const calculationSeconds = state.plannerTiming.length
+      ? Math.max(...state.plannerTiming)
+      : null;
+    const timing = {
+      planner_calculation_seconds: calculationSeconds,
+      api_response_seconds: apiResponseSeconds,
+      frontend_load_seconds: apiResponseSeconds,
+      total_seconds: apiResponseSeconds,
+    };
+    console.log(
+      "Planner timing\n" +
+      "-------------\n" +
+      `Planner calculation: ${calculationSeconds === null ? "n/a" : calculationSeconds.toFixed(2) + "s"}\n` +
+      `API response:        ${apiResponseSeconds.toFixed(2)}s\n` +
+      `Frontend load:       ${apiResponseSeconds.toFixed(2)}s\n` +
+      `Total:               ${apiResponseSeconds.toFixed(2)}s`
+    );
+    await api("/accounts/" + id + "/planner/timing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(timing),
+    });
   } catch (error) {
     showError(error.message);
   } finally {
