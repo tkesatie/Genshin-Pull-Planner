@@ -404,7 +404,7 @@ async function selectAccount(id) {
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   resetVerdict();
-  await loadPlanner("account selection");
+  await loadGoals();
 }
 
 function query(extra) {
@@ -419,6 +419,12 @@ function query(extra) {
   }
   const text = params.toString();
   return text ? `?${text}` : "";
+}
+
+async function loadGoals() {
+  const goals = await api(`/accounts/${state.account.id}/planner/goals${query()}`);
+  state.planner = { goals };
+  renderRoadmap(goals);
 }
 
 async function loadPlanner(source = "unknown") {
@@ -439,7 +445,10 @@ async function loadPlanner(source = "unknown") {
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
   try {
-    const goals = await api(`/accounts/${id}/planner/goals${query()}`);
+    const goals = state.planner && state.planner.goals;
+    if (!goals) {
+      throw new Error("Planner goals are not loaded. Select the account again.");
+    }
 
     let recommendation = state.planner && state.planner.recommendation;
     if (Object.keys(state.runOptions || {}).length) {
@@ -997,8 +1006,7 @@ $("save").addEventListener("click", saveAccount);
 $("run").addEventListener("click", run);
 $("confidence").addEventListener("change", () => {
   resetVerdict();
-  console.log("Confidence changed — starting planner");
-  loadPlanner("confidence change");
+  console.log("Confidence changed — planner results cleared; run the planner to recalculate");
 });
 
 loadAccounts().catch((error) => showError(error.message));
