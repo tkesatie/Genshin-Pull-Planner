@@ -43,6 +43,12 @@
   a { color: var(--gold-bright); }
   section { margin-top: 1.5rem; }
   .muted { color: var(--muted); font-size: .86rem; }
+  .resource-breakdown { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; margin-top:1rem; }
+  .resource-card { padding:.65rem .75rem; background:rgba(255,255,255,.025); border:1px solid var(--border); border-radius:6px; }
+  .resource-card span, .strategy-accounting span { display:block; color:var(--muted); font-size:.72rem; }
+  .resource-card strong, .strategy-accounting strong { color:var(--text); font-size:1rem; }
+  .strategy-accounting { display:grid; grid-template-columns:1fr auto; gap:.2rem .8rem; margin-top:.75rem; padding:.7rem .8rem; background:rgba(217,170,82,.045); border:1px solid var(--border); border-radius:6px; }
+  @media (max-width: 650px) { .resource-breakdown { grid-template-columns:1fr; } }
 
   header {
     display: flex; flex-wrap: wrap; gap: 1rem 1.5rem;
