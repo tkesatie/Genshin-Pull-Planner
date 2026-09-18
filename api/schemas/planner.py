@@ -13,6 +13,8 @@ from optimizer import (
     Recommendation,
     RejectedOutcome,
     StopConditions,
+    PullStrategy,
+    StrategyStep,
 )
 from planner import GoalEvaluation, ProtectedGoalOutcome
 
@@ -126,6 +128,48 @@ class SpendTableView(BaseModel):
     runs: int
     seed: int | None
     rows: list[SpendRowView]
+
+
+class StrategyStepView(BaseModel):
+    action: str
+    goal: GoalModel
+    banner: BannerModel
+    reserve_wishes: int | None = None
+
+    @classmethod
+    def from_domain(cls, step: StrategyStep):
+        return cls(
+            action=step.action,
+            goal=GoalModel.from_domain(step.goal),
+            banner=BannerModel.from_domain(step.banner),
+            reserve_wishes=step.reserve_wishes,
+        )
+
+
+class PullStrategyView(BaseModel):
+    steps: list[StrategyStepView]
+    reserve_goal: GoalModel | None
+    reserve_wishes: int | None
+    reserve_probability: float | None
+    confidence: float
+    runs: int
+    seed: int | None
+
+    @classmethod
+    def from_domain(cls, strategy: PullStrategy, *, confidence: float):
+        return cls(
+            steps=[StrategyStepView.from_domain(step) for step in strategy.steps],
+            reserve_goal=(
+                None
+                if strategy.reserve_goal is None
+                else GoalModel.from_domain(strategy.reserve_goal)
+            ),
+            reserve_wishes=strategy.reserve_wishes,
+            reserve_probability=strategy.reserve_probability,
+            confidence=confidence,
+            runs=strategy.runs,
+            seed=strategy.seed,
+        )
 
 
 class GoalStandingView(BaseModel):
