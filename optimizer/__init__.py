@@ -152,6 +152,7 @@ from optimizer.recommend import (
     recommend,
 )
 from optimizer.stops import StopConditions, for_discretionary, for_pursue, for_skip
+from optimizer.strategy import PullStrategy, StrategyStep, build_strategy
 
 __all__ = [
     "DEFAULT_RUNS",
@@ -175,4 +176,7 @@ __all__ = [
     "priority_for_outcome",
     "protected_groups",
     "recommend",
+    "PullStrategy",
+    "StrategyStep",
+    "build_strategy",
 ]
