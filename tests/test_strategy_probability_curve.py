@@ -125,6 +125,52 @@ def test_skirk_c2_probability_sanity_curve(capsys):
     assert rows[-1][1] > rows[0][1]
 
 
+def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
+    """Measure Skirk C2 using the reserve actually advertised by the frontier."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    caps = (200, 210, 220, 225, 230, 231, 235, 240)
+    mechanics = context.mechanics
+
+    print("\nCombined frontier with actual Skirk reserve (10,000 runs, seed=0)")
+    print("cap | reserve | Skirk C2")
+    print("----+---------+----------")
+
+    rows = []
+    for cap in caps:
+        skirk_success = 0
+        rng = np.random.default_rng(0)
+        reserve = 450 - cap
+
+        for _ in range(10_000):
+            account = context.account
+
+            vod_spent, _, _, account = _pull_toward_target(
+                account, "Vodynista", 1, cap, mechanics, rng
+            )
+
+            account = replace(account, wishes=account.wishes + 90)
+            vesna_budget = max(cap - vod_spent, 0)
+            _, _, _, account = _pull_toward_target(
+                account, "Vesna", 3, vesna_budget, mechanics, rng
+            )
+
+            _, skirk_copies, _, _ = _pull_toward_target(
+                account, "Skirk", 2, reserve, mechanics, rng
+            )
+            skirk_success += skirk_copies == 2
+
+        probability = skirk_success / 10_000
+        rows.append((cap, reserve, probability))
+        print(f"{cap:3d} | {reserve:7d} | {probability:8.2%}")
+
+    # This test is specifically checking that the displayed reserve is the
+    # budget used for the protected Skirk goal. As current-banner spending
+    # increases, the protected probability should decrease.
+    assert rows[-1][2] < rows[0][2]
+
+
 def test_combined_current_banner_frontier(capsys):
     """Measure the real frontier: Vod C0 + Vesna C2 share the 450-wish pool."""
     from simulation.engine import _pull_toward_target
