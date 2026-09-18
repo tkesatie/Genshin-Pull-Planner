@@ -95,7 +95,7 @@ class AccountUpdate(StrictModel):
 class PullResultModel(StrictModel):
     """Record a meaningful character-banner outcome without logging every pull."""
 
-    outcome: str = Field(..., description='"featured", "lost_50_50", or "stopped".')
+    outcome: str = Field(..., description='"featured" or "lost_50_50".')
     wishes_used: int = Field(..., ge=1)
     character: str | None = None
 
