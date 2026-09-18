@@ -121,34 +121,23 @@ class SafeSpendView(BaseModel):
 
 
 class SpendRowView(BaseModel):
-    """One candidate spend on the current banner (§14)."""
+    """One simulated current-banner spend scenario."""
 
     wishes_spent: int
-    goal_confidence: float
+    outcome_probability: float
+    protected: list["GoalStandingView"]
     all_protected_meet_threshold: bool
-    protected: list[ProtectedGoalOutcomeView]
-
-    @classmethod
-    def from_domain(cls, row: SpendRow) -> "SpendRowView":
-        return cls(
-            wishes_spent=row.wishes_spent,
-            goal_confidence=row.goal_confidence,
-            all_protected_meet_threshold=row.all_protected_meet_threshold,
-            protected=[
-                ProtectedGoalOutcomeView.from_domain(outcome)
-                for outcome in row.protected
-            ],
-        )
 
 
 class SpendTableView(BaseModel):
-    """The spending table for the current banner's single active goal (§14)."""
+    """How current-banner spending changes the selected outcome and future goals."""
 
     current_banner: BannerModel
-    goal: GoalModel
-    copies_needed: int
+    outcome: "OutcomeView | None"
     step: int
     confidence: float
+    runs: int
+    seed: int | None
     rows: list[SpendRowView]
 
 
