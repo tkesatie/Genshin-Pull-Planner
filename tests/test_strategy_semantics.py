@@ -82,14 +82,23 @@ def strategy_context(
     )
 
 
-def fake_strategy_result(plan: SpendPlan, skirk_probability: float):
+def fake_strategy_result(
+    plan: SpendPlan,
+    skirk_probability: float,
+    *,
+    joint_probability: float = 0.42,
+    joint_goals: tuple[Goal, ...] = (
+        Goal("Vodynista", 0, 1),
+        Goal("Vesna", 2, 4),
+    ),
+):
     """Minimal result shape needed by build_strategy/_safe_spend."""
     vesna_entry = plan.entry_for(VESNA)
     return SimpleNamespace(
         goals=(GoalProbability(Goal("Skirk", 2, 3), skirk_probability),),
         joint_goal_probability=GoalJointProbability(
-            goals=(Goal("Vodynista", 0, 1), Goal("Vesna", 2, 4)),
-            probability=0.42,
+            goals=joint_goals,
+            probability=joint_probability,
         ),
         banners=(
             BannerAggregate(
@@ -357,7 +366,14 @@ def test_protected_requirement_has_a_finite_search_bound(monkeypatch):
     context = strategy_context()
 
     def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
-        return fake_strategy_result(plan, 0.0)
+        entry = plan.entry_for(SKIRK)
+        probability = 0.0
+        return fake_strategy_result(
+            plan,
+            probability,
+            joint_probability=probability,
+            joint_goals=(Goal("Skirk", 2, 3),),
+        )
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
 
