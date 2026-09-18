@@ -331,62 +331,58 @@ def test_combined_current_banner_frontier(capsys):
 
 
 def test_skirk_protected_boundary_convergence(capsys):
-    """Check whether the 259-vs-265 reserve boundary is Monte Carlo noise."""
+    """Compare the exact protected-future state against the live account state."""
     from simulation.engine import _pull_toward_target
 
     context = make_context()
     budgets = (259, 263, 265)
     run_counts = (2_000, 5_000, 10_000, 20_000)
 
-    print("\\nSkirk C2 boundary convergence")
-    print("runs  | budget | probability | meets 90%")
-    print("------+--------+-------------+----------")
+    print("\nSkirk C2 boundary: zero pity vs current 27 pity")
+    print("runs  | budget | pity 0 | pity 27")
+    print("------+--------+--------+--------")
 
     rows = []
     for runs in run_counts:
         for budget in budgets:
-            successes = 0
-            rng = np.random.default_rng(0)
+            probabilities = []
+            for starting_pity in (0, 27):
+                successes = 0
+                rng = np.random.default_rng(0)
 
-            for _ in range(runs):
-                _, copies, _, _ = _pull_toward_target(
+                account = replace(
                     context.account,
-                    "Skirk",
-                    2,
-                    budget,
-                    context.mechanics,
-                    rng,
+                    wishes=budget,
+                    current_pity=starting_pity,
+                    character_guarantee=False,
+                    character_radiance=0,
                 )
-                successes += copies == 2
 
-            probability = successes / runs
-            rows.append((runs, budget, probability))
+                for _ in range(runs):
+                    _, copies, _, _ = _pull_toward_target(
+                        account,
+                        "Skirk",
+                        2,
+                        budget,
+                        context.mechanics,
+                        rng,
+                    )
+                    successes += copies == 2
+
+                probabilities.append(successes / runs)
+
+            rows.append((runs, budget, *probabilities))
             print(
-                f"{runs:5d} | {budget:6d} | {probability:11.2%} | "
-                f"{probability >= context.confidence!s:>10}"
+                f"{runs:5d} | {budget:6d} | {probabilities[0]:6.2%} | "
+                f"{probabilities[1]:7.2%}"
             )
 
-    # At 20,000 runs the boundary should be stable enough to tell whether
-    # the live 2,000-run result is materially different from the 10,000-run
-    # diagnostic. This test intentionally does not assume which side wins.
-    boundaries = {}
-    for runs in run_counts:
-        passing = [
-            budget
-            for run_count, budget, probability in rows
-            if run_count == runs and probability >= context.confidence
-        ]
-        boundaries[runs] = min(passing) if passing else None
+    # The protected reserve calculation intentionally starts from zero pity.
+    # This diagnostic makes sure the boundary discrepancy is attributable to
+    # that state difference rather than Monte Carlo noise.
+    for runs, budget, zero_pity, current_pity in rows:
+        assert current_pity > zero_pity
 
-    print(f"boundary by runs: {boundaries}")
-
-    # The 259/263/265 points must bracket the region we are investigating;
-    # a future change in mechanics can legitimately move the boundary.
-    assert all(
-        any(run_count == runs and budget == budget_value for run_count, budget, _ in rows)
-        for runs in run_counts
-        for budget_value in budgets
-    )
 
 def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     """The Vesna C2 strategy probability must require Vodynista C0 too."""
