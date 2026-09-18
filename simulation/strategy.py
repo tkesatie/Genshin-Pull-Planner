@@ -76,8 +76,16 @@ class SpendPlan:
     """
 
     entries: tuple[PlannedSpend, ...] = ()
+    # Optional cap shared by all planned spending on the current phase. This
+    # lets a multi-banner current decision (e.g. Vodynista + Vesna) consume
+    # one finite phase-1 budget rather than giving each banner its own cap.
+    shared_current_budget: int | None = None
 
     def __post_init__(self) -> None:
+        if self.shared_current_budget is not None and self.shared_current_budget < 0:
+            raise ValueError(
+                f"shared_current_budget must be >= 0, got {self.shared_current_budget}"
+            )
         seen: set[Banner] = set()
         duplicates: set[Banner] = set()
         for entry in self.entries:
