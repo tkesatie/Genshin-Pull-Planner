@@ -112,6 +112,10 @@ def api_client():
     from api import create_app
 
     with TestClient(create_app()) as client:
+        registered = client.post("/auth/register", json={"username": "test-user", "password": "test-password"})
+        assert registered.status_code == 201, registered.text
+        logged_in = client.post("/auth/login", json={"username": "test-user", "password": "test-password"})
+        assert logged_in.status_code == 200, logged_in.text
         yield client
 
 
