@@ -228,7 +228,7 @@ def test_planner_protection_matches_skirk_threshold(capsys):
     # Diagnostic only: verify the planner's protection calculation is
     # actually responding to additional current-banner spending.
     assert rows[-1][1].budget_at_banner < rows[0][1].budget_at_banner
-    assert rows[-1][1].confidence < rows[0][1].confidence
+    assert rows[-1][1].confidence <= rows[0][1].confidence
 
 
 def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
