@@ -565,7 +565,7 @@ function renderRecommendation(rec, strategy) {
     if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
       const startingWishes = state.account.account.wishes;
       const spend = Math.max(0, startingWishes - step.safe_spend);
-      meta.textContent += ` · ${wishWord(spend)} spent`;
+      meta.textContent += ` · ${wishWord(step.safe_spend)} spent`;
 
       const frontier = document.createElement("div");
       frontier.className = "strategy-frontier";
@@ -580,7 +580,7 @@ function renderRecommendation(rec, strategy) {
 
       const keep = document.createElement("div");
       keep.innerHTML =
-        `<span class="frontier-label">Spend down to</span> <strong>${wishWord(step.safe_spend)}</strong>`;
+        `<span class="frontier-label">Spend down to</span> <strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>`;
 
       const probability = document.createElement("div");
       probability.innerHTML =
