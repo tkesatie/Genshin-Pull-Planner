@@ -126,6 +126,14 @@ class SQLiteAuthRepository(AuthRepository):
             ).fetchone()
         return None if row is None else UserRecord(*row)
 
+    def get_user_by_id(self, user_id):
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT id, username, password_hash FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        return None if row is None else UserRecord(*row)
+
     def create_session(self, token, user_id, expires_at):
         with self._lock, self._connect() as db:
             db.execute(
