@@ -130,6 +130,13 @@
   }
   .verdict-cap { color:var(--gold-bright); }
   .decision-detail { max-width: 58rem; font-size:.92rem; color:#aab4c3; }
+  .strategy-list { display:grid; gap:.55rem; margin:0 0 .7rem; }
+  .strategy-item { display:grid; grid-template-columns:2rem 1fr; gap:.8rem; align-items:start; padding:.75rem 0; border-bottom:1px solid var(--border); }
+  .strategy-item:last-child { border-bottom:0; }
+  .strategy-number { color:var(--gold-bright); font-weight:700; font-size:.9rem; padding-top:.1rem; }
+  .strategy-action { color:var(--text); font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; font-size:1.35rem; line-height:1.2; }
+  .strategy-meta { color:var(--muted); font: .78rem/1.4 system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; margin-top:.2rem; }
+  .strategy-item.recommended .strategy-action { color:var(--gold-bright); }
   .metrics {
     display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
     margin-top:1.6rem; border-top:1px solid var(--border);
@@ -233,14 +240,16 @@
     <section id="verdict-section">
       <div class="hero">
         <div class="hero-top">
-          <div><div class="eyebrow">Current opportunity</div><div class="banner-name">Recommended banner</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
+          <div><div class="eyebrow">Pull strategy</div><div class="banner-name">Your current plan</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
           <div class="resources"><div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div><div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div></div>
         </div>
         <div class="decision">
-          <div id="decision-label" class="decision-label">Recommendation</div>
-          <p class="verdict" id="verdict">Run the planner to see the current recommendation.</p>
-          <p id="verdict-detail" class="decision-detail">Every candidate spend is simulated, so this takes a few seconds.</p>
-          <div class="metrics"><div class="metric"><span class="metric-label">Target</span><span class="metric-value" id="metric-target">—</span></div><div class="metric"><span class="metric-label">Maximum spend</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of target</span><span class="metric-value" id="metric-probability">—</span></div></div>
+          <div id="decision-label" class="decision-label">Strategy</div>
+          <div id="strategy" class="strategy-list">
+            <p class="verdict" id="verdict">Run the planner to build your current strategy.</p>
+          </div>
+          <p id="verdict-detail" class="decision-detail">The strategy is based on your goal priorities, available banners, and protection thresholds.</p>
+          <div class="metrics"><div class="metric"><span class="metric-label">Selected target</span><span class="metric-value" id="metric-target">—</span></div><div class="metric"><span class="metric-label">Spend boundary</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of target</span><span class="metric-value" id="metric-probability">—</span></div></div>
           <p class="provenance" id="provenance"></p>
         </div>
       </div>
@@ -467,28 +476,90 @@ function renderRecommendation(rec) {
   const banner = bannerName(rec.banner);
   $("banner-meta").textContent = banner;
   $("decision-label").className = `decision-label ${rec.action}`;
-  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
-  $("metric-target").textContent = rec.outcome ? `${rec.outcome.character} ${rec.outcome.label}` : "—";
+  $("decision-label").textContent =
+    rec.action === "pursue"
+      ? "Strategy · Pursue"
+      : rec.action === "discretionary"
+        ? "Strategy · Discretionary"
+        : "Strategy · Skip";
+
+  $("metric-target").textContent =
+    rec.outcome ? `${rec.outcome.character} ${rec.outcome.label}` : "—";
   $("metric-budget").textContent = wishWord(rec.budget);
   $("metric-probability").textContent = pct(rec.outcome_probability);
-  $("decision-label").className = `decision-label ${rec.action}`;
-  $("decision-label").textContent = rec.action === "pursue" ? "Recommendation · Pursue" : rec.action === "discretionary" ? "Recommendation · Discretionary" : "Recommendation · Skip";
-  const nonGating = rec.protected.filter((standing) => standing.constraining === false);
-  if (rec.action === "pursue") {
-    $("verdict").innerHTML =
-      `Pursue ${rec.outcome.character} ${rec.outcome.label}, ` +
-      `<span class="verdict-cap">up to ${wishWord(rec.budget)}</span>.`;
-    $("verdict-detail").textContent =
-      `At that cap you reach it in ${pct(rec.outcome_probability)} of simulated futures, ` +
-      `and every protected goal that outranks this banner's goal stays ` +
-      `at or above ${pct(rec.confidence)}.`;
-  } else {
-    $("verdict").textContent = `Don't spend on ${banner}.`;
-    $("verdict-detail").textContent = rec.skip_reason || "No current-banner outcome can be pursued safely.";
+
+  const strategy = $("strategy");
+  strategy.innerHTML = "";
+
+  const currentGoals = state.planner.goals.goals
+    .filter((goal) => goal.next_banner &&
+      (goal.actionable || goal.state === "active"))
+    .sort((a, b) => a.goal.priority - b.goal.priority);
+
+  let number = 1;
+  for (const goal of currentGoals) {
+    const isRecommended =
+      rec.outcome &&
+      goal.goal.character === rec.outcome.character &&
+      goal.goal.constellation === rec.outcome.constellation;
+
+    const item = document.createElement("div");
+    item.className = `strategy-item${isRecommended ? " recommended" : ""}`;
+
+    const index = document.createElement("div");
+    index.className = "strategy-number";
+    index.textContent = number++;
+
+    const body = document.createElement("div");
+    const action = document.createElement("div");
+    action.className = "strategy-action";
+
+    if (goal.goal.constellation === 0) {
+      action.textContent = `Get ${goalName(goal.goal)}`;
+    } else if (isRecommended) {
+      action.textContent =
+        rec.action === "pursue"
+          ? `Pursue ${goalName(goal.goal)}`
+          : `Consider ${goalName(goal.goal)}`;
+    } else {
+      action.textContent = `Work toward ${goalName(goal.goal)}`;
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "strategy-meta";
+    meta.textContent =
+      `Priority ${goal.goal.priority} · ${bannerName(goal.next_banner)}`;
+    if (isRecommended && rec.action !== "skip") {
+      meta.textContent += ` · up to ${wishWord(rec.budget)} under this recommendation`;
+    }
+
+    body.append(action, meta);
+    item.append(index, body);
+    strategy.append(item);
   }
+
+  if (currentGoals.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "verdict";
+    empty.style.fontSize = "1.8rem";
+    empty.textContent =
+      rec.action === "skip" ? `Don't spend on ${banner}.` : `No actionable current goal is available.`;
+    strategy.append(empty);
+  }
+
+  if (rec.action === "pursue") {
+    $("verdict-detail").textContent =
+      `The selected target reaches ${pct(rec.outcome_probability)} at its ${wishWord(rec.budget)} spend boundary, while higher-priority protected goals remain at or above ${pct(rec.confidence)}.`;
+  } else if (rec.action === "discretionary") {
+    $("verdict-detail").textContent =
+      rec.discretionary_reason || `The selected outcome is feasible, but its success probability is below the ordinary recommendation threshold.`;
+  } else {
+    $("verdict-detail").textContent =
+      rec.skip_reason || "No current-banner outcome can be pursued safely.";
+  }
+
   $("provenance").textContent =
-    `${rec.runs.toLocaleString()} simulated futures, seed ${rec.seed === null ? "random" : rec.seed}. ` +
-    `Run again when your account or banner assumptions change.`;
+    `${rec.runs.toLocaleString()} simulated futures, seed ${rec.seed === null ? "random" : rec.seed}. Run again when your account or banner assumptions change.`;
 
   const why = $("why");
   why.innerHTML = "";
@@ -498,9 +569,7 @@ function renderRecommendation(rec) {
     panel.style.marginBottom = ".75rem";
     const head = document.createElement("p");
     head.innerHTML =
-      `<strong>${rejected.outcome.character} ${rejected.outcome.label}</strong> ` +
-      `is out of reach: at best ${pct(rejected.outcome_probability)} for the outcome ` +
-      `with up to ${wishWord(rejected.best_budget)} spent.`;
+      `<strong>${rejected.outcome.character} ${rejected.outcome.label}</strong> is out of reach: at best ${pct(rejected.outcome_probability)} for the outcome with up to ${wishWord(rejected.best_budget)} spent.`;
     panel.append(head);
     const bars = document.createElement("div");
     bars.className = "bars";
@@ -529,13 +598,13 @@ function renderRecommendation(rec) {
       )
     );
   }
+  const nonGating = rec.protected.filter((standing) => standing.constraining === false);
   $("protected-caption").textContent =
     (rec.action === "pursue"
       ? "Where your roadmap lands if you follow this recommendation. "
       : "Where your roadmap lands if you spend nothing here. ") +
     (nonGating.length
-      ? "Goals the user ranked below this banner's goal are shown, but only " +
-        "higher-priority goals cap the spend. "
+      ? "Goals ranked below this banner's goal are shown, but only higher-priority goals cap the spend. "
       : "") +
     `The dashed line is your ${pct(rec.confidence)} protection threshold.`;
   $("protected-section").hidden = rec.protected.length === 0;
@@ -549,7 +618,6 @@ function renderRecommendation(rec) {
   }
   $("stops-section").hidden = false;
 }
-
 function renderSafeSpend(safe) {
   $("safe-spend").textContent =
     safe.safe_spend === 0
