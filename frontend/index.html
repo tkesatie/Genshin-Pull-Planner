@@ -1160,13 +1160,26 @@ async function recordPullOutcome(character, outcome) {
       body: JSON.stringify({ outcome, wishes_used: wishesUsed, character: outcome === "featured" ? character : null }),
     });
     state.planner = null;
-    fillAccountForm();
-    renderOwnedCharacters();
-    $("confidence").value = state.account.settings.confidence;
-    $("hero-wishes").textContent = state.account.account.wishes;
-    $("hero-pity").textContent = state.account.account.current_pity;
-    $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
-    resetVerdict();
+    let refreshStage = "account form";
+    try {
+      fillAccountForm();
+      refreshStage = "owned characters";
+      renderOwnedCharacters();
+      refreshStage = "confidence";
+      $("confidence").value = state.account.settings.confidence;
+      refreshStage = "hero wishes";
+      $("hero-wishes").textContent = state.account.account.wishes;
+      refreshStage = "hero pity";
+      $("hero-pity").textContent = state.account.account.current_pity;
+      refreshStage = "banner meta";
+      $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
+      refreshStage = "verdict";
+      resetVerdict();
+    } catch (error) {
+      console.error("Pull outcome UI refresh failed", { stage: refreshStage, error });
+      showError("Account updated, but UI refresh failed at " + refreshStage + ": " + error.message);
+      return;
+    }
     try {
       await loadGoals();
     } catch (error) {
