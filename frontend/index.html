@@ -551,71 +551,56 @@ function renderSafeSpend(safe) {
 }
 
 function renderSpendTable(table) {
-  const host = $("spend-table");
-  host.innerHTML = "";
+  const host = $('spend-table');
+  host.innerHTML = '';
   if (table instanceof Error) {
-    $("spend-caption").textContent = "Not available.";
-    const note = document.createElement("p");
+    $('spend-caption').textContent = 'Not available.';
+    const note = document.createElement('p');
     note.textContent = table.message;
     host.append(note);
     return;
   }
-
   if (!table.outcomes || table.outcomes.length === 0) {
-    $("spend-caption").textContent =
-      "There is no current-banner constellation progression to analyze.";
-    const note = document.createElement("p");
-    note.className = "muted";
-    note.textContent = "No current-banner target is available.";
+    $('spend-caption').textContent = 'There is no current-banner constellation progression to analyze.';
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'No current-banner target is available.';
     host.append(note);
     return;
   }
 
-  // The API supplies the milestones; order them by roadmap priority rather
-  // than constellation number. This keeps the table aligned with the user's
-  // actual goal sequence (for example Vesna C0, Tsaritsa C0, Vesna C2).
-  const goalOrder = new Map();
-  if (state.planner && state.planner.goals) {
-    for (const goal of state.planner.goals.goals) {
-      const key = `${goal.goal.character}|${goal.goal.constellation}`;
-      if (!goalOrder.has(key)) goalOrder.set(key, goal.goal.priority);
-    }
-  }
-
-  const outcomes = [...table.outcomes].sort((a, b) => {
-    const aPriority = goalOrder.get(`${a.character}|${a.constellation}`) ?? Number.MAX_SAFE_INTEGER;
-    const bPriority = goalOrder.get(`${b.character}|${b.constellation}`) ?? Number.MAX_SAFE_INTEGER;
-    return aPriority - bPriority || a.constellation - b.constellation;
-  });
-
-  $("spend-caption").textContent =
-    "See how spending more on the current banner changes your chance of reaching each milestone, and how much future protection you give up. " +
-    `The highlighted row is the largest tested spend that keeps every constraining future goal at ${pct(table.confidence)} or higher.`;
-
+  const outcomesByKey = new Map(table.outcomes.map((outcome) => [`${outcome.character}|${outcome.constellation}`, outcome]));
   const protectedGoals = [];
   for (const row of table.rows) {
     for (const standing of row.protected) {
       const key = `${standing.goal.character}|${standing.goal.constellation}|${standing.goal.priority}`;
-      if (!protectedGoals.some((p) => p.key === key)) {
-        protectedGoals.push({ key, standing });
-      }
+      if (!protectedGoals.some((p) => p.key === key)) protectedGoals.push({ key, standing });
     }
   }
 
-  const element = document.createElement("table");
-  const thead = element.createTHead().insertRow();
-  const spendHeader = document.createElement("th");
-  spendHeader.textContent = "Spend";
-  thead.append(spendHeader);
-
-  for (const outcome of outcomes) {
-    const th = document.createElement("th");
-    th.textContent = `${outcome.character} ${outcome.label}`;
-    thead.append(th);
+  // All columns follow the roadmap's priority order, regardless of whether
+  // the column represents a current-banner milestone or future protection.
+  const columns = [];
+  for (const goal of state.planner.goals.goals) {
+    const key = `${goal.goal.character}|${goal.goal.constellation}`;
+    const outcome = outcomesByKey.get(key);
+    if (outcome) columns.push({ type: 'outcome', key, outcome });
+    const protectedGoal = protectedGoals.find((item) => `${item.standing.goal.character}|${item.standing.goal.constellation}` === key);
+    if (protectedGoal) columns.push({ type: 'protected', key: protectedGoal.key, standing: protectedGoal.standing });
   }
-  for (const { standing } of protectedGoals) {
-    const th = document.createElement("th");
-    th.textContent = goalName(standing.goal);
+
+  $('spend-caption').textContent =
+    'See how spending more on the current banner changes your chance of reaching each milestone, and how much future protection you give up. ' +
+    `The highlighted row is the largest tested spend that keeps every constraining future goal at ${pct(table.confidence)} or higher.`;
+
+  const element = document.createElement('table');
+  const thead = element.createTHead().insertRow();
+  const spendHeader = document.createElement('th');
+  spendHeader.textContent = 'Spend';
+  thead.append(spendHeader);
+  for (const column of columns) {
+    const th = document.createElement('th');
+    th.textContent = column.type === 'outcome' ? `${column.outcome.character} ${column.outcome.label}` : goalName(column.standing.goal);
     thead.append(th);
   }
 
@@ -624,42 +609,29 @@ function renderSpendTable(table) {
   table.rows.forEach((row, index) => {
     if (row.all_protected_meet_threshold) lastSafeIndex = index;
   });
-
   table.rows.forEach((row, index) => {
     const tr = body.insertRow();
-    if (index === lastSafeIndex) tr.className = "boundary";
-
+    if (index === lastSafeIndex) tr.className = 'boundary';
     tr.insertCell().textContent = wishWord(row.wishes_spent);
-
-    for (const outcome of outcomes) {
-      const result = row.outcomes.find(
-        (item) =>
-          item.outcome.character === outcome.character &&
-          item.outcome.constellation === outcome.constellation
-      );
+    for (const column of columns) {
       const cell = tr.insertCell();
-      cell.textContent = result ? pct(result.probability) : "—";
-    }
-
-    for (const { key } of protectedGoals) {
-      const standing = row.protected.find(
-        (item) => `${item.goal.character}|${item.goal.constellation}|${item.goal.priority}` === key
-      );
-      const cell = tr.insertCell();
-      cell.textContent = standing ? pct(standing.probability) : "—";
-      if (standing) cell.className = standing.meets_threshold ? "yes" : "no";
+      if (column.type === 'outcome') {
+        const result = row.outcomes.find((item) => item.outcome.character === column.outcome.character && item.outcome.constellation === column.outcome.constellation);
+        cell.textContent = result ? pct(result.probability) : '—';
+      } else {
+        const standing = row.protected.find((item) => `${item.goal.character}|${item.goal.constellation}|${item.goal.priority}` === column.key);
+        cell.textContent = standing ? pct(standing.probability) : '—';
+        if (standing) cell.className = standing.meets_threshold ? 'yes' : 'no';
+      }
     }
   });
   host.append(element);
-
-  const provenance = document.createElement("p");
-  provenance.className = "muted";
-  provenance.style.marginTop = ".75rem";
-  provenance.textContent =
-    `${table.runs.toLocaleString()} simulated futures per spending level, seed ${table.seed === null ? "random" : table.seed}.`;
+  const provenance = document.createElement('p');
+  provenance.className = 'muted';
+  provenance.style.marginTop = '.75rem';
+  provenance.textContent = `${table.runs.toLocaleString()} simulated futures per spending level, seed ${table.seed === null ? 'random' : table.seed}.`;
   host.append(provenance);
 }
-
 function renderRoadmap(view) {
   const host = $("roadmap");
   host.innerHTML = "";
