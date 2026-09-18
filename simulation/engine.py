@@ -175,8 +175,6 @@ def _run_history(
 
     account = context.account
     credited_so_far = 0  # cumulative income_credit already folded into `account`
-    current_phase_spent = 0
-    current_order_key = banners[0].order_key if banners else None
     banner_results: list[BannerResult] = []
 
     # Roadmap outcome tracking (§11): per goal, whether it is satisfied and
@@ -219,23 +217,14 @@ def _run_history(
         else:
             owned = account.owned_constellation(banner.character)
             copies_needed = max(entry.target_constellation - owned, 0)
-            if banner.order_key == current_order_key and plan.shared_current_budget is not None:
-                budget = min(
-                    entry.budget,
-                    max(plan.shared_current_budget - current_phase_spent, 0),
-                )
-            else:
-                budget = entry.budget
             spent, obtained, copy_wishes, account = _pull_toward_target(
                 account,
                 banner.character,
                 copies_needed,
-                budget,
+                entry.budget,
                 mechanics,
                 rng,
             )
-            if banner.order_key == current_order_key and plan.shared_current_budget is not None:
-                current_phase_spent += spent
             banner_results.append(
                 BannerResult(
                     banner=banner,
@@ -293,7 +282,6 @@ def simulate(
     plan: SpendPlan,
     runs: int = DEFAULT_RUNS,
     seed: int | None = DEFAULT_SEED,
-    joint_goals=(),
 ) -> SimulationResult:
     """Simulate `runs` possible futures and aggregate them (§11).
 
@@ -310,5 +298,5 @@ def simulate(
     plan.require_valid_for(context)
     rng = np.random.default_rng(seed)
     histories = [_run_history(context, plan, rng) for _ in range(runs)]
-    return aggregate_runs(histories, plan, seed, joint_goals=joint_goals)
+    return aggregate_runs(histories, plan, seed)
 
