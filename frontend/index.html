@@ -332,7 +332,7 @@
 <script>
 "use strict";
 
-const state = { account: null, planner: null, runOptions: {}, plannerTiming: [] };
+const state = { account: null, planner: null, runOptions: {}, plannerTiming: [], plannerStarted: null };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -351,8 +351,14 @@ function clearError() {
 async function api(path, options) {
   const response = await fetch(path, options);
   if (path.includes("/planner/") && !path.includes("/planner/timing")) {
-    const seconds = Number(response.headers.get("X-Planner-Process-Time"));
-    if (Number.isFinite(seconds)) state.plannerTiming.push(seconds);
+    const requestElapsed = state.plannerStarted === null
+      ? null
+      : (performance.now() - state.plannerStarted) / 1000;
+    const serverSeconds = Number(response.headers.get("X-Planner-Process-Time"));
+    state.plannerTiming.push({
+      request_elapsed_seconds: requestElapsed,
+      server_seconds: Number.isFinite(serverSeconds) ? serverSeconds : null,
+    });
   }
   if (response.status === 204) return null;
   const body = await response.json().catch(() => null);
@@ -417,6 +423,7 @@ function query(extra) {
 
 async function loadPlanner() {
   const plannerStarted = performance.now();
+  state.plannerStarted = plannerStarted;
   state.plannerTiming = [];
   const id = state.account.id;
   const wishes = state.account.account.wishes;
@@ -463,15 +470,22 @@ async function loadPlanner() {
       requestAnimationFrame(() => requestAnimationFrame(resolve))
     );
     const frontendFinished = performance.now();
-    const apiResponseSeconds = (frontendFinished - plannerStarted) / 1000;
+    const frontendLoadSeconds = (frontendFinished - plannerStarted) / 1000;
+    const apiResponseSeconds = state.plannerTiming.length
+      ? Math.max(...state.plannerTiming.map((entry) => entry.request_elapsed_seconds ?? 0))
+      : null;
     const calculationSeconds = state.plannerTiming.length
-      ? Math.max(...state.plannerTiming)
+      ? Math.max(
+          ...state.plannerTiming
+            .map((entry) => entry.server_seconds)
+            .filter((value) => value !== null)
+        )
       : null;
     const timing = {
       planner_calculation_seconds: calculationSeconds,
       api_response_seconds: apiResponseSeconds,
-      frontend_load_seconds: apiResponseSeconds,
-      total_seconds: apiResponseSeconds,
+      frontend_load_seconds: frontendLoadSeconds,
+      total_seconds: frontendLoadSeconds,
     };
     console.log(
       "Planner timing\n" +
