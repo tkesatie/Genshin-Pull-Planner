@@ -103,14 +103,9 @@ def protected_goal_outcomes(
     budget = context.account.wishes - spent
     credited_through = 0  # cumulative income credit already folded in
     for banner, evaluation in schedulable:
-        credit = (
-            0
-            if banner.order_key == current.order_key
-            else context.income_credit(banner.version)
-        )
+        credit = context.income_available_before(banner.version, banner.phase)
         budget += credit - credited_through
-        if banner.order_key != current.order_key:
-            credited_through = credit
+        credited_through = max(credited_through, credit)
         outcomes.append(
             ProtectedGoalOutcome(
                 goal=evaluation.goal,
