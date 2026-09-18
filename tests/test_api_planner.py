@@ -158,7 +158,9 @@ class TestSpendTable:
         # Future protection is evaluated against the same simulated spend.
         assert body["rows"][0]["protected"]
         assert body["rows"][0]["protected"][0]["goal"]["character"] == "Tsaritsa"
-        assert body["rows"][0]["protected"][0]["constraining"] is True
+        # Tsaritsa is Priority 4 while the reference C0 outcome is Priority 1,
+        # so it is protected and reported but does not constrain this spend.
+        assert body["rows"][0]["protected"][0]["constraining"] is False
         assert body["rows"][-1]["protected"][0]["probability"] <= body["rows"][0]["protected"][0]["probability"]
 
     def test_spend_analysis_uses_selected_outcome_even_when_recommendation_is_discretionary(
