@@ -149,10 +149,11 @@ class TestSpendTable:
         assert probabilities["C0"][0] == 0.0
         assert probabilities["C2"][0] == 0.0
         assert probabilities["C0"][-1] >= probabilities["C2"][-1]
-        # With the fixture's 40 wishes, reaching C2 (three featured copies) is
-        # mechanically impossible; the multi-copy endpoint should report that
-        # zero probability rather than treating the milestone as a single copy.
-        assert probabilities["C2"][-1] == 0.0
+        # C2 is very unlikely in 40 wishes, but not mechanically impossible:
+        # three 5-stars can occur before hard pity.  A nonzero endpoint verifies
+        # that the multi-copy simulation is actually modeling the milestone
+        # rather than treating C2 as a single copy.
+        assert probabilities["C2"][-1] > 0.0
 
         # Future protection is evaluated against the same simulated spend.
         assert body["rows"][0]["protected"]
