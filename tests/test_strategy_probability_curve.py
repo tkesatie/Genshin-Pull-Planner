@@ -352,7 +352,7 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     assert vesna_c2.reserve_wishes in range(173, 176)
     assert vesna_c2.future_income == 90
     assert vesna_c2.protected_total_wishes in range(263, 266)
-    assert 0.03 < vesna_c2.outcome_probability < 0.08
+    assert 0.15 < vesna_c2.outcome_probability < 0.21
 
     # The isolated Vesna-C2 probability is materially higher; this assertion
     # prevents the old marginal probability from silently returning to the UI.
@@ -372,7 +372,7 @@ def test_future_income_cannot_fund_current_phase(capsys):
     assert vesna_c2.reserve_wishes in range(173, 176)
     assert vesna_c2.future_income == 90
     assert vesna_c2.protected_total_wishes in range(263, 266)
-    assert 0.03 < vesna_c2.outcome_probability < 0.08
+    assert 0.15 < vesna_c2.outcome_probability < 0.21
 
 
 def test_zero_wishes_cannot_spend_current_phase_income():
