@@ -384,6 +384,57 @@ def test_skirk_protected_boundary_convergence(capsys):
         assert current_pity > zero_pity
 
 
+def test_skirk_reserve_from_actual_vesna_outcome_states(capsys):
+    """Measure Skirk C2 protection after carrying forward the Vesna path state."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    mechanics = context.mechanics
+    current_spend_caps = (275, 277)
+    skirk_reserves = (259, 263, 265)
+    runs = 20_000
+
+    print("\\nSkirk C2 after actual Vesna outcome states (20,000 runs, seed=0)")
+    print("phase-1 cap | Skirk reserve | probability")
+    print("------------+---------------+------------")
+
+    rows = []
+    for phase1_cap in current_spend_caps:
+        for skirk_reserve in skirk_reserves:
+            successes = 0
+            rng = np.random.default_rng(0)
+
+            for _ in range(runs):
+                account = context.account
+                vod_spent, _, _, account = _pull_toward_target(
+                    account, "Vodynista", 1, phase1_cap, mechanics, rng
+                )
+                vesna_budget = max(phase1_cap - vod_spent, 0)
+                _, _, _, account = _pull_toward_target(
+                    account, "Vesna", 3, vesna_budget, mechanics, rng
+                )
+
+                # Future 7.1 income arrives before Skirk. The reserve is the
+                # remaining current wishes plus that future income, represented
+                # here by the tested total resource pool.
+                account = replace(account, wishes=skirk_reserve)
+                _, skirk_copies, _, _ = _pull_toward_target(
+                    account, "Skirk", 2, skirk_reserve, mechanics, rng
+                )
+                successes += skirk_copies == 2
+
+            probability = successes / runs
+            rows.append((phase1_cap, skirk_reserve, probability))
+            print(f"{phase1_cap:11d} | {skirk_reserve:13d} | {probability:10.2%}")
+
+    # This diagnostic deliberately does not assert an exact boundary yet.
+    # It tells us whether failed Vesna paths materially improve or worsen the
+    # protected Skirk probability once their actual pity/guarantee/Radiance
+    # state is carried forward.
+    assert rows
+    assert all(0.0 <= probability <= 1.0 for _, _, probability in rows)
+
+
 def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     """The Vesna C2 strategy probability must require Vodynista C0 too."""
     from optimizer.strategy import build_strategy
