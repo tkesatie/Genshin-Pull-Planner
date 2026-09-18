@@ -205,7 +205,7 @@ def test_planner_protection_matches_skirk_threshold(capsys):
     from planner.protection import protected_goal_outcomes
 
     context = make_context()
-    spends = (200, 210, 220, 225, 230, 240)
+    spends = (0, 50, 100, 150, 200, 240)
 
     print("\nPlanner Skirk protection diagnostic")
     print("spent | budget_at_banner | required | confidence | meets")
