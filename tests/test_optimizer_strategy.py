@@ -83,7 +83,16 @@ def test_frontier_is_derived_from_protected_requirement(monkeypatch):
             vesna = plan.entry_for(VESNA)
             assert vesna is not None
             probability = 0.91
-        return fake_result(plan, probability)
+        return SimpleNamespace(
+            goals=(GoalProbability(Goal("Skirk", 2, 3), probability),),
+            joint_goal_probability=GoalJointProbability(
+                goals=(Goal("Skirk", 2, 3),) if skirk is not None else (
+                    Goal("Vodynista", 0, 1), Goal("Vesna", 2, 4)
+                ),
+                probability=probability,
+            ),
+            banners=fake_result(plan, probability).banners,
+        )
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
 
