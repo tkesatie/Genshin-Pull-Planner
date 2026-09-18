@@ -117,14 +117,6 @@ class BannerAggregate:
 
 
 @dataclass(frozen=True)
-class GoalJointProbability:
-    """Probability that every goal in a requested joint event is satisfied."""
-
-    goals: tuple[Goal, ...]
-    probability: float
-
-
-@dataclass(frozen=True)
 class SimulationResult:
     """Aggregated outcome of many simulated histories (§11).
 
@@ -146,7 +138,6 @@ class SimulationResult:
     goals: tuple[GoalProbability, ...]
     banners: tuple[BannerAggregate, ...]
     all_goals_probability: float
-    joint_goal_probability: GoalJointProbability | None
     final_wishes_mean: float
     final_wishes_min: int
     final_wishes_max: int
