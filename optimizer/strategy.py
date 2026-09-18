@@ -321,7 +321,11 @@ def build_strategy(
             action="pursue_until_reserve", goal=evaluation.goal, banner=banner,
             reserve_wishes=reserve,
             safe_spend=spend,
-            outcome_probability=result.banners[0].target_met_probability,
+            outcome_probability=next(
+                aggregate.target_met_probability
+                for aggregate in result.banners
+                if aggregate.banner == banner
+            ),
             protected_probability=protected_probability,
         ))
 
