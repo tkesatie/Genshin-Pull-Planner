@@ -444,10 +444,6 @@ def recommend(
             and outcome.character == winner_outcome.character
             and outcome.constellation > winner_outcome.constellation
             and candidate.outcome_probability >= minimum_outcome_probability
-            and (
-                not outcome.later_progression
-                or winner_outcome.later_progression
-            )
         ):
             winner_banner, winner_outcome, winner = banner, outcome, candidate
 
