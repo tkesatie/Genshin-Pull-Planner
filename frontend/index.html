@@ -233,7 +233,7 @@
     <section id="verdict-section">
       <div class="hero">
         <div class="hero-top">
-          <div><div class="eyebrow">Current banner</div><div class="banner-name">Current banner</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
+          <div><div class="eyebrow">Current opportunity</div><div class="banner-name">Recommended banner</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
           <div class="resources"><div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div><div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div></div>
         </div>
         <div class="decision">
@@ -290,7 +290,7 @@
 <script>
 "use strict";
 
-const state = { account: null, planner: null };
+const state = { account: null, planner: null, runOptions: {} };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -374,17 +374,27 @@ async function loadPlanner() {
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
   try {
+    const extra = state.runOptions || {};
+    const recommendation = await api(
+      `/accounts/${id}/planner/recommendation${query(extra)}`
+    );
+    const character = recommendation.banner && recommendation.banner.character;
+    const bannerQuery = character ? { character } : {};
+
     const [goals, safe, table] = await Promise.all([
       api(`/accounts/${id}/planner/goals${query()}`),
-      api(`/accounts/${id}/planner/safe-spend${query()}`),
-      api(`/accounts/${id}/planner/spend-table${query({ step })}`).catch((error) => error),
+      api(`/accounts/${id}/planner/safe-spend${query(bannerQuery)}`),
+      api(`/accounts/${id}/planner/spend-table${query({ ...bannerQuery, step })}`).catch((error) => error),
     ]);
-    state.planner = { goals, safe, table };
+    state.planner = { recommendation, goals, safe, table };
+    renderRecommendation(recommendation);
     renderSafeSpend(safe);
     renderSpendTable(table);
     renderRoadmap(goals);
   } catch (error) {
     showError(error.message);
+  } finally {
+    state.runOptions = {};
   }
 }
 
@@ -741,10 +751,7 @@ async function run() {
       caps.push(0);
       extra.budgets = caps;
     }
-    const rec = await api(
-      `/accounts/${state.account.id}/planner/recommendation${query(extra)}`
-    );
-    renderRecommendation(rec);
+    state.runOptions = extra;
     await loadPlanner();
   } catch (error) {
     showError(error.message);
