@@ -135,7 +135,7 @@ def test_safe_spend_uses_simulation_for_non_monotonic_frontier(monkeypatch):
     def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
         vesna_entry = plan.entry_for(Banner("Vesna", "7.1", 1))
         skirk = Goal("Skirk", 2, 3)
-        probability = probabilities.get(vesna_entry.budget, 0.91)
+        probability = probabilities.get(vesna_entry.budget, 0.89)
         return SimpleNamespace(
             goals=(GoalProbability(skirk, probability),),
             joint_goal_probability=None,
