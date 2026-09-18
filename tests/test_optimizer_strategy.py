@@ -118,4 +118,3 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
             budget=450,
         ),
     )
-)
