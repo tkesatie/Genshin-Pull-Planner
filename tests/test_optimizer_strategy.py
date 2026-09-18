@@ -125,7 +125,17 @@ def test_frontier_is_monotonic_and_does_not_scan_every_spend(monkeypatch):
             probability = min(1.0, skirk.budget / 265)
         else:
             probability = 1.0
-        return fake_result(plan, probability)
+        return SimpleNamespace(
+            goals=(GoalProbability(Goal("Skirk", 2, 3), probability),),
+            joint_goal_probability=GoalJointProbability(
+                goals=(Goal("Skirk", 2, 3),) if skirk is not None else (
+                    Goal("Vodynista", 0, 1),
+                    Goal("Vesna", 2, 4),
+                ),
+                probability=probability,
+            ),
+            banners=fake_result(plan, probability).banners,
+        )
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
 
