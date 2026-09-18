@@ -1,22 +1,20 @@
-"""Strategy frontier tests for multi-goal current-banner allocation.
-
-The important Phase 5 property is that a current progression budget is a
-TOTAL cap on that banner. When Vesna C2 is the constrained decision, the
-simulated plan must pursue Vesna C0 first without assuming how many wishes
-that C0 will consume. The remaining budget can then continue toward C2 while
-protecting the higher-priority future Skirk C2 goal.
-"""
+"""Strategy frontier tests for reserve-first allocation."""
 
 from types import SimpleNamespace
 
-from domain import Account, Banner, Goal, Roadmap
+from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Roadmap, VersionIncome
 from optimizer import strategy as strategy_module
 from planner import PlannerContext
 from simulation import PlannedSpend, SpendPlan
-from simulation.results import BannerAggregate, GoalProbability
+from simulation.results import BannerAggregate, GoalJointProbability, GoalProbability
 
 
-def make_context() -> PlannerContext:
+VESNA = Banner("Vesna", "7.1", 1)
+VODYNISTA = Banner("Vodynista", "7.1", 1)
+SKIRK = Banner("Skirk", "7.1", 2)
+
+
+def make_context(*, income: int = 90) -> PlannerContext:
     return PlannerContext(
         account=Account(wishes=450),
         roadmap=Roadmap(
@@ -26,150 +24,108 @@ def make_context() -> PlannerContext:
                 Goal("Skirk", 2, 3),
                 Goal("Vesna", 2, 4),
             ],
-            banners=[
-                Banner("Vesna", "7.1", 1),
-                Banner("Vodynista", "7.1", 1),
-                Banner("Skirk", "7.1", 2),
-            ],
+            banners=[VESNA, VODYNISTA, SKIRK],
         ),
         current_version="7.1",
         current_phase=1,
+        income=IncomeForecast(
+            versions=[
+                VersionIncome(
+                    "7.1",
+                    estimate=IncomeEstimate(income, income, income),
+                )
+            ]
+        ),
         confidence=0.90,
     )
 
 
-def test_frontier_table_models_unknown_c0_cost(monkeypatch):
-    """The frontier must budget C0 + progression together, not sequentially.
+def fake_result(plan: SpendPlan, skirk_probability: float) -> SimpleNamespace:
+    vesna = plan.entry_for(VESNA)
+    return SimpleNamespace(
+        goals=(GoalProbability(Goal("Skirk", 2, 3), skirk_probability),),
+        joint_goal_probability=GoalJointProbability(
+            goals=(Goal("Vodynista", 0, 1), Goal("Vesna", 2, 4)),
+            probability=0.42,
+        ),
+        banners=(
+            BannerAggregate(
+                banner=VODYNISTA,
+                target_constellation=0,
+                planned_budget=450,
+                mean_income_credited=0.0,
+                mean_wishes_spent=0.0,
+                target_met_probability=1.0,
+                mean_copies_obtained=0.0,
+            ),
+            BannerAggregate(
+                banner=VESNA,
+                target_constellation=2,
+                planned_budget=vesna.budget if vesna is not None else 0,
+                mean_income_credited=0.0,
+                mean_wishes_spent=0.0,
+                target_met_probability=0.42,
+                mean_copies_obtained=0.0,
+            ),
+        ),
+    )
 
-    The table below is deliberately a mocked probability curve: it isolates
-    strategy allocation logic from Monte Carlo variance.
 
-        Vesna banner budget | Skirk C2 probability | decision
-        --------------------+----------------------+---------
-        450                  | 0.89                 | unsafe
-        300                  | 0.91                 | safe
-    """
+def test_frontier_is_derived_from_protected_requirement(monkeypatch):
+    """450 + 90 future income - 265 reserve = 275 current spend."""
     context = make_context()
-    captured: dict[int, SpendPlan] = {}
 
     def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
-        vesna_entry = plan.entry_for(Banner("Vesna", "7.1", 1))
-        assert vesna_entry is not None
-        captured[vesna_entry.budget] = plan
-
-        skirk = Goal("Skirk", 2, 3)
-        probability = 0.91 if vesna_entry.budget <= 300 else 0.89
-        return SimpleNamespace(
-            goals=(GoalProbability(skirk, probability),),
-            joint_goal_probability=None,
-            banners=(
-                BannerAggregate(
-                    banner=Banner("Vodynista", "7.1", 1),
-                    target_constellation=0,
-                    planned_budget=450,
-                    mean_income_credited=0.0,
-                    mean_wishes_spent=0.0,
-                    target_met_probability=1.0,
-                    mean_copies_obtained=0.0,
-                ),
-                BannerAggregate(
-                    banner=Banner("Vesna", "7.1", 1),
-                    target_constellation=2,
-                    planned_budget=vesna_entry.budget,
-                    mean_income_credited=0.0,
-                    mean_wishes_spent=0.0,
-                    target_met_probability=0.42,
-                    mean_copies_obtained=0.0,
-                ),
-            ),
-        )
+        skirk = plan.entry_for(SKIRK)
+        if skirk is not None:
+            probability = 0.91 if skirk.budget >= 265 else 0.89
+        else:
+            vesna = plan.entry_for(VESNA)
+            assert vesna is not None
+            probability = 0.91
+        return fake_result(plan, probability)
 
     monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
 
     result = strategy_module.build_strategy(context, runs=1, seed=0)
 
-    assert result.reserve_wishes == 150
     assert result.reserve_goal == Goal("Skirk", 2, 3)
+    assert result.reserve_wishes == 175
 
     vesna_step = next(
-        step
-        for step in result.steps
-        if step.goal == Goal("Vesna", 2, 4)
-        and step.action == "pursue_until_reserve"
-    )
-    assert vesna_step.safe_spend == 300
-    assert vesna_step.reserve_wishes == 150
-    assert vesna_step.outcome_probability == 0.0
-
-    plan = captured[300]
-    assert plan.entries == (
-        PlannedSpend(
-            banner=Banner("Vodynista", "7.1", 1),
-            target_constellation=0,
-            budget=450,
-        ),
-        PlannedSpend(
-            banner=Banner("Vesna", "7.1", 1),
-            target_constellation=2,
-            budget=300,
-        ),
-        PlannedSpend(
-            banner=Banner("Skirk", "7.1", 2),
-            target_constellation=2,
-            budget=450,
-        ),
-    )
-
-
-def test_safe_spend_uses_simulation_for_non_monotonic_frontier(monkeypatch):
-    """A feasible cap can sit below an unsafe cap; binary search must not skip it."""
-    context = make_context()
-    probabilities = {
-        450: 0.89,
-        400: 0.89,
-        350: 0.89,
-        300: 0.89,
-        275: 0.91,
-    }
-
-    def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
-        vesna_entry = plan.entry_for(Banner("Vesna", "7.1", 1))
-        skirk = Goal("Skirk", 2, 3)
-        probability = probabilities.get(vesna_entry.budget, 0.89)
-        return SimpleNamespace(
-            goals=(GoalProbability(skirk, probability),),
-            joint_goal_probability=None,
-            banners=(
-                BannerAggregate(
-                    banner=Banner("Vodynista", "7.1", 1),
-                    target_constellation=0,
-                    planned_budget=450,
-                    mean_income_credited=0.0,
-                    mean_wishes_spent=0.0,
-                    target_met_probability=1.0,
-                    mean_copies_obtained=0.0,
-                ),
-                BannerAggregate(
-                    banner=Banner("Vesna", "7.1", 1),
-                    target_constellation=2,
-                    planned_budget=vesna_entry.budget,
-                    mean_income_credited=0.0,
-                    mean_wishes_spent=0.0,
-                    target_met_probability=0.42,
-                    mean_copies_obtained=0.0,
-                ),
-            ),
-        )
-
-    monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
-
-    result = strategy_module.build_strategy(context, runs=1, seed=0)
-
-    vesna_step = next(
-        step
-        for step in result.steps
+        step for step in result.steps
         if step.goal == Goal("Vesna", 2, 4)
         and step.action == "pursue_until_reserve"
     )
     assert vesna_step.safe_spend == 275
     assert vesna_step.reserve_wishes == 175
+    assert vesna_step.future_income == 90
+    assert vesna_step.protected_total_wishes == 265
+
+
+def test_frontier_is_monotonic_and_does_not_scan_every_spend(monkeypatch):
+    """The reserve-first frontier uses logarithmic simulation, not 451 scans."""
+    context = make_context()
+    calls = 0
+
+    def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
+        nonlocal calls
+        calls += 1
+        skirk = plan.entry_for(SKIRK)
+        if skirk is not None:
+            probability = min(1.0, skirk.budget / 265)
+        else:
+            probability = 1.0
+        return fake_result(plan, probability)
+
+    monkeypatch.setattr(strategy_module, "simulate", fake_simulate)
+
+    result = strategy_module.build_strategy(context, runs=1, seed=0)
+
+    vesna_step = next(
+        step for step in result.steps
+        if step.goal == Goal("Vesna", 2, 4)
+        and step.action == "pursue_until_reserve"
+    )
+    assert vesna_step.safe_spend == 275
+    assert calls <= 20
