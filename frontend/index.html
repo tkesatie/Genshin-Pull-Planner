@@ -1197,12 +1197,11 @@ async function recordPullOutcome(character, outcome) {
       return;
     }
 
-    try {
-      await loadPlanner("Record pull outcome");
-    } catch (error) {
-      console.error("Pull outcome refresh failed while running planner", error);
-      showError("Account updated, but planner refresh failed: " + error.message);
-    }
+    // Recording a pull changes account state, but does not require an
+    // expensive planner recalculation. The user can run the planner when
+    // they want a fresh recommendation for the new state.
+    resetVerdict();
+    showError("Account updated. Run the planner to recalculate your strategy.");
   } catch (error) {
     console.error("Pull outcome update failed", error);
     showError(error.message);
