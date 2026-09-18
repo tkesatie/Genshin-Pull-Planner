@@ -118,6 +118,7 @@ def _pull_toward_target(
     available = min(budget, account.wishes)
     pity = account.current_pity
     guarantee = account.character_guarantee
+    radiance = account.capturing_radiance_counter
     ownership = account.owned_characters
     owned = ownership.owned_constellation(character)
 
@@ -127,14 +128,26 @@ def _pull_toward_target(
     while obtained < copies_needed and spent < available:
         spent += 1
         if rng.random() < pull_rate(pity, mechanics):
-            if guarantee or rng.random() < mechanics.featured_rate:
+            if guarantee:
+                featured = True
+            elif radiance >= 3:
+                featured = True
+            elif radiance == 2:
+                featured = rng.random() < (6.0 / 11.0)
+            else:
+                featured = rng.random() < mechanics.featured_rate
+
+            if featured:
                 obtained += 1
                 copy_wishes.append(spent)
                 owned += 1
                 ownership = ownership.with_constellation(character, owned)
                 pity, guarantee = 0, False
+                if not guarantee:
+                    radiance = max(0, radiance - 1)
             else:
                 pity, guarantee = 0, True
+                radiance = min(3, radiance + 1)
         else:
             pity += 1
 
@@ -143,6 +156,7 @@ def _pull_toward_target(
         character_guarantee=guarantee,
         owned_characters=ownership,
         wishes=account.wishes - spent,
+        capturing_radiance_counter=radiance,
     )
     return spent, obtained, tuple(copy_wishes), account_after
 
