@@ -573,3 +573,97 @@ def test_vodynista_vesna_spend_cap_for_90_percent_skirk(capsys):
     assert qualifying
     max_safe_cap = max(row[0] for row in qualifying)
     print(f"\nLargest tested cap with >=90% Skirk C2: {max_safe_cap}")
+
+
+def test_carried_state_distribution_near_skirk_frontier(capsys):
+    """Inspect the full post-Vesna state distribution near the 90% Skirk frontier."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    mechanics = context.mechanics
+    caps = (320, 325, 330, 335)
+    runs = 50_000
+
+    print("\nCarried state distribution near Skirk C2 frontier (50,000 runs, seed=0)")
+    print(
+        "cap | Vesna C2 | Skirk C2 | avg wishes | median | p10-p90 | "
+        "avg pity | guarantee | avg radiance"
+    )
+    print(
+        "----+----------+----------+-------------+--------+----------+"
+        "----------+-----------+------------"
+    )
+
+    rows = []
+    for cap in caps:
+        vesna_success = 0
+        skirk_success = 0
+        wishes = []
+        pities = []
+        guarantees = 0
+        radiance = []
+
+        rng = np.random.default_rng(0)
+
+        for _ in range(runs):
+            account = context.account
+
+            vod_spent, vod_copies, _, account = _pull_toward_target(
+                account, "Vodynista", 1, cap, mechanics, rng
+            )
+            assert vod_copies == 1
+
+            vesna_budget = max(cap - vod_spent, 0)
+            _, vesna_copies, _, account = _pull_toward_target(
+                account, "Vesna", 3, vesna_budget, mechanics, rng
+            )
+            vesna_success += vesna_copies == 3
+
+            account = replace(account, wishes=account.wishes + 90)
+
+            wishes.append(account.wishes)
+            pities.append(account.current_pity)
+            guarantees += account.character_guarantee
+            radiance.append(account.capturing_radiance_counter)
+
+            _, skirk_copies, _, _ = _pull_toward_target(
+                account, "Skirk", 2, account.wishes, mechanics, rng
+            )
+            skirk_success += skirk_copies == 2
+
+        vesna_probability = vesna_success / runs
+        skirk_probability = skirk_success / runs
+        average_wishes = np.mean(wishes)
+        median_wishes = np.median(wishes)
+        p10_wishes, p90_wishes = np.percentile(wishes, (10, 90))
+        average_pity = np.mean(pities)
+        guarantee_probability = guarantees / runs
+        average_radiance = np.mean(radiance)
+
+        rows.append(
+            (
+                cap,
+                vesna_probability,
+                skirk_probability,
+                average_wishes,
+                median_wishes,
+                p10_wishes,
+                p90_wishes,
+                average_pity,
+                guarantee_probability,
+                average_radiance,
+            )
+        )
+        print(
+            f"{cap:3d} | {vesna_probability:8.2%} | {skirk_probability:8.2%} | "
+            f"{average_wishes:11.1f} | {median_wishes:6.1f} | "
+            f"{p10_wishes:4.0f}-{p90_wishes:4.0f} | "
+            f"{average_pity:8.1f} | {guarantee_probability:9.2%} | "
+            f"{average_radiance:10.2f}"
+        )
+
+    assert len(rows) == len(caps)
+    assert all(0.0 <= row[1] <= 1.0 for row in rows)
+    assert all(0.0 <= row[2] <= 1.0 for row in rows)
+    assert all(row[3] >= 0 for row in rows)
+    assert all(0 <= row[4] <= 540 for row in rows)
