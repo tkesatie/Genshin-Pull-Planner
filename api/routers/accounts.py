@@ -19,8 +19,9 @@ account update, and the previous recommendation is not a permanent plan
 from dataclasses import replace
 
 from fastapi import APIRouter, Depends, status
+from api.auth import UserRecord
 
-from api.dependencies import get_record, get_repository
+from api.dependencies import get_current_user, get_record, get_repository
 from api.repository import AccountRecord, AccountRepository, new_account_id
 from api.schemas.accounts import (
     AccountCreate,
@@ -61,8 +62,9 @@ def record_from_create(payload: AccountCreate) -> AccountRecord:
 def create_account(
     payload: AccountCreate,
     repository: AccountRepository = Depends(get_repository),
+    user: UserRecord = Depends(get_current_user),
 ) -> AccountView:
-    record = repository.create(record_from_create(payload))
+    record = repository.create(replace(record_from_create(payload), owner_id=user.id))
     return AccountView.from_record(record)
 
 
@@ -73,8 +75,9 @@ def create_account(
 )
 def list_accounts(
     repository: AccountRepository = Depends(get_repository),
+    user: UserRecord = Depends(get_current_user),
 ) -> list[AccountSummary]:
-    return [AccountSummary.from_record(record) for record in repository.list()]
+    return [AccountSummary.from_record(record) for record in repository.list(user.id)]
 
 
 @router.get(
