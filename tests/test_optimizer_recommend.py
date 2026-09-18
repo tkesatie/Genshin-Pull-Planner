@@ -770,6 +770,47 @@ class TestPriorityGatedProgression:
         assert shortfall.meets_threshold is False
 
 
+
+class TestMultipleCurrentBanners:
+    def test_priority_one_current_banner_is_selected(self):
+        context = PlannerContext(
+            account=Account(
+                current_pity=27,
+                character_guarantee=False,
+                owned_characters=Ownership({"Skirk": 0}),
+                wishes=450,
+            ),
+            roadmap=Roadmap(
+                goals=[
+                    Goal("Vodynista", 0, 1),
+                    Goal("Vesna", 0, 2),
+                    Goal("Skirk", 2, 3),
+                    Goal("Vesna", 2, 4),
+                ],
+                banners=[
+                    Banner("Vodynista", "7.1", 1),
+                    Banner("Vesna", "7.1", 1),
+                    Banner("Skirk", "7.1", 2),
+                ],
+            ),
+            current_version="7.1",
+            current_phase=1,
+        )
+
+        decision = recommend(
+            context,
+            runs=100,
+            seed=7,
+            budgets=[450, 0],
+        )
+
+        assert decision.action in {"pursue", "discretionary"}
+        assert decision.banner == Banner("Vodynista", "7.1", 1)
+        assert decision.outcome == OutcomeOption(
+            character="Vodynista", constellation=0, rank=1
+        )
+
+
 class TestDiscretionaryGamble:
     """Issue 2 (Phase 5 correction): minimum_outcome_probability (§14).
 
