@@ -1,10 +1,13 @@
-"""Probability-curve diagnostic for the Vesna C2 spend frontier.
+"""Probability-curve diagnostics for the Vesna and Skirk spend frontiers.
 
 This is intentionally a diagnostic test rather than a brittle regression
 against exact Monte Carlo percentages. It measures how increasing the Vesna
 spend cap changes Vesna C2 and protected Skirk C2 outcomes under the same
 shared 450-wish pool, including the expected 90 wishes of 7.1 income.
 """
+import numpy as np
+from dataclasses import replace
+
 from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Ownership, Roadmap, VersionIncome
 from planner import PlannerContext
 from simulation import PlannedSpend, SpendPlan, simulate
@@ -88,6 +91,38 @@ def test_vesna_spend_curve(capsys):
     assert rows[-1][1] > rows[0][1]
     assert rows[-1][2] < rows[0][2]
     assert rows[-1][0] == 450
+
+
+def test_skirk_c2_probability_sanity_curve(capsys):
+    """Measure raw Skirk C2 probability at the Hu Tao calculator comparison points."""
+    from simulation.engine import _pull_toward_target
+
+    context = make_context()
+    mechanics = context.mechanics
+    budgets = (240, 264, 265, 280)
+
+    print("\nSkirk C2 raw probability sanity curve (10,000 runs, seed=0)")
+    print("budget | Skirk C2")
+    print("-------+----------")
+
+    rows = []
+    for budget in budgets:
+        success = 0
+        rng = np.random.default_rng(0)
+
+        for _ in range(10_000):
+            account = context.account
+            _, copies, _, _ = _pull_toward_target(
+                account, "Skirk", 2, budget, mechanics, rng
+            )
+            success += copies == 2
+
+        probability = success / 10_000
+        rows.append((budget, probability))
+        print(f"{budget:6d} | {probability:8.2%}")
+
+    # Diagnostic comparison only; this does not hard-code an external calculator's result.
+    assert rows[-1][1] > rows[0][1]
 
 
 def test_combined_current_banner_frontier(capsys):
