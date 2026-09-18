@@ -1167,9 +1167,22 @@ async function recordPullOutcome(character, outcome) {
     $("hero-pity").textContent = state.account.account.current_pity;
     $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
     resetVerdict();
-    await loadGoals();
-    await loadPlanner("Record pull outcome");
+    try {
+      await loadGoals();
+    } catch (error) {
+      console.error("Pull outcome refresh failed while loading goals", error);
+      showError("Account updated, but roadmap refresh failed: " + error.message);
+      return;
+    }
+
+    try {
+      await loadPlanner("Record pull outcome");
+    } catch (error) {
+      console.error("Pull outcome refresh failed while running planner", error);
+      showError("Account updated, but planner refresh failed: " + error.message);
+    }
   } catch (error) {
+    console.error("Pull outcome update failed", error);
     showError(error.message);
   }
 }
