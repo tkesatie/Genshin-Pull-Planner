@@ -65,7 +65,7 @@ import numpy as np
 from dataclasses import replace
 
 from domain import Account, Banner, Goal, WishMechanics, copies_needed_for
-from planner.banners import current_banner
+from planner.banners import available_banners, current_banner
 from planner.context import PlannerContext
 from probability import pull_rate
 from simulation.outcomes import aggregate_runs
@@ -76,14 +76,22 @@ DEFAULT_RUNS = 10_000
 DEFAULT_SEED = 0
 
 
-def _banners_to_process(context: PlannerContext) -> list[Banner]:
+def _banners_to_process(context: PlannerContext, plan: SpendPlan) -> list[Banner]:
     """Every roadmap banner chronologically at or after the current one (§7)."""
-    current = current_banner(context)
-    return [
-        banner
-        for banner in context.roadmap.banners_in_chronological_order()
-        if banner.order_key >= current.order_key
-    ]
+    matches = available_banners(context)
+    if not matches:
+        current = current_banner(context)
+    else:
+        current = matches[0]
+    plan_order = {entry.banner: index for index, entry in enumerate(plan.entries)}
+    return sorted(
+        (
+            banner
+            for banner in context.roadmap.banners_in_chronological_order()
+            if banner.order_key >= current.order_key
+        ),
+        key=lambda banner: (banner.order_key, plan_order.get(banner, len(plan.entries))),
+    )
 
 
 def _pull_toward_target(
@@ -143,7 +151,7 @@ def _run_history(
     context: PlannerContext, plan: SpendPlan, rng: np.random.Generator
 ) -> RunResult:
     """Walk one history without re-validating (the caller validated once)."""
-    banners = _banners_to_process(context)
+    banners = _banners_to_process(context, plan)
     mechanics = context.mechanics
 
     account = context.account
