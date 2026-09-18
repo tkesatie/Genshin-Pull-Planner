@@ -92,6 +92,15 @@ class AccountUpdate(StrictModel):
     settings: PlannerSettingsModel
 
 
+class PullResultModel(StrictModel):
+    """Record a meaningful character-banner outcome without logging every pull."""
+
+    outcome: str = Field(..., description='"featured", "lost_50_50", or "stopped".')
+    wishes_used: int = Field(..., ge=1)
+    character: str | None = None
+
+
+
 class AccountSummary(BaseModel):
     """List view of a stored account."""
 
