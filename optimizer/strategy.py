@@ -185,17 +185,33 @@ def _safe_spend(
     seed: int | None,
 ) -> tuple[int, SimulationResult, tuple[Goal, ...]]:
     """Find the largest current budget that preserves every constraint."""
+    import time
+
+    started = time.perf_counter()
+    candidates = 0
+
     for spend in range(context.account.wishes, -1, -1):
+        candidates += 1
         result, protected_goals = _evaluate_spend(
             context, goal, banner, spend, runs=runs, seed=seed
         )
         if not protected_goals:
+            elapsed = time.perf_counter() - started
+            print(
+                f"_safe_spend: goal={goal.character} C{goal.constellation}, "
+                f"candidates={candidates}, elapsed={elapsed:.3f}s, safe_spend={spend}"
+            )
             return spend, result, protected_goals
         probabilities = [
             next(item for item in result.goals if item.goal == protected).probability
             for protected in protected_goals
         ]
         if all(probability >= context.confidence for probability in probabilities):
+            elapsed = time.perf_counter() - started
+            print(
+                f"_safe_spend: goal={goal.character} C{goal.constellation}, "
+                f"candidates={candidates}, elapsed={elapsed:.3f}s, safe_spend={spend}"
+            )
             return spend, result, protected_goals
     raise RuntimeError("safe-spend search must find the zero-spend candidate")
 
