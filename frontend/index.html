@@ -486,6 +486,8 @@ async function loadPlanner(source = "unknown") {
       : null;
     console.log(`Planner run #${plannerRunId} finished — source: ${source}`);
     const timing = {
+      planner_run_id: plannerRunId,
+      planner_run_source: source,
       planner_calculation_seconds: calculationSeconds,
       api_response_seconds: apiResponseSeconds,
       frontend_load_seconds: frontendLoadSeconds,
@@ -496,8 +498,8 @@ async function loadPlanner(source = "unknown") {
       "-------------\n" +
       `Planner calculation: ${calculationSeconds === null ? "n/a" : calculationSeconds.toFixed(2) + "s"}\n` +
       `API response:        ${apiResponseSeconds.toFixed(2)}s\n` +
-      `Frontend load:       ${apiResponseSeconds.toFixed(2)}s\n` +
-      `Total:               ${apiResponseSeconds.toFixed(2)}s`
+      `Frontend load:       ${frontendLoadSeconds.toFixed(2)}s\n` +
+      `Total:               ${frontendLoadSeconds.toFixed(2)}s`
     );
     await api("/accounts/" + id + "/planner/timing", {
       method: "POST",
