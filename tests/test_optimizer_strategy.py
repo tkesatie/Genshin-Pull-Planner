@@ -52,7 +52,7 @@ def test_frontier_table_models_unknown_c0_cost(monkeypatch):
     context = make_context()
     captured: dict[int, SpendPlan] = {}
 
-    def fake_simulate(context, plan, *, runs, seed):
+    def fake_simulate(context, plan, *, runs, seed, joint_goals=()):
         vesna_entry = plan.entry_for(Banner("Vesna", "7.1", 1))
         assert vesna_entry is not None
         captured[vesna_entry.budget] = plan
