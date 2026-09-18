@@ -1,23 +1,21 @@
 """Current-banner identification (Design Document §7, §18 Phase 3).
 
-"Where is the user?" is planner input (`PlannerContext`); which roadmap
-banner that corresponds to is identification logic. Chronological order
-is fundamental (§7) but identification itself is positional: an exact
-(version, phase) match.
+"Where is the user?" is planner input; which roadmap banners are available
+at that position is identification logic. Chronological order is fundamental
+(§7), but a single version/phase can contain multiple simultaneous
+featured-character banners.
 """
 
 from domain import Banner
 from planner.context import PlannerContext
 
 
-def current_banner(context: PlannerContext) -> Banner:
-    """The roadmap banner at the context's (version, phase).
+def available_banners(context: PlannerContext) -> tuple[Banner, ...]:
+    """Return every roadmap banner available at the context's position.
 
-    Raises:
-        ValueError: if no roadmap banner matches, or if several do
-            (e.g. two featured characters in the same slot): the Phase 3
-            planner models one current banner and will not silently
-            choose.
+    Multiple featured-character banners can share the same (version, phase)
+    slot. The planner must preserve all of them so higher layers can decide
+    where the user's resources should go.
     """
     matches = [
         banner
@@ -25,6 +23,19 @@ def current_banner(context: PlannerContext) -> Banner:
         if banner.version == context.current_version
         and banner.phase == context.current_phase
     ]
+    return tuple(
+        sorted(matches, key=lambda banner: (banner.order_key, banner.character))
+    )
+
+
+def current_banner(context: PlannerContext) -> Banner:
+    """The roadmap banner at the context's (version, phase).
+
+    This legacy singular helper remains strict: callers that still require
+    exactly one banner must not silently choose when multiple are available.
+    New decision-making code should use available_banners().
+    """
+    matches = available_banners(context)
     if not matches:
         scheduled = ", ".join(
             f"{banner.character} {banner.version}p{banner.phase}"
