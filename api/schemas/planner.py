@@ -138,6 +138,9 @@ class StrategyStepView(BaseModel):
     safe_spend: int | None = None
     outcome_probability: float | None = None
     protected_probability: float | None = None
+    future_income: int | None = None
+    protected_starting_wishes: int | None = None
+    protected_total_wishes: int | None = None
 
     @classmethod
     def from_domain(cls, step: StrategyStep):
@@ -149,6 +152,9 @@ class StrategyStepView(BaseModel):
             safe_spend=step.safe_spend,
             outcome_probability=step.outcome_probability,
             protected_probability=step.protected_probability,
+            future_income=step.future_income,
+            protected_starting_wishes=step.protected_starting_wishes,
+            protected_total_wishes=step.protected_total_wishes,
         )
 
 
@@ -160,6 +166,8 @@ class PullStrategyView(BaseModel):
     confidence: float
     runs: int
     seed: int | None
+    starting_wishes: int
+    future_income: int
 
     @classmethod
     def from_domain(cls, strategy: PullStrategy, *, confidence: float):
@@ -175,6 +183,8 @@ class PullStrategyView(BaseModel):
             confidence=confidence,
             runs=strategy.runs,
             seed=strategy.seed,
+            starting_wishes=strategy.starting_wishes,
+            future_income=strategy.future_income,
         )
 
 
