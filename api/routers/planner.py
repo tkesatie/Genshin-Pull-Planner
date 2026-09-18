@@ -79,7 +79,7 @@ def planner_safe_spend(
         confidence=context.confidence,
         protected=[
             ProtectedGoalOutcomeView.from_domain(outcome)
-            for outcome in protected_goal_outcomes(context, spent=0)
+            for outcome in protected_goal_outcomes(context, spent=0, banner=selected)
         ],
     )
 
