@@ -23,7 +23,10 @@ from optimizer.protection import protected_groups
 
 
 def candidate_plan(
-    context: PlannerContext, outcome: OutcomeOption, budget: int
+    context: PlannerContext,
+    outcome: OutcomeOption,
+    budget: int,
+    banner=None,
 ) -> SpendPlan:
     """The executable plan for pursuing `outcome` with `budget` wishes
     capped on the current banner (§13 step 3).
@@ -38,9 +41,10 @@ def candidate_plan(
             f"budget must satisfy 0 <= budget <= account wishes "
             f"({context.account.wishes}), got {budget}"
         )
+    selected_banner = banner if banner is not None else current_banner(context)
     entries = [
         PlannedSpend(
-            banner=current_banner(context),
+            banner=selected_banner,
             target_constellation=outcome.constellation,
             budget=budget,
         )
