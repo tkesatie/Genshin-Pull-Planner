@@ -121,7 +121,7 @@ def _current_required_plan(
             ),
             None,
         )
-        if banner is None or banner == current_banner:
+        if banner is None:
             continue
         entries.append(
             PlannedSpend(
@@ -280,7 +280,30 @@ def _safe_spend(
     constraining = constraining_goals(
         context, priority=goal.priority, banner=banner
     )
-    protected_goals = tuple(sorted(constraining, key=lambda item: item.priority))
+    required_goals = frozenset(
+        evaluation.goal
+        for evaluation in evaluate_goals(context)
+        if evaluation.goal.priority < goal.priority
+        and evaluation.goal.character != goal.character
+        and evaluation.goal.constellation == 0
+        and evaluation.copies_needed > 0
+        and any(
+            candidate.character == evaluation.goal.character
+            for candidate in available_banners(context)
+        )
+    )
+    _, protected_goals = _protection_plan(
+        context,
+        goal.priority,
+        current_banner=banner,
+        excluded_goals=required_goals,
+    )
+    # Only future goals constrain the reserve. Higher-priority goals on a
+    # simultaneous current banner are handled by _current_required_plan and
+    # consume the same current-phase cap; they are not part of the reserve.
+    protected_goals = tuple(
+        goal_item for goal_item in protected_goals if goal_item in constraining
+    )
     requirement = _protected_requirement(
         context,
         protected_goals,
