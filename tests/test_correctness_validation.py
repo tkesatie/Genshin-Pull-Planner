@@ -410,9 +410,11 @@ def test_income_flows_into_simulated_banner_budget():
     _assert_matches(result.banners[1].target_met_probability, 2_000, reference, "income-funded banner")
 
 def test_multicopy_exact_model_carries_capturing_radiance_between_copies():
-    """Multi-copy probability must preserve Radiance after the first copy."""
+    """Multi-copy probability must preserve Radiance after earlier copies."""
     mechanics = WishMechanics(banner_type="test", hard_pity=2, soft_pity_start=1, base_rate=0.5, soft_pity_increment=0.01, featured_rate=0.5)
-    curve = multi_copy_cumulative_probability(2, 2, 1, False, mechanics, starting_radiance=2)
-    # Wish 1: 6/11 featured -> Radiance 1, then 1/2 featured on wish 2.
-    # Otherwise 5/11 loses -> wish 2 is guaranteed. Total = 8/11.
-    assert curve[2] == pytest.approx(8.0 / 11.0)
+    curve = multi_copy_cumulative_probability(4, 3, 1, False, mechanics, starting_radiance=2)
+
+    # Three copies require later 5-star events to inherit the Radiance state
+    # created by earlier wins/losses. At 4 wishes the exact probability is
+    # 161/968; resetting Radiance after each copy produces a different value.
+    assert curve[4] == pytest.approx(161.0 / 968.0)
