@@ -106,7 +106,7 @@ def protected_goal_outcomes(
         if evaluation.copies_needed == 0:
             continue
         banner = evaluation.next_banner
-        if banner is None or banner.order_key < current.order_key or banner == current:
+        if banner is None or banner.order_key <= current.order_key:
             continue
         schedulable.append((banner, evaluation))
     schedulable.sort(key=lambda item: (item[0].order_key, item[1].goal.priority))
