@@ -5,8 +5,8 @@ punch-list:
 
     * validate simulation against the exact analytical engine (an
       "external calculator" that is exact, not another Monte Carlo)
-    * validate multi-copy targets (e.g. Skirk C2) via an independently
-      derived convolution reference
+    * validate multi-copy targets (e.g. Skirk C2) via the exact state-based
+      analytical reference
     * exercise Capturing Radiance (soft guarantee at counter==2, hard
       guarantee at counter>=3) and the 50/50 loss transition
     * exercise edge cases: starting guaranteed, losing the 50/50, a goal
@@ -159,9 +159,8 @@ def test_zero_wishes_never_succeeds():
 
 
 # ---------------------------------------------------------------------------
-# Multi-copy (e.g. Skirk C2): validate against an independently derived
-# convolution of the exact single-copy completion-time distribution, as
-# `simulation/__init__.py` invariant 11 promises.
+# Multi-copy (e.g. Skirk C2): validate against the exact state-based
+# analytical probability model, including Capturing Radiance carryover.
 # ---------------------------------------------------------------------------
 
 
