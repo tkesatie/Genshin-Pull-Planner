@@ -172,6 +172,7 @@ class PlannerEvidenceCache:
         account_id: str,
         *,
         character: str,
+        outcome: str,
         constellation: int,
         banner_version: str,
         banner_phase: int,
@@ -188,7 +189,7 @@ class PlannerEvidenceCache:
         conditioned = condition_on_pull(
             evidence.candidate.result,
             character=character,
-            outcome="featured" if evidence.candidate.outcome.constellation >= 0 else "lost_50_50",
+            outcome=outcome,
             wishes_used=wishes_used,
             prior_observations=evidence.observations,
         )
@@ -211,7 +212,7 @@ class PlannerEvidenceCache:
             candidate=candidate,
             runs=conditioned.runs,
             seed=evidence.seed,
-            observations=(*evidence.observations, (character, "featured", wishes_used)),
+            observations=(*evidence.observations, (character, outcome, wishes_used)),
         )
         new_key = (account_id, character, constellation, banner_version, banner_phase, new_budget)
         with self._lock:
