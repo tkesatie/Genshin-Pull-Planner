@@ -39,14 +39,14 @@ def _transitions(mechanics: WishMechanics) -> _Transitions:
 
 
 def _initial_state(
-    starting_pity: int, guaranteed: bool, hard_pity: int
+    starting_pity: int, guaranteed: bool, starting_radiance: int, hard_pity: int
 ) -> _State:
     no_guarantee = np.zeros((hard_pity, 4))
     guaranteed_mass = np.zeros((hard_pity, 4))
     if guaranteed:
-        guaranteed_mass[starting_pity, 0] = 1.0
+        guaranteed_mass[starting_pity, starting_radiance] = 1.0
     else:
-        no_guarantee[starting_pity, 0] = 1.0
+        no_guarantee[starting_pity, starting_radiance] = 1.0
     return _State(no_guarantee, guaranteed_mass)
 
 
@@ -72,6 +72,7 @@ def cumulative_probability(
     starting_pity: int,
     guaranteed: bool,
     mechanics: WishMechanics,
+    starting_radiance: int = 0,
 ) -> np.ndarray:
     if wishes < 0:
         raise ValueError(f"wishes must be non-negative, got {wishes}")
@@ -81,8 +82,11 @@ def cumulative_probability(
             f"{mechanics.hard_pity}, got {starting_pity}"
         )
 
+    if not 0 <= starting_radiance <= 3:
+        raise ValueError(f"starting_radiance must satisfy 0 <= starting_radiance <= 3, got {starting_radiance}")
+
     moves = _transitions(mechanics)
-    state = _initial_state(starting_pity, guaranteed, mechanics.hard_pity)
+    state = _initial_state(starting_pity, guaranteed, starting_radiance, mechanics.hard_pity)
     curve = np.empty(wishes + 1)
     curve[0] = 0.0
 
@@ -94,64 +98,59 @@ def cumulative_probability(
 
 
 def multi_copy_cumulative_probability(
-    wishes: int,
-    copies: int,
-    starting_pity: int,
-    guaranteed: bool,
-    mechanics: WishMechanics,
+    wishes: int, copies: int, starting_pity: int, guaranteed: bool,
+    mechanics: WishMechanics, starting_radiance: int = 0,
 ) -> np.ndarray:
-    """P(obtaining `copies` featured copies within N wishes), for each N.
-
-    Exact - not sampled - by convolving the single-copy completion-time
-    PMF `copies` times: every copy after the first is drawn starting fresh
-    at pity 0 with no guarantee, mirroring the simulator's post-copy reset
-    (§11: a featured copy resets pity to 0 and turns the guarantee off).
-
-    This is the reserve math a multi-copy protected goal (a constellation
-    reached from an unowned or partially-owned character) actually needs.
-    Reusing the single-copy curve as-is for such a goal silently answers
-    "how likely is exactly one copy" for a goal that needs several - which
-    is what `planner.protection.protected_goal_outcomes` did before this
-    function existed, and why it could report a multi-copy goal as fully
-    protected when its true probability was far lower (see that module's
-    docstring and its regression test).
-
-    Args:
-        wishes: how many additional wishes to look ahead (>= 0).
-        copies: how many featured copies are needed (>= 0). 0 means the
-            goal is already satisfied: the curve is 1.0 everywhere,
-            including at 0 wishes.
-        starting_pity / guaranteed: the state for the FIRST copy only;
-            every subsequent copy starts fresh (see above).
-        mechanics: mechanics data for the banner type (§17).
-    """
+    """Exact multi-copy probability using the full pull state."""
     if wishes < 0:
         raise ValueError(f"wishes must be non-negative, got {wishes}")
     if copies < 0:
         raise ValueError(f"copies must be non-negative, got {copies}")
-
     if copies == 0:
         return np.ones(wishes + 1)
+    if not 0 <= starting_pity < mechanics.hard_pity:
+        raise ValueError(f"starting_pity must satisfy 0 <= starting_pity < {mechanics.hard_pity}, got {starting_pity}")
+    if not 0 <= starting_radiance <= 3:
+        raise ValueError(f"starting_radiance must satisfy 0 <= starting_radiance <= 3, got {starting_radiance}")
 
-    first_cdf = cumulative_probability(wishes, starting_pity, guaranteed, mechanics)
-    if copies == 1:
-        return first_cdf
+    moves = _transitions(mechanics)
+    # state[c, p, r, g]: mass with c copies, pity p, Radiance r, guarantee g.
+    state = np.zeros((copies, mechanics.hard_pity, 4, 2))
+    state[0, starting_pity, starting_radiance, int(guaranteed)] = 1.0
+    curve = np.empty(wishes + 1)
+    curve[0] = 0.0
 
-    first_pmf = np.diff(first_cdf, prepend=0.0)
-    fresh_cdf = cumulative_probability(wishes, 0, False, mechanics)
-    fresh_pmf = np.diff(fresh_cdf, prepend=0.0)
+    for wish in range(1, wishes + 1):
+        new_state = np.zeros_like(state)
+        new_state[:, 1:, :, :] += state[:, :-1, :, :] * moves.survive[None, :, None, None]
 
-    total_pmf = first_pmf
-    for _ in range(copies - 1):
-        total_pmf = np.convolve(total_pmf, fresh_pmf)[: wishes + 1]
-    return np.cumsum(total_pmf)[: wishes + 1]
+        for copy_count in range(copies):
+            for radiance in range(4):
+                rate = moves.rates
+                guaranteed_mass = state[copy_count, :, radiance, 1] * rate
+                if copy_count + 1 < copies:
+                    new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
 
+                nonguaranteed = state[copy_count, :, radiance, 0]
+                featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
+                if copy_count + 1 < copies:
+                    next_radiance = 0 if radiance <= 1 else 1
+                    new_state[copy_count + 1, 0, next_radiance, 0] += featured_mass.sum()
 
+                lost_mass = nonguaranteed * rate * (1.0 - moves.featured[:, radiance])
+                next_radiance = min(3, radiance + 1)
+                new_state[copy_count, 0, next_radiance, 1] += lost_mass.sum()
+
+        state = new_state
+        curve[wish] = 1.0 - state.sum()
+
+    return curve
 def wishes_for_confidence(
     confidence: float,
     starting_pity: int,
     guaranteed: bool,
     mechanics: WishMechanics,
+    starting_radiance: int = 0,
 ) -> int:
     if not 0.0 < confidence <= 1.0:
         raise ValueError(
@@ -165,7 +164,7 @@ def wishes_for_confidence(
 
     horizon = 2 * mechanics.hard_pity
     curve = cumulative_probability(
-        horizon, starting_pity, guaranteed, mechanics
+        horizon, starting_pity, guaranteed, mechanics, starting_radiance
     )
 
     best = float(curve.max())
@@ -184,6 +183,7 @@ def multi_copy_wishes_for_confidence(
     starting_pity: int,
     guaranteed: bool,
     mechanics: WishMechanics,
+    starting_radiance: int = 0,
 ) -> int:
     """Smallest N with P(`copies` copies within N wishes) >= confidence.
 
@@ -214,7 +214,7 @@ def multi_copy_wishes_for_confidence(
 
     horizon = 2 * mechanics.hard_pity * copies
     curve = multi_copy_cumulative_probability(
-        horizon, copies, starting_pity, guaranteed, mechanics
+        horizon, copies, starting_pity, guaranteed, mechanics, starting_radiance
     )
 
     best = float(curve.max())
