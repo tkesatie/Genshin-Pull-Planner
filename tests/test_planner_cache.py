@@ -99,3 +99,65 @@ def test_cache_is_bounded():
     assert cache.get("account-0", Goal("Vesna", 2, 1)) is None
     assert cache.get("account-1", Goal("Vesna", 2, 2)) is not None
     assert cache.get("account-2", Goal("Vesna", 2, 3)) is not None
+
+
+def test_condition_account_reuses_matching_histories():
+    from simulation import BannerResult, GoalOutcome, PlannedSpend, RunResult
+    from domain import Account, Banner, Ownership
+    from simulation.outcomes import aggregate_runs
+
+    banner = Banner("Vesna", "7.0", 1)
+    goal = Goal("Vesna", 0, 1)
+    plan = PlannedSpend(banner, 0, 100)
+
+    def history(outcomes):
+        account = __import__("domain").Account(
+            wishes=350,
+            owned_characters=Ownership({"Vesna": -1}),
+        )
+        result = BannerResult(
+            banner=banner,
+            target_constellation=0,
+            budget=100,
+            copies_needed=1,
+            income_credited=0,
+            wishes_spent=100,
+            copies_obtained=1,
+            copy_wishes=tuple(w for w, featured in outcomes if featured),
+            target_met=True,
+            account_after=account,
+            five_star_outcomes=outcomes,
+        )
+        return RunResult(
+            banner_results=(result,),
+            account_after=account,
+            goal_outcomes=(GoalOutcome(goal, True, banner),),
+        )
+
+    simulation = aggregate_runs(
+        [history(((83, True),)), history(((90, False),))],
+        __import__("simulation").SpendPlan((plan,)),
+        seed=7,
+        joint_goals=(goal,),
+    )
+    cache = PlannerEvidenceCache()
+    cache.put(
+        "account-1",
+        goal,
+        simulation,
+        runs=2,
+        seed=7,
+        confidence=0.9,
+        income_scenario="expected",
+    )
+
+    conditioned = cache.condition_account(
+        "account-1",
+        character="Vesna",
+        outcome="featured",
+        wishes_used=83,
+    )
+
+    assert conditioned[goal].result.runs == 1
+    assert conditioned[goal].result.joint_goal_probability is not None
+    assert conditioned[goal].result.joint_goal_probability.probability == 1.0
