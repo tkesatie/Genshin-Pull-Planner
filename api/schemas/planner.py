@@ -72,6 +72,10 @@ class CachedPlannerRefreshView(BaseModel):
     account_wishes: int
     confidence: float
     evidence: list[CachedGoalEvidenceView]
+    recommendation_budget: int | None = None
+    recommendation_constellation: int | None = None
+    recommendation_probability: float | None = None
+    recommendation_goal_probabilities: list[CachedGoalProbabilityView] = []
 
 
 class ProtectedGoalOutcomeView(BaseModel):
