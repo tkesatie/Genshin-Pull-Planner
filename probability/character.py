@@ -123,21 +123,22 @@ def multi_copy_cumulative_probability(
     for wish in range(1, wishes + 1):
         new_state = np.zeros_like(state)
 
-        # Only non-guaranteed states can survive a wish without a 5-star.
-        new_state[:, 1:, :, 0] += (
-            state[:, :-1, :, 0] * moves.survive[None, :-1, None]
+        # Both guaranteed and non-guaranteed states can survive when
+        # the wish does not produce a 5-star. Guarantee only changes the
+        # featured outcome of the next 5-star; it does not make the next
+        # wish itself a 5-star.
+        new_state[:, 1:, :, :] += (
+            state[:, :-1, :, :] * moves.survive[None, :-1, None, None]
         )
 
         for copy_count in range(copies):
             for radiance in range(4):
-                # A guarantee means the next 5-star is the featured character;
-                # the pity rate itself does not apply to the guaranteed state.
-                guaranteed_mass = state[copy_count, :, radiance, 1]
+                rate = moves.rates
+
+                # A guarantee means that an obtained 5-star is featured.
+                guaranteed_mass = state[copy_count, :, radiance, 1] * rate
                 if copy_count + 1 < copies:
                     new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
-
-                nonguaranteed = state[copy_count, :, radiance, 0]
-                rate = moves.rates
                 featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
                 if copy_count + 1 < copies:
                     next_radiance = 0 if radiance <= 1 else 1
