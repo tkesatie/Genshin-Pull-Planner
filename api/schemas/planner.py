@@ -75,7 +75,7 @@ class CachedPlannerRefreshView(BaseModel):
     recommendation_budget: int | None = None
     recommendation_constellation: int | None = None
     recommendation_probability: float | None = None
-    recommendation_goal_probabilities: list[CachedGoalProbabilityView] = []
+    recommendation_goal_probabilities: list[CachedGoalProbabilityView] = Field(default_factory=list)
 
 
 class ProtectedGoalOutcomeView(BaseModel):
