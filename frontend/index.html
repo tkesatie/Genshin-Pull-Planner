@@ -1343,12 +1343,13 @@ async function recordPullOutcome(character, outcome) {
     }
 
     if (!updated) {
-      state.planner = null;
-      resetVerdict();
-      showError(
-        "Account updated. The recorded outcome was not represented in the retained simulations; " +
-        "run the planner to generate fresh evidence."
-      );
+      // Retained evidence was unavailable or could not represent this outcome.
+      // Recover automatically instead of requiring a second button press. This
+      // is the expensive last-resort path; normal pulls use cached conditioning
+      // or the targeted fallback without rerunning the optimizer.
+      console.log("Cached pull refresh unavailable — automatically running planner recovery");
+      await loadPlanner("Pull outcome recovery");
+      clearError();
     } else {
       clearError();
     }
