@@ -23,6 +23,7 @@ class CachedSimulationEvidence:
     seed: int | None
     confidence: float
     income_scenario: str
+    observations: tuple[tuple[str, str, int], ...] = ()
 
 
 class PlannerEvidenceCache:
@@ -73,7 +74,7 @@ class PlannerEvidenceCache:
         outcome: str,
         wishes_used: int,
     ) -> dict[Goal, CachedSimulationEvidence]:
-        """Condition every cached goal for an account on one observed pull."""
+        """Condition cached evidence and replace it with the observed state."""
         with self._lock:
             entries = tuple(
                 evidence
@@ -88,10 +89,15 @@ class PlannerEvidenceCache:
                 character=character,
                 outcome=outcome,
                 wishes_used=wishes_used,
+                prior_observations=evidence.observations,
             )
+            key = (account_id, evidence.goal)
             if result is None:
+                with self._lock:
+                    self._entries.pop(key, None)
                 continue
-            conditioned[evidence.goal] = CachedSimulationEvidence(
+
+            updated = CachedSimulationEvidence(
                 account_id=evidence.account_id,
                 goal=evidence.goal,
                 result=result,
@@ -99,7 +105,15 @@ class PlannerEvidenceCache:
                 seed=evidence.seed,
                 confidence=evidence.confidence,
                 income_scenario=evidence.income_scenario,
+                observations=(
+                    *evidence.observations,
+                    (character, outcome, wishes_used),
+                ),
             )
+            with self._lock:
+                self._entries[key] = updated
+            conditioned[evidence.goal] = updated
+
         return conditioned
 
     def clear_account(self, account_id: str) -> None:
