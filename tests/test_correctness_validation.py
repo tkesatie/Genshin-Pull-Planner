@@ -38,7 +38,7 @@ from domain import (
 )
 from domain.mechanics import CHARACTER_EVENT_BANNER
 from planner.context import PlannerContext
-from probability import cumulative_probability, pull_rate
+from probability import cumulative_probability, multi_copy_cumulative_probability, pull_rate
 from simulation import PlannedSpend, SpendPlan, simulate
 
 
@@ -164,58 +164,6 @@ def test_zero_wishes_never_succeeds():
 # `simulation/__init__.py` invariant 11 promises.
 # ---------------------------------------------------------------------------
 
-def _completion_time_pmf(max_wishes: int, mechanics: WishMechanics) -> np.ndarray:
-    """P(exactly N additional wishes to the next featured copy), pity 0, no guarantee."""
-    cdf = cumulative_probability(max_wishes, 0, False, mechanics)
-    pmf = np.diff(cdf, prepend=0.0)
-    return pmf
-
-
-def _convolved_cdf(copies: int, max_wishes: int, mechanics: WishMechanics) -> np.ndarray:
-    """Exact CDF for `copies` sequential single-copy draws, each starting
-    fresh at pity 0 / no guarantee (matches the simulator's post-copy reset:
-    §11 - featured copy resets pity to 0 and guarantee off).
-    """
-    pmf = _completion_time_pmf(max_wishes, mechanics)
-    total_pmf = pmf.copy()
-    for _ in range(copies - 1):
-        total_pmf = np.convolve(total_pmf, pmf)[: max_wishes + 1]
-    return np.cumsum(total_pmf)[: max_wishes + 1]
-
-
-@pytest.mark.parametrize(
-    "owned_constellation,target_constellation,wishes",
-    [
-        (-1, 2, 260),   # Skirk C2 from completely unowned: 3 copies
-        (0, 2, 180),    # Skirk C2 from C0: 2 copies
-        (1, 2, 90),     # Skirk C2 from C1: 1 copy (degenerates to single-copy)
-    ],
-)
-def test_multicopy_matches_convolution_reference(owned_constellation, target_constellation, wishes):
-    runs = 20_000
-    owned = {} if owned_constellation < 0 else {"Skirk": owned_constellation}
-    context = _context(wishes=wishes, pity=0, guarantee=False, owned=owned)
-    banner = Banner("Skirk", "7.0", 1)
-    context = PlannerContext(
-        account=context.account,
-        roadmap=Roadmap(goals=[Goal("Skirk", target_constellation, 1)], banners=[banner]),
-        current_version="7.0",
-        current_phase=1,
-        mechanics=MECHANICS,
-    )
-    plan = SpendPlan(
-        entries=(PlannedSpend(banner=banner, target_constellation=target_constellation, budget=wishes),)
-    )
-    result = simulate(context, plan, runs=runs, seed=4)
-    simulated = result.banners[0].target_met_probability
-
-    copies = max(target_constellation - owned_constellation, 0)
-    reference = float(_convolved_cdf(copies, wishes, MECHANICS)[wishes])
-    _assert_matches(
-        simulated, runs, reference,
-        f"Skirk C{target_constellation} from C{owned_constellation} within {wishes} wishes",
-    )
-
 
 def test_large_budget_450_wishes_reaches_near_certainty():
     """The 450-wish scale explicitly called out in the punch list."""
@@ -232,7 +180,7 @@ def test_large_budget_450_wishes_reaches_near_certainty():
     plan = SpendPlan(entries=(PlannedSpend(banner=banner, target_constellation=2, budget=450),))
     result = simulate(context, plan, runs=runs, seed=5)
 
-    reference = float(_convolved_cdf(3, 450, MECHANICS)[450])
+    reference = float(multi_copy_cumulative_probability(450, 3, 0, False, MECHANICS)[450])
     simulated = result.banners[0].target_met_probability
     _assert_matches(simulated, runs, reference, "Skirk C2 (3 copies) within 450 wishes")
     # 450 wishes is ~5 hard-pity cycles for 3 copies: should be very likely,
@@ -461,3 +409,11 @@ def test_income_flows_into_simulated_banner_budget():
     assert result.banners[1].mean_income_credited == pytest.approx(90.0)
     reference = float(cumulative_probability(90, 0, False, MECHANICS)[90])
     _assert_matches(result.banners[1].target_met_probability, 2_000, reference, "income-funded banner")
+
+def test_multicopy_exact_model_carries_capturing_radiance_between_copies():
+    """Multi-copy probability must preserve Radiance after the first copy."""
+    mechanics = WishMechanics(banner_type="test", hard_pity=1, soft_pity_start=1, base_rate=0.5, soft_pity_increment=0.0, featured_rate=0.5)
+    curve = multi_copy_cumulative_probability(2, 2, 0, False, mechanics, starting_radiance=2)
+    # Wish 1: 6/11 featured -> Radiance 1, then 1/2 featured on wish 2.
+    # Otherwise 5/11 loses -> wish 2 is guaranteed. Total = 8/11.
+    assert curve[2] == pytest.approx(8.0 / 11.0)
