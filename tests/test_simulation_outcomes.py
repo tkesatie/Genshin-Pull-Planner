@@ -87,6 +87,8 @@ class TestAggregateRuns:
 
         assert result.runs == 4
         assert result.seed == 5
+        assert result.histories == tuple(runs)
+        assert len(result.histories) == result.runs
 
         # Goal satisfaction fractions, priority order (§5).
         assert [(g.goal, g.probability) for g in result.goals] == [
