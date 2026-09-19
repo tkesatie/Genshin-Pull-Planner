@@ -125,7 +125,7 @@ def multi_copy_cumulative_probability(
 
         # Only non-guaranteed states can survive a wish without a 5-star.
         new_state[:, 1:, :, 0] += (
-            state[:, :-1, :, 0] * moves.survive[None, :-1, :, None]
+            state[:, :-1, :, 0] * moves.survive[None, :-1, None]
         )
 
         for copy_count in range(copies):
