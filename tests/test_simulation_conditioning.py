@@ -27,7 +27,7 @@ def _history(five_star_outcomes):
         income_credited=0,
         wishes_spent=100,
         copies_obtained=1,
-        copy_wishes=(next(w for w, featured in five_star_outcomes if featured),),
+        copy_wishes=tuple(w for w, featured in five_star_outcomes if featured),
         target_met=True,
         account_after=account,
         five_star_outcomes=five_star_outcomes,
