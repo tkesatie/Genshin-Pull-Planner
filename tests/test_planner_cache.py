@@ -70,6 +70,7 @@ def test_cache_is_scoped_to_account_and_goal():
         seed=7,
         confidence=0.9,
         income_scenario="expected",
+    context=context,
     )
 
     assert cache.get("account-2", goal) is None
@@ -90,6 +91,7 @@ def test_clear_account_does_not_clear_other_accounts():
             seed=7,
             confidence=0.9,
             income_scenario="expected",
+        context=context,
         )
 
     cache.clear_account("account-1")
@@ -111,6 +113,7 @@ def test_cache_is_bounded():
             seed=7,
             confidence=0.9,
             income_scenario="expected",
+        context=context,
         )
 
     assert cache.get("account-0", Goal("Vesna", 2, 1)) is None
@@ -167,6 +170,7 @@ def test_condition_account_reuses_matching_histories():
         seed=7,
         confidence=0.9,
         income_scenario="expected",
+    context=context,
     )
 
     conditioned = cache.condition_account(
