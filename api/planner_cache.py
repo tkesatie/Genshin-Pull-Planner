@@ -64,6 +64,7 @@ class PlannerEvidenceCache:
         seed: int | None,
         confidence: float,
         income_scenario: str,
+        observations: tuple[tuple[str, str, int], ...] = (),
     ) -> None:
         evidence = CachedSimulationEvidence(
             account_id=account_id,
@@ -73,6 +74,7 @@ class PlannerEvidenceCache:
             seed=seed,
             confidence=confidence,
             income_scenario=income_scenario,
+            observations=observations,
         )
         key = (account_id, goal)
         with self._lock:
