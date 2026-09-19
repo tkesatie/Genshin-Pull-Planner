@@ -1,5 +1,7 @@
 """Planner endpoints."""
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import ContextOverrides, context_overrides, get_record
@@ -41,7 +43,7 @@ from planner import (
     relevant_goal_evaluations,
     safe_spend,
 )
-from simulation import DEFAULT_SEED
+from simulation import DEFAULT_SEED, simulate
 
 router = APIRouter(tags=["planner"])
 
@@ -421,17 +423,15 @@ def planner_cached_refresh(
         if refreshed is not None:
             conditioned[goal] = refreshed
 
-    # If there were zero matches, condition_account intentionally leaves the
-    # original evidence in place. Reuse it for the same targeted fallback.
-    if not conditioned and current_banner is not None:
-        for goal in tuple(
-            evidence.goal
-            for evidence in (
-                planner_evidence_cache.get(record.id, goal)
-                for goal in context.roadmap.goals_in_priority_order()
-            )
-            if evidence is not None
-        ):
+    # condition_account preserves the original evidence when there are no
+    # matches. Those goals still need the targeted post-pull simulation, so
+    # handle every cached goal that was not successfully conditioned rather
+    # than only the all-goals-zero-match case.
+    if current_banner is not None:
+        cached_goals = context.roadmap.goals_in_priority_order()
+        for goal in cached_goals:
+            if goal in conditioned:
+                continue
             evidence = planner_evidence_cache.get(record.id, goal)
             if evidence is None or evidence.result.plan is None:
                 continue
@@ -506,7 +506,7 @@ def planner_cached_refresh(
                     candidate=fresh_candidate,
                     runs=CONDITIONED_FALLBACK_RUNS,
                     seed=DEFAULT_SEED,
-                    observations=conditioned_recommendation.observations,
+                    observations=(),
                 )
 
     for goal, evidence in conditioned.items():
