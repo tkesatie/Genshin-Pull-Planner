@@ -19,7 +19,10 @@ from api.schemas.planner import (
     SpendTableView,
     StopConditionsView,
     PullStrategyView,
+    CachedPlannerRefreshView,
+    CachedGoalEvidenceView,
 )
+from optimizer.protection import constraining_goals
 from optimizer import (
     DEFAULT_RUNS,
     MINIMUM_OUTCOME_PROBABILITY,
@@ -328,6 +331,117 @@ def planner_strategy(
     return PullStrategyView.from_domain(
         strategy,
         confidence=context.confidence,
+    )
+
+
+
+@router.get(
+    "/accounts/{account_id}/planner/cached-refresh",
+    response_model=CachedPlannerRefreshView,
+    summary="Condition retained planner evidence on a recorded pull",
+)
+def planner_cached_refresh(
+    character: str = Query(...),
+    outcome: str = Query(...),
+    wishes_used: int = Query(..., ge=1),
+    record: AccountRecord = Depends(get_record),
+    overrides: ContextOverrides = Depends(context_overrides),
+) -> CachedPlannerRefreshView:
+    if outcome not in {"featured", "lost_50_50"}:
+        raise HTTPException(status_code=400, detail="outcome must be featured or lost_50_50")
+
+    context = record.context(
+        confidence=overrides.confidence,
+        income_scenario=overrides.income_scenario,
+    )
+    conditioned = planner_evidence_cache.condition_account(
+        record.id,
+        character=character,
+        outcome=outcome,
+        wishes_used=wishes_used,
+    )
+
+    available = available_banners(context)
+    current_banner = next(
+        (banner for banner in available if banner.character == character),
+        None,
+    )
+    evidence_views: list[CachedGoalEvidenceView] = []
+
+    for goal, evidence in conditioned.items():
+        probabilities = {item.goal: item.probability for item in evidence.result.goals}
+        joint_probability = (
+            evidence.result.joint_goal_probability.probability
+            if evidence.result.joint_goal_probability is not None
+            else None
+        )
+
+        safe_spend_remaining = None
+        protected_probability = None
+        protected_starting_wishes = None
+        protected_total_wishes = None
+
+        if current_banner is not None:
+            entry = next(
+                (
+                    item
+                    for item in evidence.result.plan.entries
+                    if item.banner == current_banner
+                    and item.target_constellation == goal.constellation
+                ),
+                None,
+            )
+            if entry is not None:
+                safe_spend_remaining = max(0, entry.budget - wishes_used)
+
+                protected = constraining_goals(
+                    context,
+                    priority=goal.priority,
+                    banner=current_banner,
+                )
+                protected_values = [
+                    probabilities[protected_goal]
+                    for protected_goal in protected
+                    if protected_goal in probabilities
+                ]
+                if protected_values:
+                    protected_probability = min(protected_values)
+
+                protected_starting_wishes = context.account.wishes - safe_spend_remaining
+                reserve_goal = min(protected, key=lambda item: item.priority) if protected else None
+                if reserve_goal is not None:
+                    reserve_evaluation = next(
+                        item
+                        for item in evaluate_goals(context)
+                        if item.goal == reserve_goal
+                    )
+                    future_income = (
+                        context.income_available_before(
+                            reserve_evaluation.next_banner.version,
+                            reserve_evaluation.next_banner.phase,
+                        )
+                        if reserve_evaluation.next_banner is not None
+                        else 0
+                    )
+                    protected_total_wishes = protected_starting_wishes + future_income
+
+        evidence_views.append(
+            CachedGoalEvidenceView(
+                goal=GoalModel.from_domain(goal),
+                probability=probabilities.get(goal, 0.0),
+                joint_probability=joint_probability,
+                runs=evidence.runs,
+                safe_spend_remaining=safe_spend_remaining,
+                protected_probability=protected_probability,
+                protected_starting_wishes=protected_starting_wishes,
+                protected_total_wishes=protected_total_wishes,
+            )
+        )
+
+    return CachedPlannerRefreshView(
+        account_wishes=context.account.wishes,
+        confidence=context.confidence,
+        evidence=evidence_views,
     )
 
 
