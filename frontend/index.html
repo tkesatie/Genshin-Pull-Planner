@@ -565,9 +565,13 @@ async function loadPlanner(source = "unknown") {
   const wishes = state.account.account.wishes;
   const step = Math.max(1, Math.ceil(wishes / 20));
   try {
-    const goals = state.planner && state.planner.goals;
+    let goals = state.planner && state.planner.goals;
     if (!goals) {
-      throw new Error("Planner goals are not loaded. Select the account again.");
+      await loadGoals();
+      goals = state.planner && state.planner.goals;
+    }
+    if (!goals) {
+      throw new Error("Planner goals could not be loaded.");
     }
 
     const recommendationPromise = api(
