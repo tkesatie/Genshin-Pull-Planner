@@ -479,10 +479,9 @@ def planner_cached_refresh(
                 new_budget=new_budget,
                 wishes_used=wishes_used,
             )
-            if (
-                conditioned_recommendation is not None
-                and conditioned_recommendation.runs < MIN_CONDITIONED_RUNS
-            ):
+            if conditioned_recommendation is None or conditioned_recommendation.runs < MIN_CONDITIONED_RUNS:
+                # The retained candidate may have zero matching histories.
+                # Evaluate only this candidate from the post-pull account.
                 fresh_candidate = evaluate_candidate(
                     context,
                     conditioned_recommendation.candidate.outcome,
