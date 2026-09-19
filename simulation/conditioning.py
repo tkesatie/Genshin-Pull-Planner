@@ -49,4 +49,9 @@ def condition_on_pull(
     if not matched:
         return None
 
-    return aggregate_runs(matched, result.plan, result.seed)
+    joint_goals = (
+        result.joint_goal_probability.goals
+        if result.joint_goal_probability is not None
+        else ()
+    )
+    return aggregate_runs(matched, result.plan, result.seed, joint_goals=joint_goals)
