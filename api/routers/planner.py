@@ -21,6 +21,7 @@ from api.schemas.planner import (
     PullStrategyView,
     CachedPlannerRefreshView,
     CachedGoalEvidenceView,
+    CachedGoalProbabilityView,
 )
 from optimizer.protection import constraining_goals
 from optimizer import (
@@ -429,6 +430,13 @@ def planner_cached_refresh(
             CachedGoalEvidenceView(
                 goal=GoalModel.from_domain(goal),
                 probability=probabilities.get(goal, 0.0),
+                goal_probabilities=[
+                    CachedGoalProbabilityView(
+                        goal=GoalModel.from_domain(item.goal),
+                        probability=item.probability,
+                    )
+                    for item in evidence.result.goals
+                ],
                 joint_probability=joint_probability,
                 runs=evidence.runs,
                 safe_spend_remaining=safe_spend_remaining,
