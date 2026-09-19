@@ -70,6 +70,7 @@ class BannerResult:
     copy_wishes: tuple[int, ...]
     target_met: bool
     account_after: Account
+    five_star_outcomes: tuple[tuple[int, bool], ...] = ()
 
 
 @dataclass(frozen=True)
