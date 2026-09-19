@@ -148,6 +148,7 @@ def evaluate_candidate(
     banner=None,
     runs: int = DEFAULT_RUNS,
     seed: int | None = DEFAULT_SEED,
+    simulation_sink=None,
 ) -> CandidateStrategy:
     """Simulate one (outcome, cap) candidate and assess feasibility (§13).
 
@@ -185,7 +186,7 @@ def evaluate_candidate(
     min_protected = (
         min(standing.probability for standing in gating) if gating else None
     )
-    return CandidateStrategy(
+    candidate = CandidateStrategy(
         outcome=outcome,
         budget=budget,
         plan=plan,
@@ -195,6 +196,9 @@ def evaluate_candidate(
         min_protected_probability=min_protected,
         feasible=protected_ok and outcome_probability > 0.0,
     )
+    if simulation_sink is not None:
+        simulation_sink(candidate)
+    return candidate
 
 
 def evaluate_skip_baseline(
