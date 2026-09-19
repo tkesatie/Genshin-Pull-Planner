@@ -267,6 +267,14 @@ def _recommendation(
         confidence=overrides.confidence,
         income_scenario=overrides.income_scenario,
     )
+    def cache_candidate(candidate):
+        planner_evidence_cache.put_candidate(
+            record.id,
+            candidate,
+            runs=runs,
+            seed=seed,
+        )
+
     decision = recommend(
         context,
         record.preferences,
@@ -274,6 +282,7 @@ def _recommendation(
         seed=seed,
         budgets=budgets,
         minimum_outcome_probability=minimum_outcome_probability,
+        simulation_sink=cache_candidate,
     )
     return context, decision
 
