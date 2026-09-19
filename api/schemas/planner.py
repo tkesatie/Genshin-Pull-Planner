@@ -51,9 +51,15 @@ class GoalEvaluationsView(BaseModel):
 
 
 
+class CachedGoalProbabilityView(BaseModel):
+    goal: GoalModel
+    probability: float
+
+
 class CachedGoalEvidenceView(BaseModel):
     goal: GoalModel
     probability: float
+    goal_probabilities: list[CachedGoalProbabilityView]
     joint_probability: float | None
     runs: int
     safe_spend_remaining: int | None
