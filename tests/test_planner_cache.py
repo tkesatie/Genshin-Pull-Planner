@@ -1,9 +1,22 @@
 """Tests for the process-local planner evidence cache."""
 
-from domain import Goal
+from domain import Account, Banner, Goal, Roadmap
+from planner.context import PlannerContext
 from simulation import SimulationResult
 
 from api.planner_cache import PlannerEvidenceCache
+
+
+def _context() -> PlannerContext:
+    return PlannerContext(
+        account=Account(wishes=350),
+        roadmap=Roadmap(
+            goals=[Goal("Vesna", 2, 3)],
+            banners=[Banner("Vesna", "7.0", 1)],
+        ),
+        current_version="7.0",
+        current_phase=1,
+    )
 
 
 def _result() -> SimulationResult:
@@ -25,6 +38,7 @@ def test_cache_round_trip():
     cache = PlannerEvidenceCache()
     goal = Goal("Vesna", 2, 3)
     result = _result()
+    context = _context()
 
     cache.put(
         "account-1",
@@ -34,6 +48,7 @@ def test_cache_round_trip():
         seed=7,
         confidence=0.9,
         income_scenario="expected",
+        context=context,
     )
 
     evidence = cache.get("account-1", goal)
@@ -65,6 +80,7 @@ def test_clear_account_does_not_clear_other_accounts():
     cache = PlannerEvidenceCache()
     goal = Goal("Vesna", 2, 3)
     result = _result()
+    context = _context()
     for account_id in ("account-1", "account-2"):
         cache.put(
             account_id,
@@ -85,6 +101,7 @@ def test_clear_account_does_not_clear_other_accounts():
 def test_cache_is_bounded():
     cache = PlannerEvidenceCache(max_entries=2)
     result = _result()
+    context = _context()
     for index in range(3):
         cache.put(
             f"account-{index}",
@@ -141,6 +158,7 @@ def test_condition_account_reuses_matching_histories():
         joint_goals=(goal,),
     )
     cache = PlannerEvidenceCache()
+    context = _context()
     cache.put(
         "account-1",
         goal,
@@ -214,7 +232,7 @@ def test_condition_candidate_reuses_recommendation_evidence():
     )
 
     cache = PlannerEvidenceCache()
-    cache.put_candidate("account-1", candidate, runs=2, seed=7)
+    cache.put_candidate("account-1", candidate, runs=2, seed=7, context=_context())
 
     conditioned = cache.condition_candidate(
         "account-1",
