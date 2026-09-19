@@ -183,7 +183,7 @@ def test_skirk_c2_probability_by_starting_pity(capsys):
                     current_pity=starting_pity,
                     character_guarantee=False,
                 )
-                _, copies, _, _ = _pull_toward_target(
+                _, copies, _, _, _ = _pull_toward_target(
                     account, "Skirk", 2, budget, context.mechanics, rng
                 )
                 successes += copies == 2
@@ -251,7 +251,7 @@ def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
 
             account = replace(account, wishes=account.wishes + 90)
             vesna_budget = max(cap - vod_spent, 0)
-            _, _, _, account = _pull_toward_target(
+            _, _, _, _, account = _pull_toward_target(
                 account, "Vesna", 3, vesna_budget, mechanics, rng
             )
 
@@ -289,7 +289,7 @@ def test_combined_current_banner_frontier(capsys):
         for _ in range(10_000):
             account = context.account
 
-            vod_spent, vod_copies, _, account = _pull_toward_target(
+            vod_spent, vod_copies, _, _, account = _pull_toward_target(
                 account, "Vodynista", 1, cap, mechanics, rng
             )
 
@@ -347,7 +347,7 @@ def test_skirk_protected_boundary_convergence(capsys):
                 )
 
                 for _ in range(runs):
-                    _, copies, _, _ = _pull_toward_target(
+                    _, copies, _, _, _ = _pull_toward_target(
                         account,
                         "Skirk",
                         2,
@@ -395,12 +395,12 @@ def test_skirk_reserve_from_actual_vesna_outcome_states(capsys):
                     account, "Vodynista", 1, phase1_cap, mechanics, rng
                 )
                 vesna_budget = max(phase1_cap - vod_spent, 0)
-                _, _, _, account = _pull_toward_target(
+                _, _, _, _, account = _pull_toward_target(
                     account, "Vesna", 3, vesna_budget, mechanics, rng
                 )
 
                 account = replace(account, wishes=skirk_reserve)
-                _, skirk_copies, _, _ = _pull_toward_target(
+                _, skirk_copies, _, _, _ = _pull_toward_target(
                     account, "Skirk", 2, skirk_reserve, mechanics, rng
                 )
                 successes += skirk_copies == 2
@@ -438,7 +438,7 @@ def test_vodynista_c0_vesna_c2_then_skirk_c2_with_future_income(capsys):
         vodynista_success += vod_met
 
         # Whatever remains is then used for Vesna C2 (three copies from C0).
-        _, vesna_copies, _, account = _pull_toward_target(
+        _, vesna_copies, _, _, account = _pull_toward_target(
             account, "Vesna", 3, account.wishes, mechanics, rng
         )
         vesna_met = vesna_copies == 3
@@ -446,7 +446,7 @@ def test_vodynista_c0_vesna_c2_then_skirk_c2_with_future_income(capsys):
 
         # 90 wishes of future 7.1 income arrive before Skirk's Phase 2.
         account = replace(account, wishes=account.wishes + 90)
-        _, skirk_copies, _, _ = _pull_toward_target(
+        _, skirk_copies, _, _, _ = _pull_toward_target(
             account, "Skirk", 2, account.wishes, mechanics, rng
         )
         skirk_met = skirk_copies == 2
@@ -543,19 +543,19 @@ def test_vodynista_vesna_spend_cap_for_90_percent_skirk(capsys):
 
         for _ in range(runs):
             account = context.account
-            _, _, _, account = _pull_toward_target(
+            _, _, _, _, account = _pull_toward_target(
                 account, "Vodynista", 1, cap, mechanics, rng
             )
             vod_spent = 450 - account.wishes
             vesna_budget = max(cap - vod_spent, 0)
-            _, vesna_copies, _, account = _pull_toward_target(
+            _, vesna_copies, _, _, account = _pull_toward_target(
                 account, "Vesna", 3, vesna_budget, mechanics, rng
             )
             vesna_success += vesna_copies == 3
 
             account = replace(account, wishes=account.wishes + 90)
             skirk_wishes += account.wishes
-            _, skirk_copies, _, _ = _pull_toward_target(
+            _, skirk_copies, _, _, _ = _pull_toward_target(
                 account, "Skirk", 2, account.wishes, mechanics, rng
             )
             skirk_success += skirk_copies == 2
@@ -608,13 +608,13 @@ def test_carried_state_distribution_near_skirk_frontier(capsys):
         for _ in range(runs):
             account = context.account
 
-            vod_spent, vod_copies, _, account = _pull_toward_target(
+            vod_spent, vod_copies, _, _, account = _pull_toward_target(
                 account, "Vodynista", 1, cap, mechanics, rng
             )
             assert vod_copies == 1
 
             vesna_budget = max(cap - vod_spent, 0)
-            _, vesna_copies, _, account = _pull_toward_target(
+            _, vesna_copies, _, _, account = _pull_toward_target(
                 account, "Vesna", 3, vesna_budget, mechanics, rng
             )
             vesna_success += vesna_copies == 3
@@ -626,7 +626,7 @@ def test_carried_state_distribution_near_skirk_frontier(capsys):
             guarantees += account.character_guarantee
             radiance.append(account.capturing_radiance_counter)
 
-            _, skirk_copies, _, _ = _pull_toward_target(
+            _, skirk_copies, _, _, _ = _pull_toward_target(
                 account, "Skirk", 2, account.wishes, mechanics, rng
             )
             skirk_success += skirk_copies == 2
