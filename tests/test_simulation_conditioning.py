@@ -88,3 +88,25 @@ def test_condition_returns_none_when_observation_is_not_in_sample():
         outcome="featured",
         wishes_used=83,
     ) is None
+
+
+def test_condition_supports_multiple_observations_on_one_banner():
+    result = _result(
+        ((60, True), (140, False)),
+        ((60, True), (150, False)),
+    )
+
+    conditioned = condition_on_pull(
+        result,
+        character="Vesna",
+        outcome="lost_50_50",
+        wishes_used=80,
+        prior_observations=(("Vesna", "featured", 60),),
+    )
+
+    assert conditioned is not None
+    assert conditioned.runs == 1
+    assert conditioned.histories[0].banner_results[0].five_star_outcomes == (
+        (60, True),
+        (140, False),
+    )
