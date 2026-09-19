@@ -113,8 +113,9 @@ class PlannerEvidenceCache:
             )
             key = (account_id, evidence.goal)
             if result is None:
-                with self._lock:
-                    self._entries.pop(key, None)
+                # Keep the original evidence available to the caller. Rare
+                # observations need a targeted resimulation rather than
+                # destroying the only reusable evidence.
                 continue
 
             updated = CachedSimulationEvidence(
