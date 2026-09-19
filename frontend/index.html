@@ -543,7 +543,7 @@ function query(extra) {
 
 async function loadGoals() {
   const goals = await api(`/accounts/${state.account.id}/planner/goals${query()}`);
-  state.planner = { goals };
+  state.planner = { ...(state.planner || {}), goals };
   renderRoadmap(goals);
 }
 
