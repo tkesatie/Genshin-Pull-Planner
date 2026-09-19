@@ -378,6 +378,91 @@ def planner_cached_refresh(
         (banner for banner in available if banner.character == character),
         None,
     )
+
+    # Rare observations can leave too few matching histories. In that case,
+    # use the retained plan as a starting point but simulate from the actual
+    # post-pull account state. This avoids both tiny conditional samples and a
+    # full optimizer rerun.
+    for goal, evidence in tuple(conditioned.items()):
+        if evidence.runs >= MIN_CONDITIONED_RUNS or evidence.result.plan is None:
+            continue
+        if current_banner is None:
+            continue
+        entries = list(evidence.result.plan.entries)
+        index = next((i for i, item in enumerate(entries) if item.banner == current_banner), None)
+        if index is None:
+            continue
+        entry = entries[index]
+        entries[index] = replace(entry, budget=max(0, entry.budget - wishes_used))
+        shared_budget = evidence.result.plan.shared_current_phase_budget
+        if shared_budget is not None:
+            shared_budget = max(0, shared_budget - wishes_used)
+        refreshed_plan = replace(
+            evidence.result.plan,
+            entries=tuple(entries),
+            shared_current_phase_budget=shared_budget,
+        )
+        refreshed_result = simulate(
+            context,
+            refreshed_plan,
+            runs=CONDITIONED_FALLBACK_RUNS,
+            seed=DEFAULT_SEED,
+        )
+        planner_evidence_cache.put(
+            record.id,
+            goal,
+            refreshed_result,
+            runs=CONDITIONED_FALLBACK_RUNS,
+            seed=DEFAULT_SEED,
+            confidence=evidence.confidence,
+            income_scenario=evidence.income_scenario,
+        )
+        refreshed = planner_evidence_cache.get(record.id, goal)
+        if refreshed is not None:
+            conditioned[goal] = refreshed
+
+    # If there were zero matches, condition_account intentionally leaves the
+    # original evidence in place. Reuse it for the same targeted fallback.
+    if not conditioned and current_banner is not None:
+        for goal in tuple(
+            evidence.goal
+            for evidence in (
+                planner_evidence_cache.get(record.id, goal)
+                for goal in context.roadmap.goals_in_priority_order()
+            )
+            if evidence is not None
+        ):
+            evidence = planner_evidence_cache.get(record.id, goal)
+            if evidence is None or evidence.result.plan is None:
+                continue
+            entries = list(evidence.result.plan.entries)
+            index = next((i for i, item in enumerate(entries) if item.banner == current_banner), None)
+            if index is None:
+                continue
+            entry = entries[index]
+            entries[index] = replace(entry, budget=max(0, entry.budget - wishes_used))
+            shared_budget = evidence.result.plan.shared_current_phase_budget
+            if shared_budget is not None:
+                shared_budget = max(0, shared_budget - wishes_used)
+            refreshed_result = simulate(
+                context,
+                replace(evidence.result.plan, entries=tuple(entries), shared_current_phase_budget=shared_budget),
+                runs=CONDITIONED_FALLBACK_RUNS,
+                seed=DEFAULT_SEED,
+            )
+            planner_evidence_cache.put(
+                record.id,
+                goal,
+                refreshed_result,
+                runs=CONDITIONED_FALLBACK_RUNS,
+                seed=DEFAULT_SEED,
+                confidence=evidence.confidence,
+                income_scenario=evidence.income_scenario,
+            )
+            refreshed = planner_evidence_cache.get(record.id, goal)
+            if refreshed is not None:
+                conditioned[goal] = refreshed
+
     evidence_views: list[CachedGoalEvidenceView] = []
 
     conditioned_recommendation = None
