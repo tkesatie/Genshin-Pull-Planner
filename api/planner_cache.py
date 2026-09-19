@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import threading
 
 from domain import Goal
-from simulation import SimulationResult
+from simulation import SimulationResult, condition_on_pull
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,43 @@ class PlannerEvidenceCache:
     def get(self, account_id: str, goal: Goal) -> CachedSimulationEvidence | None:
         with self._lock:
             return self._entries.get((account_id, goal))
+
+    def condition_account(
+        self,
+        account_id: str,
+        *,
+        character: str,
+        outcome: str,
+        wishes_used: int,
+    ) -> dict[Goal, CachedSimulationEvidence]:
+        """Condition every cached goal for an account on one observed pull."""
+        with self._lock:
+            entries = tuple(
+                evidence
+                for (cached_account_id, _), evidence in self._entries.items()
+                if cached_account_id == account_id
+            )
+
+        conditioned: dict[Goal, CachedSimulationEvidence] = {}
+        for evidence in entries:
+            result = condition_on_pull(
+                evidence.result,
+                character=character,
+                outcome=outcome,
+                wishes_used=wishes_used,
+            )
+            if result is None:
+                continue
+            conditioned[evidence.goal] = CachedSimulationEvidence(
+                account_id=evidence.account_id,
+                goal=evidence.goal,
+                result=result,
+                runs=result.runs,
+                seed=evidence.seed,
+                confidence=evidence.confidence,
+                income_scenario=evidence.income_scenario,
+            )
+        return conditioned
 
     def clear_account(self, account_id: str) -> None:
         with self._lock:
