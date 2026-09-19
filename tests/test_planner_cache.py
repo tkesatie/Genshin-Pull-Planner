@@ -60,6 +60,7 @@ def test_cache_round_trip():
 
 def test_cache_is_scoped_to_account_and_goal():
     cache = PlannerEvidenceCache()
+    context = _context()
     goal = Goal("Vesna", 2, 3)
     result = _result()
     cache.put(
