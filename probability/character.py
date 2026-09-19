@@ -139,6 +139,8 @@ def multi_copy_cumulative_probability(
                 guaranteed_mass = state[copy_count, :, radiance, 1] * rate
                 if copy_count + 1 < copies:
                     new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
+
+                nonguaranteed = state[copy_count, :, radiance, 0]
                 featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
                 if copy_count + 1 < copies:
                     next_radiance = 0 if radiance <= 1 else 1
