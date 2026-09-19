@@ -354,6 +354,8 @@ def planner_cached_refresh(
     character: str = Query(...),
     outcome: str = Query(...),
     wishes_used: int = Query(..., ge=1),
+    recommendation_budget: int | None = Query(None, ge=1),
+    recommendation_constellation: int | None = Query(None, ge=0),
     record: AccountRecord = Depends(get_record),
     overrides: ContextOverrides = Depends(context_overrides),
 ) -> CachedPlannerRefreshView:
@@ -377,6 +379,21 @@ def planner_cached_refresh(
         None,
     )
     evidence_views: list[CachedGoalEvidenceView] = []
+
+    conditioned_recommendation = None
+    if recommendation_budget is not None and recommendation_constellation is not None:
+        new_budget = recommendation_budget - wishes_used
+        if new_budget >= 0 and current_banner is not None:
+            conditioned_recommendation = planner_evidence_cache.condition_candidate(
+                record.id,
+                character=character,
+                outcome=outcome,
+                constellation=recommendation_constellation,
+                banner_version=current_banner.version,
+                banner_phase=current_banner.phase,
+                new_budget=new_budget,
+                wishes_used=wishes_used,
+            )
 
     for goal, evidence in conditioned.items():
         probabilities = {item.goal: item.probability for item in evidence.result.goals}
@@ -455,10 +472,31 @@ def planner_cached_refresh(
             )
         )
 
+    recommendation_goal_probabilities = []
+    recommendation_probability = None
+    recommendation_budget = None
+    recommendation_constellation = None
+    if conditioned_recommendation is not None:
+        result = conditioned_recommendation.candidate.result
+        recommendation_probability = conditioned_recommendation.candidate.outcome_probability
+        recommendation_budget = conditioned_recommendation.budget
+        recommendation_constellation = conditioned_recommendation.constellation
+        recommendation_goal_probabilities = [
+            CachedGoalProbabilityView(
+                goal=GoalModel.from_domain(item.goal),
+                probability=item.probability,
+            )
+            for item in result.goals
+        ]
+
     return CachedPlannerRefreshView(
         account_wishes=context.account.wishes,
         confidence=context.confidence,
         evidence=evidence_views,
+        recommendation_budget=recommendation_budget,
+        recommendation_constellation=recommendation_constellation,
+        recommendation_probability=recommendation_probability,
+        recommendation_goal_probabilities=recommendation_goal_probabilities,
     )
 
 
