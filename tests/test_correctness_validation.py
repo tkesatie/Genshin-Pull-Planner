@@ -411,7 +411,7 @@ def test_income_flows_into_simulated_banner_budget():
 
 def test_multicopy_exact_model_carries_capturing_radiance_between_copies():
     """Multi-copy probability must preserve Radiance after the first copy."""
-    mechanics = WishMechanics(banner_type="test", hard_pity=1, soft_pity_start=1, base_rate=0.5, soft_pity_increment=0.0, featured_rate=0.5)
+    mechanics = WishMechanics(banner_type="test", hard_pity=2, soft_pity_start=1, base_rate=0.5, soft_pity_increment=0.0, featured_rate=0.5)
     curve = multi_copy_cumulative_probability(2, 2, 0, False, mechanics, starting_radiance=2)
     # Wish 1: 6/11 featured -> Radiance 1, then 1/2 featured on wish 2.
     # Otherwise 5/11 loses -> wish 2 is guaranteed. Total = 8/11.
