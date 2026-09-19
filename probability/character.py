@@ -122,7 +122,7 @@ def multi_copy_cumulative_probability(
 
     for wish in range(1, wishes + 1):
         new_state = np.zeros_like(state)
-        new_state[:, 1:, :, :] += state[:, :-1, :, :] * moves.survive[None, :, None, None]
+        new_state[:, 1:, :, :] += state[:, :-1, :, :] * moves.survive[None, :-1, None, None]
 
         for copy_count in range(copies):
             for radiance in range(4):
