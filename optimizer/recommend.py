@@ -295,6 +295,7 @@ def recommend(
     seed: int | None = DEFAULT_SEED,
     budgets: Iterable[int] | None = None,
     minimum_outcome_probability: float = MINIMUM_OUTCOME_PROBABILITY,
+    simulation_sink=None,
 ) -> Recommendation:
     """The highest-preference feasible outcome and its largest feasible
     cap (§13, §14).
@@ -375,7 +376,8 @@ def recommend(
             first_feasible: CandidateStrategy | None = None
             for cap in caps:
                 candidate = evaluate_candidate(
-                    context, outcome, cap, banner=banner, runs=runs, seed=seed
+                    context, outcome, cap, banner=banner, runs=runs, seed=seed,
+                    simulation_sink=simulation_sink,
                 )
                 if (
                     diagnostic_best is None
