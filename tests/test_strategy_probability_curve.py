@@ -245,7 +245,7 @@ def test_combined_current_banner_frontier_respects_skirk_reserve(capsys):
         for _ in range(10_000):
             account = context.account
 
-            vod_spent, _, _, _, _, account = _pull_toward_target(
+            vod_spent, _, _, _, account = _pull_toward_target(
                 account, "Vodynista", 1, cap, mechanics, rng
             )
 
@@ -391,7 +391,7 @@ def test_skirk_reserve_from_actual_vesna_outcome_states(capsys):
 
             for _ in range(runs):
                 account = context.account
-                vod_spent, _, _, account = _pull_toward_target(
+                vod_spent, _, _, _, account = _pull_toward_target(
                     account, "Vodynista", 1, phase1_cap, mechanics, rng
                 )
                 vesna_budget = max(phase1_cap - vod_spent, 0)
