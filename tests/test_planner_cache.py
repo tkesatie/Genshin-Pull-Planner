@@ -88,7 +88,7 @@ def test_cache_is_bounded():
     for index in range(3):
         cache.put(
             f"account-{index}",
-            Goal("Vesna", 2, index),
+            Goal("Vesna", 2, index + 1),
             result,
             runs=1,
             seed=7,
@@ -96,6 +96,6 @@ def test_cache_is_bounded():
             income_scenario="expected",
         )
 
-    assert cache.get("account-0", Goal("Vesna", 2, 0)) is None
-    assert cache.get("account-1", Goal("Vesna", 2, 1)) is not None
-    assert cache.get("account-2", Goal("Vesna", 2, 2)) is not None
+    assert cache.get("account-0", Goal("Vesna", 2, 1)) is None
+    assert cache.get("account-1", Goal("Vesna", 2, 2)) is not None
+    assert cache.get("account-2", Goal("Vesna", 2, 3)) is not None
