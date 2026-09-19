@@ -170,6 +170,20 @@ class PlannerEvidenceCache:
             while len(self._candidates) > self._max_entries * 8:
                 self._candidates.pop(next(iter(self._candidates)))
 
+    def get_candidate(
+        self,
+        account_id: str,
+        *,
+        character: str,
+        constellation: int,
+        banner_version: str,
+        banner_phase: int,
+        budget: int,
+    ) -> CachedCandidateEvidence | None:
+        key = (account_id, character, constellation, banner_version, banner_phase, budget)
+        with self._lock:
+            return self._candidates.get(key)
+
     def condition_candidate(
         self,
         account_id: str,
