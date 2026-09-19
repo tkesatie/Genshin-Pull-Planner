@@ -49,6 +49,25 @@ class GoalEvaluationsView(BaseModel):
     goals: list[GoalEvaluationView]
 
 
+
+
+class CachedGoalEvidenceView(BaseModel):
+    goal: GoalModel
+    probability: float
+    joint_probability: float | None
+    runs: int
+    safe_spend_remaining: int | None
+    protected_probability: float | None
+    protected_starting_wishes: int | None
+    protected_total_wishes: int | None
+
+
+class CachedPlannerRefreshView(BaseModel):
+    account_wishes: int
+    confidence: float
+    evidence: list[CachedGoalEvidenceView]
+
+
 class ProtectedGoalOutcomeView(BaseModel):
     goal: GoalModel
     banner: BannerModel
