@@ -161,3 +161,73 @@ def test_condition_account_reuses_matching_histories():
     assert conditioned[goal].result.runs == 1
     assert conditioned[goal].result.joint_goal_probability is not None
     assert conditioned[goal].result.joint_goal_probability.probability == 1.0
+
+
+def test_condition_candidate_reuses_recommendation_evidence():
+    from domain import Account, Banner, Ownership
+    from optimizer.evaluation import CandidateStrategy
+    from optimizer.outcomes import OutcomeOption
+    from simulation import BannerResult, GoalOutcome, PlannedSpend, RunResult, SpendPlan
+    from simulation.outcomes import aggregate_runs
+
+    banner = Banner("Vesna", "7.0", 1)
+    goal = Goal("Vesna", 2, 1)
+    outcome = OutcomeOption("Vesna", 2, 1)
+    plan = SpendPlan((PlannedSpend(banner, 2, 100),))
+
+    def history(outcomes, target_met):
+        account = Account(wishes=350, owned_characters=Ownership({"Vesna": -1}))
+        result = BannerResult(
+            banner=banner,
+            target_constellation=2,
+            budget=100,
+            copies_needed=3,
+            income_credited=0,
+            wishes_spent=100,
+            copies_obtained=3 if target_met else 1,
+            copy_wishes=tuple(w for w, featured in outcomes if featured),
+            target_met=target_met,
+            account_after=account,
+            five_star_outcomes=outcomes,
+        )
+        return RunResult(
+            banner_results=(result,),
+            account_after=account,
+            goal_outcomes=(GoalOutcome(goal, target_met, banner),),
+        )
+
+    simulation = aggregate_runs(
+        [history(((83, True), (100, True)), True), history(((90, False),), False)],
+        plan,
+        seed=7,
+        joint_goals=(goal,),
+    )
+    candidate = CandidateStrategy(
+        outcome=outcome,
+        budget=100,
+        plan=plan,
+        result=simulation,
+        outcome_probability=simulation.banners[0].target_met_probability,
+        protected=(),
+        min_protected_probability=None,
+        feasible=True,
+    )
+
+    cache = PlannerEvidenceCache()
+    cache.put_candidate("account-1", candidate, runs=2, seed=7)
+
+    conditioned = cache.condition_candidate(
+        "account-1",
+        character="Vesna",
+        outcome="featured",
+        constellation=2,
+        banner_version="7.0",
+        banner_phase=1,
+        new_budget=17,
+        wishes_used=83,
+    )
+
+    assert conditioned is not None
+    assert conditioned.budget == 17
+    assert conditioned.candidate.outcome_probability == 1.0
+    assert conditioned.candidate.result.runs == 1
