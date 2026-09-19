@@ -123,6 +123,7 @@ def _pull_toward_target(
     spent = 0
     obtained = 0
     copy_wishes: list[int] = []
+    five_star_outcomes: list[tuple[int, bool]] = []
     while obtained < copies_needed and spent < available:
         spent += 1
         if rng.random() < pull_rate(pity, mechanics):
@@ -136,6 +137,7 @@ def _pull_toward_target(
             else:
                 featured = rng.random() < mechanics.featured_rate
 
+            five_star_outcomes.append((spent, featured))
             if featured:
                 obtained += 1
                 copy_wishes.append(spent)
@@ -161,7 +163,7 @@ def _pull_toward_target(
         wishes=account.wishes - spent,
         capturing_radiance_counter=radiance,
     )
-    return spent, obtained, tuple(copy_wishes), account_after
+    return spent, obtained, tuple(copy_wishes), tuple(five_star_outcomes), account_after
 
 
 def _run_history(
@@ -209,6 +211,7 @@ def _run_history(
                     copy_wishes=(),
                     target_met=False,
                     account_after=account,
+                    five_star_outcomes=(),
                 )
             )
         else:
@@ -224,7 +227,7 @@ def _run_history(
                     budget,
                     max(plan.shared_current_phase_budget - shared_current_phase_spent, 0),
                 )
-            spent, obtained, copy_wishes, account = _pull_toward_target(
+            spent, obtained, copy_wishes, five_star_outcomes, account = _pull_toward_target(
                 account,
                 banner.character,
                 copies_needed,
@@ -250,6 +253,7 @@ def _run_history(
                     copy_wishes=copy_wishes,
                     target_met=obtained >= copies_needed,
                     account_after=account,
+                    five_star_outcomes=five_star_outcomes,
                 )
             )
 
