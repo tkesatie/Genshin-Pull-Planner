@@ -119,4 +119,5 @@ def aggregate_runs(
         final_wishes_min=min(final_wishes),
         final_wishes_max=max(final_wishes),
         joint_goal_probability=joint_probability,
+        histories=tuple(runs),
     )
