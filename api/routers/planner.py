@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import ContextOverrides, context_overrides, get_record
 from api.repository import AccountRecord
+from api.planner_cache import planner_evidence_cache
 from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.planner import (
     GoalEvaluationsView,
@@ -307,7 +308,23 @@ def planner_strategy(
     )
     if runs < 1:
         raise ValueError(f"runs must be >= 1, got {runs}")
-    strategy = build_strategy(context, runs=runs, seed=seed)
+    def cache_simulation(goal, result):
+        planner_evidence_cache.put(
+            record.id,
+            goal,
+            result,
+            runs=runs,
+            seed=seed,
+            confidence=context.confidence,
+            income_scenario=context.income_scenario,
+        )
+
+    strategy = build_strategy(
+        context,
+        runs=runs,
+        seed=seed,
+        simulation_sink=cache_simulation,
+    )
     return PullStrategyView.from_domain(
         strategy,
         confidence=context.confidence,
