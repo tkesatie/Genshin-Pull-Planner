@@ -1207,6 +1207,23 @@ function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
 
   const rec = state.planner.recommendation;
   if (rec) {
+    const recommendationProbabilities = new Map(
+      (refresh.recommendation_goal_probabilities || []).map((item) => [goalKey(item.goal), item.probability])
+    );
+    if (refresh.recommendation_probability !== null && refresh.recommendation_probability !== undefined) {
+      rec.outcome_probability = refresh.recommendation_probability;
+      rec.budget = refresh.recommendation_budget ?? rec.budget;
+      if (rec.plan && refresh.recommendation_budget !== null && refresh.recommendation_budget !== undefined) {
+        rec.plan.entries = rec.plan.entries.map((entry, index) => {
+          if (index === 0) return { ...entry, budget: refresh.recommendation_budget };
+          return entry;
+        });
+      }
+    }
+    for (const standing of rec.protected) {
+      const probability = recommendationProbabilities.get(goalKey(standing.goal));
+      if (probability !== undefined) standing.probability = probability;
+    }
     for (const standing of rec.protected) {
       const probability = probabilities.get(goalKey(standing.goal));
       if (probability !== undefined) standing.probability = probability;
@@ -1252,11 +1269,16 @@ function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
 }
 
 async function refreshPlannerAfterPull(character, outcome, wishesUsed) {
+  const previousRecommendation = state.planner && state.planner.recommendation;
   const params = new URLSearchParams({
     character,
     outcome,
     wishes_used: String(wishesUsed),
   });
+  if (previousRecommendation && previousRecommendation.outcome) {
+    params.set("recommendation_budget", String(previousRecommendation.budget));
+    params.set("recommendation_constellation", String(previousRecommendation.outcome.constellation));
+  }
   const refresh = await api(
     "/accounts/" + state.account.id + "/planner/cached-refresh?" + params.toString()
   );
