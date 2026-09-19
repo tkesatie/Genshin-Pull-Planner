@@ -1152,7 +1152,126 @@ async function saveAccount() {
 }
 
 
-async function recordPullOutcome(character, outcome) {
+
+function goalKey(goal) {
+  return goal.character + "|" + goal.constellation;
+}
+
+function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
+  if (!state.planner || !refresh.evidence.length) return false;
+
+  const evidenceByGoal = new Map(
+    refresh.evidence.map((item) => [goalKey(item.goal), item])
+  );
+  const probabilities = new Map();
+  for (const evidence of refresh.evidence) {
+    for (const item of evidence.goal_probabilities) {
+      probabilities.set(goalKey(item.goal), item.probability);
+    }
+  }
+
+  const strategy = state.planner.strategy;
+  if (strategy) {
+    strategy.starting_wishes = refresh.account_wishes;
+    strategy.steps = strategy.steps.filter((step) => {
+      const evaluation = state.planner.goals?.goals?.find(
+        (item) => goalKey(item.goal) === goalKey(step.goal)
+      );
+      return !(step.action === "get" && evaluation?.state === "satisfied");
+    });
+
+    for (const step of strategy.steps) {
+      const evidence = evidenceByGoal.get(goalKey(step.goal));
+      if (!evidence) continue;
+      step.outcome_probability =
+        evidence.joint_probability ?? evidence.probability;
+      if (evidence.safe_spend_remaining !== null) {
+        step.safe_spend = evidence.safe_spend_remaining;
+        step.reserve_wishes = refresh.account_wishes - evidence.safe_spend_remaining;
+        step.protected_starting_wishes = evidence.protected_starting_wishes;
+        step.protected_total_wishes = evidence.protected_total_wishes;
+      }
+      if (evidence.protected_probability !== null) {
+        step.protected_probability = evidence.protected_probability;
+      }
+    }
+
+    const reserveStep = strategy.steps.find(
+      (step) => step.action === "pursue_until_reserve"
+    );
+    if (reserveStep) {
+      strategy.reserve_wishes = reserveStep.reserve_wishes;
+      strategy.reserve_probability = reserveStep.protected_probability;
+    }
+  }
+
+  const rec = state.planner.recommendation;
+  if (rec) {
+    for (const standing of rec.protected) {
+      const probability = probabilities.get(goalKey(standing.goal));
+      if (probability !== undefined) standing.probability = probability;
+    }
+    for (const rejected of rec.rejected) {
+      for (const standing of rejected.shortfalls) {
+        const probability = probabilities.get(goalKey(standing.goal));
+        if (probability !== undefined) standing.probability = probability;
+      }
+    }
+
+    const outcome = rec.outcome;
+    if (outcome) {
+      const evidence = evidenceByGoal.get(goalKey(outcome));
+      if (evidence && outcome.character === character) {
+        rec.outcome_probability =
+          evidence.joint_probability ?? evidence.probability;
+        rec.budget = Math.max(0, rec.budget - wishesUsed);
+        if (rec.plan) {
+          for (const entry of rec.plan.entries) {
+            if (
+              entry.banner.character === character &&
+              entry.banner.version === rec.banner.version &&
+              entry.banner.phase === rec.banner.phase
+            ) {
+              entry.budget = Math.max(0, entry.budget - wishesUsed);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  renderRecommendation(rec, strategy);
+  $("decision-label").className = "decision-label";
+  $("decision-label").textContent = "Strategy · Updated";
+  $("metric-budget").textContent = "—";
+  $("verdict-detail").textContent =
+    "Probabilities were updated by conditioning the retained simulations on the pull you just recorded. Run Planner for a fresh recommendation.";
+  $("provenance").textContent =
+    "Updated from retained simulation evidence; no new Monte Carlo histories were sampled.";
+  return true;
+}
+
+async function refreshPlannerAfterPull(character, outcome, wishesUsed) {
+  const params = new URLSearchParams({
+    character,
+    outcome,
+    wishes_used: String(wishesUsed),
+  });
+  const refresh = await api(
+    "/accounts/" + state.account.id + "/planner/cached-refresh?" + params.toString()
+  );
+  const updated = applyCachedPlannerRefresh(refresh, character, wishesUsed);
+  const safe = await api(
+    "/accounts/" + state.account.id + "/planner/safe-spend" +
+      query() +
+      (query() ? "&" : "?") +
+      "character=" + encodeURIComponent(character)
+  );
+  renderSafeSpend(safe);
+  return updated;
+}
+
+
   const label = outcome === "featured" ? `Pulled ${character}` : "Lost 50/50";
   const value = window.prompt(`${label}. How many wishes did you use?`, "0");
   if (value === null) return;
@@ -1208,6 +1327,108 @@ async function recordPullOutcome(character, outcome) {
   }
 }
 
+/* ---------- running the optimizer ---------- */
+
+async function run() {
+  clearError();
+  console.log("Run Planner button clicked");
+  try {
+    const wishes = state.account.account.wishes;
+    const extra = {};
+    if (!$("exact-scan").checked && wishes > 8) {
+      const step = Math.ceil(wishes / 8);
+      const caps = [];
+      for (let cap = wishes; cap > 0; cap -= step) caps.push(cap);
+      caps.push(0);
+      extra.budgets = caps;
+    }
+    state.runOptions = extra;
+    await loadPlanner("Run Planner button");
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    // loadPlanner owns the planner button state while a run is active.
+  }
+}
+
+$("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
+$("auth-form").addEventListener("submit", submitAuth);
+$("auth-switch").addEventListener("click", () => {
+  state.authMode = state.authMode === "login" ? "register" : "login";
+  clearError();
+  renderAuth();
+});
+$("logout").addEventListener("click", logout);
+$("save").addEventListener("click", saveAccount);
+$("run").addEventListener("click", run);
+$("confidence").addEventListener("change", () => {
+  resetVerdict();
+  console.log("Confidence changed — planner results cleared; run the planner to recalculate");
+});
+
+renderAuth();
+loadCurrentUser();
+</script>
+</body>
+</htmlasync function recordPullOutcome(character, outcome) {
+  const label = outcome === "featured" ? "Pulled " + character : "Lost 50/50";
+  const value = window.prompt(label + ". How many wishes did you use?", "0");
+  if (value === null) return;
+  const wishesUsed = Number(value);
+  if (!Number.isInteger(wishesUsed) || wishesUsed < 1) {
+    showError("Enter a positive whole number of wishes.");
+    return;
+  }
+  clearError();
+  try {
+    state.account = await api("/accounts/" + state.account.id + "/pull-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        outcome,
+        wishes_used: wishesUsed,
+        character: outcome === "featured" ? character : null
+      }),
+    });
+
+    try {
+      fillAccountForm();
+      renderOwnedCharacters();
+      $("confidence").value = state.account.settings.confidence;
+      $("hero-wishes").textContent = state.account.account.wishes;
+      $("hero-pity").textContent = state.account.account.current_pity;
+      $("banner-meta").textContent =
+        state.account.settings.current_version + " · Phase " +
+        state.account.settings.current_phase;
+      await loadGoals();
+    } catch (error) {
+      console.error("Pull outcome UI refresh failed", error);
+      showError("Account updated, but UI refresh failed: " + error.message);
+      return;
+    }
+
+    let updated = false;
+    try {
+      updated = await refreshPlannerAfterPull(character, outcome, wishesUsed);
+    } catch (error) {
+      console.error("Cached planner refresh failed", error);
+    }
+
+    if (!updated) {
+      state.planner = null;
+      resetVerdict();
+      showError(
+        "Account updated. The recorded outcome was not represented in the retained simulations; " +
+        "run the planner to generate fresh evidence."
+      );
+    } else {
+      clearError();
+    }
+  } catch (error) {
+    console.error("Pull outcome update failed", error);
+    showError(error.message);
+  }
+}
 /* ---------- running the optimizer ---------- */
 
 async function run() {
