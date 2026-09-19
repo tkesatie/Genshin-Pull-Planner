@@ -42,6 +42,7 @@ Phase 4 invariants:
     scope, matching §18's Phase 4 list.
 """
 
+from simulation.conditioning import condition_on_pull
 from simulation.engine import (
     DEFAULT_RUNS,
     DEFAULT_SEED,
@@ -71,6 +72,7 @@ __all__ = [
     "SimulationResult",
     "SpendPlan",
     "aggregate_runs",
+    "condition_on_pull",
     "simulate",
     "simulate_history",
 ]
