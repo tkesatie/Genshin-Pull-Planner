@@ -138,6 +138,10 @@ class SimulationResult:
             goal was satisfied.
         final_wishes_mean / final_wishes_min / final_wishes_max: the wish
             pool at the end of each history.
+        histories: the original per-run records used to produce these
+            aggregates. Retained server-side so later deterministic
+            conditioning can reuse the Monte Carlo evidence without
+            re-sampling.
     """
 
     runs: int
@@ -150,3 +154,4 @@ class SimulationResult:
     final_wishes_min: int
     final_wishes_max: int
     joint_goal_probability: GoalJointProbability | None = None
+    histories: tuple[RunResult, ...] = ()
