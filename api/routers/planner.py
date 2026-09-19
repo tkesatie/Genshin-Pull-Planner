@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import ContextOverrides, context_overrides, get_record
 from api.repository import AccountRecord
-from api.planner_cache import planner_evidence_cache
+from api.planner_cache import CachedCandidateEvidence, planner_evidence_cache
 from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.planner import (
     GoalEvaluationsView,
@@ -394,6 +394,36 @@ def planner_cached_refresh(
                 new_budget=new_budget,
                 wishes_used=wishes_used,
             )
+            if (
+                conditioned_recommendation is not None
+                and conditioned_recommendation.runs < MIN_CONDITIONED_RUNS
+            ):
+                fresh_candidate = evaluate_candidate(
+                    context,
+                    conditioned_recommendation.candidate.outcome,
+                    new_budget,
+                    banner=current_banner,
+                    runs=CONDITIONED_FALLBACK_RUNS,
+                    seed=DEFAULT_SEED,
+                    simulation_sink=lambda candidate: planner_evidence_cache.put_candidate(
+                        record.id,
+                        candidate,
+                        runs=CONDITIONED_FALLBACK_RUNS,
+                        seed=DEFAULT_SEED,
+                    ),
+                )
+                conditioned_recommendation = CachedCandidateEvidence(
+                    account_id=record.id,
+                    character=character,
+                    constellation=recommendation_constellation,
+                    banner_version=current_banner.version,
+                    banner_phase=current_banner.phase,
+                    budget=new_budget,
+                    candidate=fresh_candidate,
+                    runs=CONDITIONED_FALLBACK_RUNS,
+                    seed=DEFAULT_SEED,
+                    observations=conditioned_recommendation.observations,
+                )
 
     for goal, evidence in conditioned.items():
         probabilities = {item.goal: item.probability for item in evidence.result.goals}
