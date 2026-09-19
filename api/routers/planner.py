@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import ContextOverrides, context_overrides, get_record
 from api.repository import AccountRecord
-from api.planner_cache import CachedCandidateEvidence, planner_evidence_cache
+from api.planner_cache import CachedCandidateEvidence, context_fingerprint, planner_evidence_cache
 from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.planner import (
     GoalEvaluationsView,
@@ -168,9 +168,6 @@ def planner_spend_table(
             for outcome in outcomes
         ]
 
-        # Use the same protected-goal evaluation for every milestone. The
-        # future-roadmap tradeoff does not depend on which current-banner
-        # constellation column the user is looking at.
         reference_candidate = evaluate_candidate(
             context, outcomes[0], budget, banner=selected, runs=runs, seed=seed
         )
@@ -203,15 +200,6 @@ def planner_spend_table(
 
 
 def _spend_table_outcomes(context, preferences, banner) -> tuple[OutcomeOption, ...]:
-    """Return unsatisfied roadmap milestones for the current banner.
-
-    The recommendation's outcome list is intentionally preference-driven,
-    but the spend analysis answers a different question: how does spending
-    on this banner affect each milestone in the roadmap for this character?
-    Therefore blocked progression goals (such as Vesna C2 behind Vesna C0)
-    remain visible here even when the optimizer would not currently choose
-    them as its recommendation outcome.
-    """
     current_character = banner.character
     preference_ranks = {
         preference.constellation: preference.rank
@@ -275,7 +263,26 @@ def _recommendation(
             candidate,
             runs=runs,
             seed=seed,
+            context=context,
         )
+
+    def candidate_lookup(outcome, cap, banner):
+        evidence = planner_evidence_cache.get_candidate(
+            record.id,
+            character=outcome.character,
+            constellation=outcome.constellation,
+            banner_version=banner.version,
+            banner_phase=banner.phase,
+            budget=cap,
+            context=context,
+        )
+        return None if evidence is None else evidence.candidate
+
+    def skip_baseline_lookup(banner):
+        return planner_evidence_cache.get_skip_baseline(record.id, banner, context=context)
+
+    def skip_baseline_sink(banner, protected):
+        planner_evidence_cache.put_skip_baseline(record.id, banner, protected, context=context)
 
     decision = recommend(
         context,
@@ -285,6 +292,9 @@ def _recommendation(
         budgets=budgets,
         minimum_outcome_probability=minimum_outcome_probability,
         simulation_sink=cache_candidate,
+        candidate_lookup=candidate_lookup,
+        skip_baseline_lookup=skip_baseline_lookup,
+        skip_baseline_sink=skip_baseline_sink,
     )
     return context, decision
 
@@ -332,6 +342,7 @@ def planner_strategy(
             seed=seed,
             confidence=context.confidence,
             income_scenario=context.income_scenario,
+            context=context,
         )
 
     strategy = build_strategy(
@@ -373,6 +384,7 @@ def planner_cached_refresh(
         character=character,
         outcome=outcome,
         wishes_used=wishes_used,
+        context=context,
     )
 
     available = available_banners(context)
@@ -381,10 +393,6 @@ def planner_cached_refresh(
         None,
     )
 
-    # Rare observations can leave too few matching histories. In that case,
-    # use the retained plan as a starting point but simulate from the actual
-    # post-pull account state. This avoids both tiny conditional samples and a
-    # full optimizer rerun.
     for goal, evidence in tuple(conditioned.items()):
         if evidence.runs >= MIN_CONDITIONED_RUNS or evidence.result.plan is None:
             continue
@@ -418,21 +426,18 @@ def planner_cached_refresh(
             seed=DEFAULT_SEED,
             confidence=evidence.confidence,
             income_scenario=evidence.income_scenario,
+            context=context,
         )
-        refreshed = planner_evidence_cache.get(record.id, goal)
+        refreshed = planner_evidence_cache.get(record.id, goal, context=context)
         if refreshed is not None:
             conditioned[goal] = refreshed
 
-    # condition_account preserves the original evidence when there are no
-    # matches. Those goals still need the targeted post-pull simulation, so
-    # handle every cached goal that was not successfully conditioned rather
-    # than only the all-goals-zero-match case.
     if current_banner is not None:
         cached_goals = context.roadmap.goals_in_priority_order()
         for goal in cached_goals:
             if goal in conditioned:
                 continue
-            evidence = planner_evidence_cache.get(record.id, goal)
+            evidence = planner_evidence_cache.get(record.id, goal, context=context)
             if evidence is None or evidence.result.plan is None:
                 continue
             entries = list(evidence.result.plan.entries)
@@ -458,8 +463,9 @@ def planner_cached_refresh(
                 seed=DEFAULT_SEED,
                 confidence=evidence.confidence,
                 income_scenario=evidence.income_scenario,
+                context=context,
             )
-            refreshed = planner_evidence_cache.get(record.id, goal)
+            refreshed = planner_evidence_cache.get(record.id, goal, context=context)
             if refreshed is not None:
                 conditioned[goal] = refreshed
 
@@ -478,10 +484,9 @@ def planner_cached_refresh(
                 banner_phase=current_banner.phase,
                 new_budget=new_budget,
                 wishes_used=wishes_used,
+                context=context,
             )
             if conditioned_recommendation is None or conditioned_recommendation.runs < MIN_CONDITIONED_RUNS:
-                # The retained candidate may have zero matching histories.
-                # Evaluate only this candidate from the post-pull account.
                 fresh_candidate = evaluate_candidate(
                     context,
                     conditioned_recommendation.candidate.outcome,
@@ -494,6 +499,7 @@ def planner_cached_refresh(
                         candidate,
                         runs=CONDITIONED_FALLBACK_RUNS,
                         seed=DEFAULT_SEED,
+                        context=context,
                     ),
                 )
                 conditioned_recommendation = CachedCandidateEvidence(
@@ -506,6 +512,7 @@ def planner_cached_refresh(
                     candidate=fresh_candidate,
                     runs=CONDITIONED_FALLBACK_RUNS,
                     seed=DEFAULT_SEED,
+                    fingerprint=context_fingerprint(context),
                     observations=(),
                 )
 

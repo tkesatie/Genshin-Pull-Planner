@@ -9,14 +9,15 @@ Closed form:
     safe_spend = clamp(W - max_i( sum_{j<=i} required_j - credit(v_i) ), 0, W)
 
 where W is the account's wishes, required_j the full reserve of protected
-goal j, and credit(v_i) the cumulative future income credited through
-goal i's banner version. This is mathematically equivalent to walking
-the protection model over spends ONLY under the Phase 3
-independent-reserve assumptions - every protected goal shares the same
-conservative starting state (pity 0, no guarantee) and the same
-required_wishes. Once Phase 4 introduces pity/guarantee propagation and
-multi-copy targets, the equivalence disappears and safe_spend must come
-from simulation (§14).
+goal j (its own copies_needed reserve - see planner.protection), and
+credit(v_i) the cumulative future income credited through goal i's banner
+version. Each `required_j` is summed individually rather than assumed
+uniform: a mix of single-copy and multi-copy protected goals (e.g. a
+same-character C0 goal alongside a different character's C2 goal) needs
+different reserves per goal, and collapsing that to "count of goals x one
+goal's reserve" silently reintroduces the exact undercount bug this module
+was fixed for (see planner.protection's docstring and
+tests/test_reserve_accounting.py).
 
 An underfunded roadmap is reported as safe_spend 0 - "do not spend" is a
 legitimate answer, not a negative budget (§1: the planner reasons in
@@ -49,8 +50,9 @@ def safe_spend(context: PlannerContext, banner=None) -> int:
         matches = available_banners(context)
         current = matches[0] if matches else None
 
-    for index, outcome in enumerate(outcomes, start=1):
-        cumulative_required = index * outcome.required_wishes
+    cumulative_required = 0
+    for outcome in outcomes:
+        cumulative_required += outcome.required_wishes
         credit = (
             0
             if current is not None and outcome.banner.order_key == current.order_key

@@ -4,23 +4,36 @@ Sequential independent-reserve approximation (Phase 3):
 
     Protected goals are unsatisfied goals whose character's next banner
     is strictly after the current banner. Each receives its own
-    independent full-confidence reserve - `wishes_for_confidence` at the
-    context threshold starting from pity 0 with no guarantee - and each
-    reserve is consumed completely before the next goal is considered.
-    Future income (PlannerContext.income_credit) is credited as it
-    arrives between banners.
+    independent full-confidence reserve - the wish count that reaches the
+    context threshold from pity 0 with no guarantee, FOR THAT GOAL'S OWN
+    `copies_needed` (§10.4) - and each reserve is consumed completely
+    before the next goal is considered. Future income
+    (PlannerContext.income_credit) is credited as it arrives between
+    banners.
 
     The approximation is deliberately conservative:
 
     * no pity or guarantee carries from the current banner into
       protected goals - §14 requires the final planner to account for
-      carried pity, which the Phase 4 simulator will do;
+      carried pity, which the Phase 4 simulator does;
     * each reserve is spent in full even when luck would leave wishes
       over.
 
     §14 explicitly warns that this must not become a permanent
     architectural assumption; it exists so Phase 3 can reason about the
     roadmap before simulation exists.
+
+CORRECTNESS NOTE (multi-copy reserves): each protected goal's reserve is
+computed from ITS OWN `copies_needed` via `multi_copy_wishes_for_confidence`
+- not a single shared single-copy value. An earlier version of this module
+computed one `wishes_for_confidence(...)` value (a single-copy reserve) and
+reused it for every protected goal regardless of how many copies that goal
+actually needed. For a goal like Skirk C2 from an unowned account (3
+copies), that undercounted the reserve dramatically - reporting "100%
+confidence" at a budget whose true probability of completing 3 copies was
+closer to 58% - because it was answering "how likely is one copy", not
+"how likely is this goal's actual target" (§4.2, §10.4). See
+tests/test_reserve_accounting.py for the regression test that pins this.
 """
 
 from dataclasses import dataclass
@@ -29,7 +42,7 @@ from domain import Banner, Goal
 from planner.banners import current_banner
 from planner.context import PlannerContext
 from planner.goals import GoalEvaluation, evaluate_goals
-from probability import cumulative_probability, wishes_for_confidence
+from probability import multi_copy_cumulative_probability, multi_copy_wishes_for_confidence
 
 
 @dataclass(frozen=True)
@@ -46,9 +59,12 @@ class ProtectedGoalOutcome:
             credited on the way.
         required_wishes: the goal's full reserve: the wish count that
             reaches the context's confidence threshold from pity 0 with
-            no guarantee (§10.3).
-        confidence: P(featured copy within budget_at_banner wishes) under
-            the same conservative starting state.
+            no guarantee, FOR THIS GOAL'S OWN copies_needed (§10.3,
+            §10.4) - e.g. a C2 goal from an unowned character needs the
+            3-copy reserve, not the 1-copy reserve.
+        confidence: P(this goal's full target - all of copies_needed -
+            within budget_at_banner wishes) under the same conservative
+            starting state.
         meets_threshold: budget_at_banner >= required_wishes.
     """
 
@@ -95,10 +111,6 @@ def protected_goal_outcomes(
         schedulable.append((banner, evaluation))
     schedulable.sort(key=lambda item: (item[0].order_key, item[1].goal.priority))
 
-    required = wishes_for_confidence(
-        context.confidence, 0, False, context.mechanics
-    )
-
     outcomes: list[ProtectedGoalOutcome] = []
     budget = context.account.wishes - spent
     credited_through = 0  # cumulative income credit already folded in
@@ -106,17 +118,23 @@ def protected_goal_outcomes(
         credit = context.income_available_before(banner.version, banner.phase)
         budget += credit - credited_through
         credited_through = max(credited_through, credit)
+
+        copies = evaluation.copies_needed
+        required = multi_copy_wishes_for_confidence(
+            context.confidence, copies, 0, False, context.mechanics
+        )
+        confidence = float(
+            multi_copy_cumulative_probability(budget, copies, 0, False, context.mechanics)[
+                budget
+            ]
+        )
         outcomes.append(
             ProtectedGoalOutcome(
                 goal=evaluation.goal,
                 banner=banner,
                 budget_at_banner=budget,
                 required_wishes=required,
-                confidence=float(
-                    cumulative_probability(budget, 0, False, context.mechanics)[
-                        budget
-                    ]
-                ),
+                confidence=confidence,
                 meets_threshold=budget >= required,
             )
         )

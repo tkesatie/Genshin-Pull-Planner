@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pull Planner</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080b12;
+    --surface: #111722;
+    --surface-2: #171e2b;
+    --surface-3: #1d2635;
+    --border: #293447;
+    --text: #eef1f6;
+    --muted: #8d99aa;
+    --gold: #d9aa52;
+    --gold-bright: #f0c76b;
+    --green: #55bd8a;
+    --red: #df6978;
+    --shadow: 0 14px 40px rgba(0,0,0,.28);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 75% 0%, rgba(217,170,82,.09), transparent 30rem),
+      linear-gradient(180deg, #0b0f17 0%, var(--bg) 45%, #070a10 100%);
+    color: var(--muted);
+    font: 15px/1.55 system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  main { max-width: 72rem; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
+  h1, h2, .verdict, .banner-name {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    color: var(--text);
+    font-weight: 600;
+  }
+  h1 { font-size: 1.35rem; letter-spacing: .02em; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 0 0 .75rem; text-transform: uppercase; letter-spacing: .09em; color: #b7c0cf; }
+  p { margin: 0 0 .7rem; max-width: 70ch; }
+  a { color: var(--gold-bright); }
+  section { margin-top: 1.5rem; }
+  .muted { color: var(--muted); font-size: .86rem; }
+  .resource-breakdown { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; margin-top:1rem; }
+  .resource-card { padding:.65rem .75rem; background:rgba(255,255,255,.025); border:1px solid var(--border); border-radius:6px; }
+  .resource-card span, .strategy-accounting span { display:block; color:var(--muted); font-size:.72rem; }
+  .resource-card strong, .strategy-accounting strong { color:var(--text); font-size:1rem; }
+  .strategy-accounting { display:grid; grid-template-columns:1fr auto; gap:.2rem .8rem; margin-top:.75rem; padding:.7rem .8rem; background:rgba(217,170,82,.045); border:1px solid var(--border); border-radius:6px; }
+  @media (max-width: 650px) { .resource-breakdown { grid-template-columns:1fr; } }
+
+  header {
+    display: flex; flex-wrap: wrap; gap: 1rem 1.5rem;
+    align-items: center; justify-content: space-between;
+    padding: .4rem 0 1.1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display:flex; align-items:center; gap:.7rem; }
+  .brand-mark {
+    width: .65rem; height: 1.7rem; border-radius: 2px;
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+    box-shadow: 0 0 18px rgba(217,170,82,.25);
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
+  select, input, button {
+    font: inherit; color: var(--text); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 5px; padding: .48rem .65rem;
+  }
+  input[type="checkbox"] { accent-color: var(--gold); }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--gold); }
+  button.primary {
+    background: linear-gradient(180deg, #e1b45b, #c99638);
+    color: #171207; border-color: #e1b45b; font-weight: 700;
+    box-shadow: 0 4px 16px rgba(217,170,82,.12);
+  }
+  button:disabled { opacity: .5; cursor: progress; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  label { font-size: .8rem; display: inline-flex; gap: .4rem; align-items: center; }
+
+  .status {
+    padding: .7rem .9rem; border-left: 3px solid var(--red);
+    background: rgba(223,105,120,.08); margin-top: 1rem;
+  }
+  .status:empty { display: none; }
+
+  .hero {
+    position: relative; overflow: hidden;
+    padding: 2.1rem 2.2rem 2rem;
+    background:
+      linear-gradient(110deg, rgba(23,30,43,.98), rgba(13,18,28,.96)),
+      var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .hero::after {
+    content: ""; position: absolute; width: 22rem; height: 22rem;
+    right: -10rem; top: -12rem; border-radius: 50%;
+    border: 1px solid rgba(217,170,82,.12);
+    box-shadow: 0 0 0 3rem rgba(217,170,82,.025), 0 0 0 6rem rgba(217,170,82,.015);
+    pointer-events: none;
+  }
+  .hero-top {
+    display:flex; justify-content:space-between; align-items:flex-start; gap:2rem;
+    position:relative; z-index:1;
+  }
+  .eyebrow {
+    color: var(--gold); text-transform: uppercase; letter-spacing: .14em;
+    font-size: .7rem; font-weight: 700; margin-bottom: .4rem;
+  }
+  .banner-name { font-size: clamp(1.5rem, 3vw, 2.2rem); margin-bottom: .15rem; }
+  .banner-meta { font-size: .85rem; color: var(--muted); }
+  .resources { display:flex; gap:1.4rem; text-align:right; }
+  .resource strong { display:block; color:var(--text); font-size:1.25rem; }
+  .resource span { font-size:.68rem; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); }
+  .decision {
+    margin-top: 2rem; position:relative; z-index:1;
+    border-top: 1px solid var(--border); padding-top: 1.5rem;
+  }
+  .decision-label {
+    display:inline-flex; align-items:center; gap:.45rem;
+    font-size:.72rem; text-transform:uppercase; letter-spacing:.13em;
+    font-weight:700; color:var(--green); margin-bottom:.55rem;
+  }
+  .decision-label::before {
+    content:""; width:.45rem; height:.45rem; border-radius:50%; background:currentColor;
+    box-shadow:0 0 10px currentColor;
+  }
+  .decision-label.skip { color:var(--red); }
+  .decision-label.discretionary { color:var(--gold-bright); }
+  .verdict {
+    font-size: clamp(2rem, 5vw, 3.35rem); line-height:1.04;
+    letter-spacing:-.025em; margin:0 0 .65rem; max-width: 14em;
+  }
+  .verdict-cap { color:var(--gold-bright); }
+  .decision-detail { max-width: 58rem; font-size:.92rem; color:#aab4c3; }
+  .strategy-list { display:grid; gap:.55rem; margin:0 0 .7rem; }
+  .strategy-item { display:grid; grid-template-columns:2rem 1fr; gap:.8rem; align-items:start; padding:.75rem 0; border-bottom:1px solid var(--border); }
+  .strategy-item:last-child { border-bottom:0; }
+  .strategy-number { color:var(--gold-bright); font-weight:700; font-size:.9rem; padding-top:.1rem; }
+  .strategy-action { color:var(--text); font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif; font-size:1.35rem; line-height:1.2; }
+  .strategy-meta { color:var(--muted); font: .78rem/1.4 system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; margin-top:.2rem; }
+  .strategy-item.recommended .strategy-action { color:var(--gold-bright); }
+  .strategy-outcomes { display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.65rem; }
+  .strategy-outcomes button { font-size:.76rem; padding:.35rem .55rem; }
+  .owned-list { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .owned-card { min-width:8rem; padding:.65rem .75rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
+  .owned-card strong { display:block; color:var(--text); }
+  .owned-card span { color:var(--muted); font-size:.75rem; }
+  .strategy-frontier { margin-top:.55rem; display:flex; flex-wrap:wrap; gap:.5rem 1.25rem; align-items:baseline; }
+  .strategy-frontier strong { color:var(--gold-bright); font-size:1.2rem; }
+  .strategy-frontier .frontier-label { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
+  .strategy-frontier .frontier-probability { color:var(--text); font-size:.95rem; font-weight:650; }
+  .metrics {
+    display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
+    margin-top:1.6rem; border-top:1px solid var(--border);
+  }
+  .metric { padding:1rem 1.25rem 0 0; border-right:1px solid var(--border); }
+  .metric + .metric { padding-left:1.25rem; }
+  .metric:last-child { border-right:0; }
+  .metric-label { display:block; text-transform:uppercase; letter-spacing:.1em; font-size:.65rem; color:var(--muted); }
+  .metric-value { display:block; color:var(--text); font-size:1.25rem; font-weight:650; margin-top:.15rem; }
+  .provenance { font-size:.72rem; color:#697586; margin:.9rem 0 0; }
+
+  .split { display:grid; grid-template-columns:1.2fr .8fr; gap:1rem; }
+  .panel {
+    background:rgba(17,23,34,.92); border:1px solid var(--border);
+    border-radius:9px; padding:1.1rem 1.2rem; box-shadow:0 8px 24px rgba(0,0,0,.12);
+  }
+  .why-item + .why-item { margin-top:.8rem; }
+  .why-item {
+    padding:.9rem 1rem; background:var(--surface-2); border:1px solid var(--border);
+    border-radius:7px;
+  }
+  .why-item strong { color:var(--text); }
+  ul.rules { padding-left:1.1rem; margin:.2rem 0 0; }
+  ul.rules li { margin-bottom:.65rem; }
+  .stop-note {
+    padding:.75rem .85rem; margin-top:.75rem; border-left:2px solid var(--gold);
+    background:rgba(217,170,82,.055); color:#b4bdca; font-size:.86rem;
+  }
+
+  .bars { display:grid; gap:.65rem; }
+  .bar-row { display:grid; grid-template-columns:minmax(8rem, 14rem) 1fr 3.2rem; gap:.7rem; align-items:center; }
+  .bar-name { font-size:.8rem; color:var(--text); }
+  .bar-name small { display:block; opacity:.65; color:var(--muted); font-size:.68rem; }
+  .track { position:relative; height:.55rem; background:#252d3a; border-radius:99px; overflow:visible; }
+  .fill { height:100%; width:0; background:var(--green); border-radius:99px; transition:width .5s ease-out; }
+  .fill.short { background:var(--red); }
+  .threshold { position:absolute; top:-.25rem; bottom:-.25rem; width:0; border-left:2px dashed #c5ccd6; opacity:.7; }
+  .bar-value { text-align:right; font-size:.78rem; color:var(--text); }
+  @media (prefers-reduced-motion: reduce) { .fill { transition:none; } }
+
+  table { border-collapse:collapse; width:100%; font-size:.8rem; }
+  th, td { text-align:right; padding:.5rem .55rem; border-bottom:1px solid var(--border); }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:#cbd3df; font-weight:600; }
+  tr.boundary td { border-bottom:2px solid var(--gold); }
+  td.no { color:var(--red); } td.yes { color:var(--green); }
+
+  .timeline { display:grid; gap:.7rem; }
+  .stop { display:grid; grid-template-columns:6.5rem 1fr; gap:.9rem; align-items:start; padding-bottom:.7rem; border-bottom:1px solid var(--border); }
+  .stop:last-child { border-bottom:0; padding-bottom:0; }
+  .stop-when { color:#bfc7d3; font-size:.8rem; }
+  .stop.now .stop-when { color:var(--gold-bright); font-weight:700; }
+  .chip { display:inline-block; font-size:.7rem; padding:.18rem .55rem; border:1px solid var(--border); border-radius:99px; margin:0 .3rem .3rem 0; background:var(--surface-2); }
+  .chip.active { border-color:var(--gold); color:var(--text); }
+  .chip.blocked { opacity:.6; } .chip.satisfied { border-color:var(--green); color:var(--green); }
+
+  .table-panel { overflow-x:auto; }
+  .table-panel table { min-width:38rem; }
+  .table-panel th, .table-panel td { white-space:nowrap; }
+  .table-panel tr.boundary { background:rgba(217,170,82,.06); }
+  .table-panel tr.boundary td:first-child { color:var(--gold-bright); font-weight:700; }
+  .account-editor { margin-top: 1rem; }
+  .account-editor summary { cursor: pointer; color: var(--text); font-weight: 600; }
+  .account-form { display:grid; grid-template-columns:repeat(4, minmax(8rem, 1fr)); gap:.8rem 1rem; margin-top:1rem; align-items:end; }
+  .account-form label { display:grid; gap:.3rem; align-items:start; }
+  .account-form input, .account-form select { width:100%; }
+  .account-form .check { display:flex; align-items:center; gap:.4rem; padding-bottom:.5rem; }
+  .account-form .check input { width:auto; }
+  .account-form-actions { display:flex; align-items:center; gap:.7rem; grid-column:1 / -1; }
+  @media (max-width: 720px) { .account-form { grid-template-columns:1fr 1fr; } }
+  .empty { padding:3rem 0; }
+  .empty .verdict { font-size:2rem; }
+  .auth-panel { max-width: 28rem; margin: 5rem auto 0; }
+  .auth-panel h2 { margin-bottom: 1rem; }
+  .auth-form { display:grid; gap:.8rem; }
+  .auth-form label { display:grid; gap:.3rem; align-items:start; }
+  .auth-form input { width:100%; }
+  .auth-actions { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+  .auth-switch { background:none; border:0; color:var(--gold-bright); padding:.48rem .2rem; }
+  .user-controls { display:flex; align-items:center; gap:.7rem; }
+  .user-name { color:var(--text); font-size:.8rem; }
+  code { color:var(--gold-bright); }
+  @media (max-width: 720px) {
+    main { padding:1rem .85rem 4rem; }
+    .hero { padding:1.5rem; }
+    .hero-top { flex-direction:column; gap:1rem; }
+    .resources { text-align:left; }
+    .metrics { grid-template-columns:1fr; }
+    .metric, .metric + .metric { padding: .8rem 0; border-right:0; border-bottom:1px solid var(--border); }
+    .metric:last-child { border-bottom:0; }
+    .split { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand"><span class="brand-mark"></span><h1>Pull Planner</h1></div>
+    <div id="user-controls" class="user-controls" hidden><span id="user-name" class="user-name"></span><button id="logout">Log out</button></div>
+    <div id="planner-controls" class="controls" hidden>
+      <label>Account
+        <select id="account-picker"><option value="">Loading</option></select>
+      </label>
+      <label>Confidence
+        <input id="confidence" type="number" min="0.01" max="1" step="0.05" style="width: 5rem">
+      </label>
+      <label><input id="exact-scan" type="checkbox"> Scan every wish</label>
+      <button id="run" class="primary">Run the planner</button>
+    </div>
+  </header>
+
+  <div id="status" class="status" role="alert"></div>
+
+  <section id="auth" class="auth-panel panel" hidden>
+    <h2 id="auth-title">Sign in</h2>
+    <p class="muted" id="auth-description">Sign in to access your saved Genshin accounts.</p>
+    <form id="auth-form" class="auth-form">
+      <label>Username <input id="auth-username" name="username" autocomplete="username" required minlength="3"></label>
+      <label>Password <input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="8"></label>
+      <div class="auth-actions">
+        <button id="auth-submit" class="primary" type="submit">Sign in</button>
+        <button id="auth-switch" class="auth-switch" type="button">Create an account</button>
+      </div>
+    </form>
+  </section>
+
+  <div id="empty" class="empty" hidden>
+    <p class="verdict">No accounts yet.</p>
+    <p>Create an account through the API to start planning: <code>POST /accounts</code>.</p>
+  </div>
+
+  <div id="dashboard" hidden>
+
+    <details class="account-editor">
+      <summary>Account state</summary>
+      <div class="panel account-form">
+        <label>Wishes <input id="f-wishes" type="number" min="0" step="1"></label>
+        <label>Character pity <input id="f-pity" type="number" min="0" max="89" step="1"></label>
+        <label>Version <input id="f-version" type="text" inputmode="decimal"></label>
+        <label>Phase <input id="f-phase" type="number" min="1" step="1"></label>
+        <label>Income scenario <select id="f-scenario"><option value="low">Low</option><option value="expected">Expected</option><option value="high">High</option></select></label>
+        <label>Confidence <input id="f-confidence" type="number" min="0.01" max="1" step="0.05"></label>
+        <label class="check"><input id="f-guarantee" type="checkbox"> Character guarantee</label>
+        <div class="account-form-actions"><button id="save" class="primary">Save account state</button><span id="save-note" class="muted"></span></div>
+      </div>
+    </details>
+    <section>
+      <h2>Owned characters</h2>
+      <p class="muted">Characters currently recorded on this account.</p>
+      <div class="panel"><div id="owned-characters" class="owned-list"></div></div>
+    </section>
+
+    <section id="verdict-section">
+      <div class="hero">
+        <div class="hero-top">
+          <div><div class="eyebrow">Pull strategy</div><div class="banner-name">Your current plan</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
+          <div class="resources"><div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div><div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div></div>
+        </div>
+        <div class="decision">
+          <div id="decision-label" class="decision-label">Strategy</div>
+          <div id="strategy" class="strategy-list">
+            <p class="verdict" id="verdict">Run the planner to build your current strategy.</p>
+          </div>
+          <p id="verdict-detail" class="decision-detail">The strategy is based on your goal priorities, available banners, and protection thresholds.</p>
+          <div class="metrics"><div class="metric"><span class="metric-label">Spend boundary</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of full roadmap</span><span class="metric-value" id="metric-roadmap-probability">—</span></div></div>
+          <div class="resource-breakdown" id="resource-breakdown"></div><p class="provenance" id="provenance"></p>
+        </div>
+      </div>
+    </section>
+
+    <div class="split"><section id="why-section" hidden>
+      <h2>Why this is the recommendation</h2>
+      <p class="muted">More-preferred outcomes that were considered, and the future goals that prevent them.</p>
+      <div id="why"></div>
+    </section>
+
+    <section id="protected-section" hidden>
+      <h2>Protected future goals</h2>
+      <p class="muted" id="protected-caption"></p>
+      <div class="panel"><div class="bars" id="protected"></div></div>    </section>
+
+    <section id="stops-section" hidden>
+      <h2>When to stop</h2>
+      <div class="panel"><ul class="rules" id="stops"></ul></div>
+    </section>
+
+    <section>
+      <h2>Quick reserve check</h2>
+      <p class="muted" id="safe-caption"></p>
+      <div class="panel">
+        <p class="verdict" id="safe-spend" style="font-size: 1.8rem"></p>
+        <div class="bars" id="safe-bars"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Spending analysis</h2>
+      <div class="panel">
+        <p class="muted">Placeholder — this section is temporarily disabled while the spending-analysis view is redesigned.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Upcoming goals</h2>
+      <p class="muted">Your banner schedule and the goals attached to each banner.</p>
+      <div class="panel timeline" id="roadmap"></div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+"use strict";
+
+const state = { user: null, authMode: "login", account: null, planner: null, runOptions: {}, plannerLoading: false, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
+
+const $ = (id) => document.getElementById(id);
+const pct = (value) => `${(value * 100).toFixed(0)}%`;
+const wishWord = (n) => `${n} ${n === 1 ? "wish" : "wishes"}`;
+const bannerName = (b) => `${b.character} ${b.version}`;
+const goalName = (g) => `${g.character} C${g.constellation}`;
+
+function showError(message) {
+  $("status").textContent = message;
+}
+
+function clearError() {
+  $("status").textContent = "";
+}
+
+async function api(path, options = {}) {
+  // Planner/account GETs must reflect state changes immediately after a pull result.
+  // Disable browser caching so a re-run cannot reuse the previous planner response.
+  const request = { ...options, cache: "no-store" };
+  const response = await fetch(path, request);
+  if (path.includes("/planner/") && !path.includes("/planner/timing")) {
+    const requestElapsed = state.plannerStarted === null
+      ? null
+      : (performance.now() - state.plannerStarted) / 1000;
+    const serverSeconds = Number(response.headers.get("X-Planner-Process-Time"));
+    state.plannerTiming.push({
+      request_elapsed_seconds: requestElapsed,
+      server_seconds: Number.isFinite(serverSeconds) ? serverSeconds : null,
+    });
+  }
+  if (response.status === 204) return null;
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = body && body.detail;
+    throw new Error(
+      typeof detail === "string" ? detail : `${path} failed (${response.status})`
+    );
+  }
+  return body;
+}
+
+/* ---------- authentication ---------- */
+
+function renderAuth() {
+  const login = state.authMode === "login";
+  $("auth").hidden = !!state.user;
+  $("planner-controls").hidden = !state.user;
+  $("user-controls").hidden = !state.user;
+  $("auth-title").textContent = login ? "Sign in" : "Create account";
+  $("auth-description").textContent = login
+    ? "Sign in to access your saved Genshin accounts."
+    : "Create a login for your saved Genshin accounts.";
+  $("auth-submit").textContent = login ? "Sign in" : "Create account";
+  $("auth-switch").textContent = login ? "Create an account" : "Back to sign in";
+  $("auth-password").autocomplete = login ? "current-password" : "new-password";
+}
+
+async function loadCurrentUser() {
+  try {
+    state.user = await api("/auth/me");
+    $("user-name").textContent = state.user.username;
+    renderAuth();
+    await loadAccounts();
+  } catch (error) {
+    if (error.message === "authentication required" || error.message === "session expired") {
+      state.user = null;
+      renderAuth();
+      return;
+    }
+    showError(error.message);
+  }
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  clearError();
+  $("auth-submit").disabled = true;
+  try {
+    const username = $("auth-username").value.trim();
+    const password = $("auth-password").value;
+    const endpoint = state.authMode === "login" ? "/auth/login" : "/auth/register";
+    const user = await api(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (state.authMode === "register") {
+      await api("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+    }
+    state.user = user;
+    $("user-name").textContent = user.username;
+    $("auth-form").reset();
+    renderAuth();
+    await loadAccounts();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    $("auth-submit").disabled = false;
+  }
+}
+
+async function logout() {
+  clearError();
+  try {
+    await api("/auth/logout", { method: "POST" });
+    state.user = null;
+    state.account = null;
+    state.planner = null;
+    $("account-picker").innerHTML = "<option value=\"\">Sign in to continue</option>";
+    $("account-picker").hidden = false;
+    $("empty").hidden = true;
+    $("dashboard").hidden = true;
+    renderAuth();
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+/* ---------- loading ---------- */
+
+async function loadAccounts() {
+  const accounts = await api("/accounts");
+  const picker = $("account-picker");
+  picker.innerHTML = "";
+  if (accounts.length === 0) {
+    $("empty").hidden = false;
+    $("dashboard").hidden = true;
+    picker.hidden = true;
+    return;
+  }
+  for (const account of accounts) {
+    const option = document.createElement("option");
+    option.value = account.id;
+    option.textContent =
+      `${account.label || "Account"} — ${account.current_version} phase ${account.current_phase}`;
+    picker.append(option);
+  }
+  $("empty").hidden = true;
+  $("dashboard").hidden = false;
+  await selectAccount(accounts[0].id);
+}
+
+async function selectAccount(id) {
+  clearError();
+  state.account = await api(`/accounts/${id}`);
+  $("confidence").value = state.account.settings.confidence;
+  $("hero-wishes").textContent = state.account.account.wishes;
+  $("hero-pity").textContent = state.account.account.current_pity;
+  $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
+  fillAccountForm();
+  resetVerdict();
+  renderOwnedCharacters();
+  await loadGoals();
+}
+
+function query(extra) {
+  const params = new URLSearchParams();
+  const confidence = Number($("confidence").value);
+  if (confidence > 0 && confidence !== state.account.settings.confidence) {
+    params.set("confidence", String(confidence));
+  }
+  for (const [key, value] of Object.entries(extra || {})) {
+    if (Array.isArray(value)) value.forEach((v) => params.append(key, String(v)));
+    else params.set(key, String(value));
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+async function loadGoals() {
+  const goals = await api(`/accounts/${state.account.id}/planner/goals${query()}`);
+  state.planner = { ...(state.planner || {}), goals };
+  renderRoadmap(goals);
+}
+
+async function loadPlanner(source = "unknown") {
+  if (state.plannerLoading) {
+    console.log(`Planner run ignored — already running (source: ${state.plannerRunSource})`);
+    return;
+  }
+  const plannerRunId = ++state.plannerRunId;
+  const plannerStarted = performance.now();
+  state.plannerLoading = true;
+  state.plannerStarted = plannerStarted;
+  state.plannerTiming = [];
+  state.plannerRunSource = source;
+  $("run").disabled = true;
+  $("run").textContent = "Simulating";
+  console.log(`Planner run #${plannerRunId} started — source: ${source}`);
+  const id = state.account.id;
+  const wishes = state.account.account.wishes;
+  const step = Math.max(1, Math.ceil(wishes / 20));
+  try {
+    const goals = state.planner && state.planner.goals;
+    if (!goals) {
+      throw new Error("Planner goals are not loaded. Select the account again.");
+    }
+
+    const recommendationPromise = api(
+      `/accounts/${id}/planner/recommendation${query(state.runOptions)}`
+    );
+    const strategyPromise = api(`/accounts/${id}/planner/strategy${query()}`);
+
+    // Recommendation and strategy are independent backend calculations, so
+    // start them together. Safe-spend still depends on the selected banner
+    // from the recommendation, so it runs after that result is known.
+    const [recommendation, strategy] = await Promise.all([
+      recommendationPromise,
+      strategyPromise,
+    ]);
+
+    const available = goals.available_banners || [];
+    let character = recommendation && recommendation.banner
+      ? recommendation.banner.character
+      : null;
+
+    if (!character && available.length) {
+      const actionable = goals.goals
+        .filter((goal) => goal.actionable)
+        .sort((a, b) => a.goal.priority - b.goal.priority);
+      const selectedGoal = actionable[0];
+      character = selectedGoal
+        ? available.find((banner) => banner.character === selectedGoal.goal.character)?.character
+        : available[0].character;
+    }
+
+    const bannerQuery = character ? { character } : {};
+    const safe = await api(
+      `/accounts/${id}/planner/safe-spend${query(bannerQuery)}`
+    );
+
+    state.planner = { recommendation, goals, safe, strategy };
+    if (recommendation) renderRecommendation(recommendation, strategy);
+    renderSafeSpend(safe);
+    renderRoadmap(goals);
+
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    const frontendFinished = performance.now();
+    const frontendLoadSeconds = (frontendFinished - plannerStarted) / 1000;
+    const apiResponseSeconds = state.plannerTiming.length
+      ? Math.max(...state.plannerTiming.map((entry) => entry.request_elapsed_seconds ?? 0))
+      : null;
+    const calculationSeconds = state.plannerTiming.length
+      ? Math.max(
+          ...state.plannerTiming
+            .map((entry) => entry.server_seconds)
+            .filter((value) => value !== null)
+        )
+      : null;
+    console.log(`Planner run #${plannerRunId} finished — source: ${source}`);
+    const timing = {
+      planner_run_id: plannerRunId,
+      planner_run_source: source,
+      planner_calculation_seconds: calculationSeconds,
+      api_response_seconds: apiResponseSeconds,
+      frontend_load_seconds: frontendLoadSeconds,
+      total_seconds: frontendLoadSeconds,
+    };
+    console.log(
+      "Planner timing\n" +
+      "-------------\n" +
+      `Planner calculation: ${calculationSeconds === null ? "n/a" : calculationSeconds.toFixed(2) + "s"}\n` +
+      `API response:        ${apiResponseSeconds.toFixed(2)}s\n` +
+      `Frontend load:       ${frontendLoadSeconds.toFixed(2)}s\n` +
+      `Total:               ${frontendLoadSeconds.toFixed(2)}s`
+    );
+    await api("/accounts/" + id + "/planner/timing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(timing),
+    });
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    state.runOptions = {};
+    state.plannerLoading = false;
+    $("run").disabled = false;
+    $("run").textContent = "Run the planner";
+  }
+}
+
+/* ---------- rendering ---------- */
+
+function resetVerdict() {
+  // renderRecommendation replaces the contents of #strategy, including the
+  // initial #verdict placeholder. Recreate it when clearing a completed run.
+  const strategy = $("strategy");
+  strategy.innerHTML = "";
+  const verdict = document.createElement("p");
+  verdict.className = "verdict";
+  verdict.id = "verdict";
+  verdict.textContent = "Run the planner to see the current recommendation.";
+  strategy.append(verdict);
+
+  $("verdict-detail").textContent =
+    "Every candidate spend is simulated, so this takes a few seconds.";
+  $("provenance").textContent = "";
+  $("resource-breakdown").innerHTML = "";
+  $("why-section").hidden = true;
+  $("protected-section").hidden = true;
+  $("stops-section").hidden = true;
+}
+
+function barRow(label, sublabel, probability, threshold, meets) {
+  const row = document.createElement("div");
+  row.className = "bar-row";
+
+  const name = document.createElement("div");
+  name.className = "bar-name";
+  name.textContent = label;
+  if (sublabel) {
+    const small = document.createElement("small");
+    small.textContent = sublabel;
+    name.append(small);
+  }
+
+  const track = document.createElement("div");
+  track.className = "track";
+  const fill = document.createElement("div");
+  fill.className = meets ? "fill" : "fill short";
+  track.append(fill);
+  if (threshold !== null) {
+    const line = document.createElement("div");
+    line.className = "threshold";
+    line.style.left = `${threshold * 100}%`;
+    line.title = `Your threshold: ${pct(threshold)}`;
+    track.append(line);
+  }
+
+  const value = document.createElement("div");
+  value.className = "bar-value";
+  value.textContent = pct(probability);
+
+  row.append(name, track, value);
+  requestAnimationFrame(() => { fill.style.width = `${probability * 100}%`; });
+  return row;
+}
+
+function renderRecommendation(rec, strategy) {
+  const banner = bannerName(rec.banner);
+  $("banner-meta").textContent = banner;
+  $("decision-label").className = `decision-label ${rec.action}`;
+  $("decision-label").textContent =
+    rec.action === "pursue"
+      ? "Strategy · Pursue"
+      : rec.action === "discretionary"
+        ? "Strategy · Discretionary"
+        : "Strategy · Skip";
+
+  $("metric-budget").textContent = wishWord(rec.budget);
+  $("metric-roadmap-probability").textContent = "—";
+
+  const strategyList = $("strategy");
+  strategyList.innerHTML = "";
+
+  const steps = strategy && strategy.steps ? strategy.steps : [];
+  let number = 1;
+
+  if (strategy) {
+    $("resource-breakdown").innerHTML = `
+      <div class="resource-card"><span>Available now</span><strong>${wishWord(strategy.starting_wishes)}</strong></div>
+      <div class="resource-card"><span>Expected future income</span><strong>+${wishWord(strategy.future_income)}</strong></div>
+      <div class="resource-card"><span>Protected now</span><strong>${strategy.reserve_wishes === null ? "—" : wishWord(strategy.reserve_wishes)}</strong></div>
+    `;
+  }
+
+  for (const step of steps) {
+    const item = document.createElement("div");
+    item.className = "strategy-item";
+
+    const index = document.createElement("div");
+    index.className = "strategy-number";
+    index.textContent = number++;
+
+    const body = document.createElement("div");    const action = document.createElement("div");
+    action.className = "strategy-action";
+
+    if (step.action === "get") {
+      action.textContent = `Get ${goalName(step.goal)}`;
+    } else if (step.action === "pursue_until_reserve") {
+      action.textContent = `Work toward ${goalName(step.goal)}`;
+    } else if (step.action === "save") {
+      action.textContent = `Protect ${goalName(step.goal)}`;
+    } else {
+      action.textContent = step.action;
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "strategy-meta";
+    meta.textContent =
+      `Priority ${step.goal.priority} · ${bannerName(step.banner)}`;
+
+    if (step.action === "get" || step.action === "pursue_until_reserve") {
+      const outcomes = document.createElement("div");
+      outcomes.className = "strategy-outcomes";
+      const pulled = document.createElement("button");
+      pulled.textContent = `Pulled ${step.goal.character}`;
+      pulled.addEventListener("click", () => recordPullOutcome(step.goal.character, "featured"));
+      if (!state.account.account.character_guarantee) {
+        const lost = document.createElement("button");
+        lost.textContent = "Lost 50/50";
+        lost.addEventListener("click", () => recordPullOutcome(step.goal.character, "lost_50_50"));
+        outcomes.append(lost);
+      }
+      outcomes.prepend(pulled);
+      body.append(outcomes);
+    }
+
+    if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
+      const startingWishes = state.account.account.wishes;
+      const spend = Math.max(0, startingWishes - step.safe_spend);
+      meta.textContent += ` · ${wishWord(step.safe_spend)} spent`;
+
+      const frontier = document.createElement("div");
+      frontier.className = "strategy-frontier";
+
+      const accounting = document.createElement("div");
+      accounting.className = "strategy-accounting";
+      accounting.innerHTML = `
+        <span>Starting reserve</span><strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>
+        <span>Future income before ${goalName(step.goal)}</span><strong>+${wishWord(step.future_income ?? 0)}</strong>
+        <span>Total resources for future protection</span><strong>${wishWord(step.protected_total_wishes ?? step.reserve_wishes)}</strong>
+      `;
+
+      const keep = document.createElement("div");
+      keep.innerHTML =
+        `<span class="frontier-label">Spend down to</span> <strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>`;
+
+      const probability = document.createElement("div");
+      probability.innerHTML =
+        `<span class="frontier-label">Chance of ${goalName(step.goal)}</span> <span class="frontier-probability">${pct(step.outcome_probability)}</span>`;
+
+      frontier.append(keep, probability);
+      body.append(accounting);
+      body.append(action, meta, frontier);
+      item.append(index, body);
+      item.classList.add("recommended");
+      strategyList.append(item);
+      continue;
+    } else if (step.action === "save" && step.reserve_wishes !== null) {
+      meta.textContent += ` · keep ${wishWord(step.reserve_wishes)}`;
+    }
+
+    body.append(action, meta);
+    item.append(index, body);
+    strategyList.append(item);
+  }
+
+  if (steps.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "verdict";
+    empty.style.fontSize = "1.8rem";
+    empty.textContent =
+      rec.action === "skip" ? `Don't spend on ${banner}.` : "No current strategy is available.";
+    strategyList.append(empty);
+  }
+
+  if (rec.action === "pursue") {
+    $("verdict-detail").textContent =
+      "Follow the plan in order. The spending frontier is recalculated when your account, banners, or assumptions change.";
+  } else if (rec.action === "discretionary") {
+    $("verdict-detail").textContent =
+      rec.discretionary_reason || "The current opportunity is feasible, but is below the ordinary recommendation threshold.";
+  } else {
+    $("verdict-detail").textContent =
+      rec.skip_reason || "No current-banner outcome can be pursued safely.";
+  }
+
+  $("provenance").textContent =
+    `${rec.runs.toLocaleString()} simulated futures, seed ${rec.seed === null ? "random" : rec.seed}. Run again when your account or banner assumptions change.`;
+
+  const why = $("why");
+  why.innerHTML = "";
+  for (const rejected of rec.rejected) {
+    const panel = document.createElement("div");
+    panel.className = "panel";
+    panel.style.marginBottom = ".75rem";
+    const head = document.createElement("p");
+    head.innerHTML =
+      `<strong>${rejected.outcome.character} ${rejected.outcome.label}</strong> is out of reach: at best ${pct(rejected.outcome_probability)} for the outcome with up to ${wishWord(rejected.best_budget)} spent.`;
+    panel.append(head);
+    const bars = document.createElement("div");
+    bars.className = "bars";
+    for (const short of rejected.shortfalls) {
+      bars.append(
+        barRow(goalName(short.goal), bannerName(short.banner), short.probability, rec.confidence, false)
+      );
+    }
+    panel.append(bars);
+    why.append(panel);
+  }
+  $("why-section").hidden = rec.rejected.length === 0;
+
+  const protectedBars = $("protected");
+  protectedBars.innerHTML = "";
+  for (const standing of rec.protected) {
+    protectedBars.append(
+      barRow(
+        goalName(standing.goal),
+        standing.constraining === false
+          ? `${bannerName(standing.banner)} · lower priority: does not cap this spend`
+          : bannerName(standing.banner),
+        standing.probability,
+        rec.confidence,
+        standing.meets_threshold
+      )
+    );
+  }
+  const nonGating = rec.protected.filter((standing) => standing.constraining === false);
+  $("protected-caption").textContent =
+    (rec.action === "pursue"
+      ? "Where your roadmap lands if you follow this recommendation. "
+      : "Where your roadmap lands if you spend nothing here. ") +
+    (nonGating.length
+      ? "Goals ranked below this banner's goal are shown, but only higher-priority goals cap the spend. "
+      : "") +
+    `The dashed line is your ${pct(rec.confidence)} protection threshold.`;
+  $("protected-section").hidden = rec.protected.length === 0;
+
+  const stops = $("stops");
+  stops.innerHTML = "";
+  for (const rule of rec.stops.rules) {
+    const item = document.createElement("li");
+    item.textContent = rule;
+    stops.append(item);
+  }
+  $("stops-section").hidden = false;
+}
+
+function renderSafeSpend(safe) {
+  $("safe-spend").textContent =
+    safe.safe_spend === 0
+      ? "Nothing is safe to spend."
+      : `${wishWord(safe.safe_spend)} of ${safe.account_wishes}.`;
+  $("safe-caption").textContent =
+    `A quick estimate of how many wishes can be spent while preserving protected future goals. ${safe.approximation}.`;
+
+  const bars = $("safe-bars");
+  bars.innerHTML = "";
+  for (const outcome of safe.protected) {
+    bars.append(
+      barRow(
+        goalName(outcome.goal),
+        `${bannerName(outcome.banner)}, ${outcome.budget_at_banner} of ${outcome.required_wishes} wishes reserved`,
+        outcome.confidence,
+        safe.confidence,
+        outcome.meets_threshold
+      )
+    );
+  }
+  if (safe.protected.length === 0) {
+    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent = "No future goal constrains this banner.";
+    bars.append(note);
+  }
+}
+
+function renderSpendTable(table) {
+  const host = $('spend-table');
+  host.innerHTML = '';
+  if (table instanceof Error) {
+    $('spend-caption').textContent = 'Not available.';
+    const note = document.createElement('p');
+    note.textContent = table.message;
+    host.append(note);
+    return;
+  }
+  if (!table.outcomes || table.outcomes.length === 0) {
+    $('spend-caption').textContent = 'There is no current-banner constellation progression to analyze.';
+    const note = document.createElement('p');
+    note.className = 'muted';
+    note.textContent = 'No current-banner target is available.';
+    host.append(note);
+    return;
+  }
+
+  const outcomesByKey = new Map(table.outcomes.map((outcome) => [`${outcome.character}|${outcome.constellation}`, outcome]));
+  const protectedGoals = [];
+  for (const row of table.rows) {
+    for (const standing of row.protected) {
+      const key = `${standing.goal.character}|${standing.goal.constellation}|${standing.goal.priority}`;
+      if (!protectedGoals.some((p) => p.key === key)) protectedGoals.push({ key, standing });
+    }
+  }
+
+  // All columns follow the roadmap's priority order, regardless of whether
+  // the column represents a current-banner milestone or future protection.
+  const columns = [];
+  for (const goal of state.planner.goals.goals) {
+    const key = `${goal.goal.character}|${goal.goal.constellation}`;
+    const outcome = outcomesByKey.get(key);
+    if (outcome) columns.push({ type: 'outcome', key, outcome });
+    const protectedGoal = protectedGoals.find((item) => `${item.standing.goal.character}|${item.standing.goal.constellation}` === key);
+    if (protectedGoal) columns.push({ type: 'protected', key: protectedGoal.key, standing: protectedGoal.standing });
+  }
+
+  $('spend-caption').textContent =
+    'See how spending more on the current banner changes your chance of reaching each milestone, and how much future protection you give up. ' +
+    `The highlighted row is the largest tested spend that keeps every constraining future goal at ${pct(table.confidence)} or higher.`;
+
+  const element = document.createElement('table');
+  const thead = element.createTHead().insertRow();
+  const spendHeader = document.createElement('th');
+  spendHeader.textContent = 'Spend';
+  thead.append(spendHeader);
+  for (const column of columns) {
+    const th = document.createElement('th');
+    th.textContent = column.type === 'outcome' ? `${column.outcome.character} ${column.outcome.label}` : goalName(column.standing.goal);
+    thead.append(th);
+  }
+
+  const body = element.createTBody();
+  let lastSafeIndex = -1;
+  table.rows.forEach((row, index) => {
+    if (row.all_protected_meet_threshold) lastSafeIndex = index;
+  });
+  table.rows.forEach((row, index) => {
+    const tr = body.insertRow();
+    if (index === lastSafeIndex) tr.className = 'boundary';
+    tr.insertCell().textContent = wishWord(row.wishes_spent);
+    for (const column of columns) {
+      const cell = tr.insertCell();
+      if (column.type === 'outcome') {
+        const result = row.outcomes.find((item) => item.outcome.character === column.outcome.character && item.outcome.constellation === column.outcome.constellation);
+        cell.textContent = result ? pct(result.probability) : '—';
+      } else {
+        const standing = row.protected.find((item) => `${item.goal.character}|${item.goal.constellation}|${item.goal.priority}` === column.key);
+        cell.textContent = standing ? pct(standing.probability) : '—';
+        if (standing) cell.className = standing.meets_threshold ? 'yes' : 'no';
+      }
+    }
+  });
+  host.append(element);
+  const provenance = document.createElement('p');
+  provenance.className = 'muted';
+  provenance.style.marginTop = '.75rem';
+  provenance.textContent = `${table.runs.toLocaleString()} simulated futures per spending level, seed ${table.seed === null ? 'random' : table.seed}.`;
+  host.append(provenance);
+}
+function renderRoadmap(view) {
+  const host = $("roadmap");
+  host.innerHTML = "";
+  const byBanner = new Map();
+  const unscheduled = [];
+  for (const goal of view.goals) {
+    if (!goal.next_banner) { unscheduled.push(goal); continue; }
+    const key = `${goal.next_banner.character}|${goal.next_banner.version}|${goal.next_banner.phase}`;
+    if (!byBanner.has(key)) byBanner.set(key, { banner: goal.next_banner, goals: [] });
+    byBanner.get(key).goals.push(goal);
+  }
+  for (const { banner, goals } of byBanner.values()) {
+    const stop = document.createElement("div");
+    stop.className = "stop";
+    const isNow =
+      (view.current_banner &&
+        banner.character === view.current_banner.character &&
+        banner.version === view.current_banner.version &&
+        banner.phase === view.current_banner.phase) ||
+      (view.current_banner === null &&
+        (view.available_banners || []).some((current) =>
+          banner.character === current.character &&
+          banner.version === current.version &&
+          banner.phase === current.phase
+        ));
+    if (isNow) stop.classList.add("now");
+
+    const when = document.createElement("div");
+    when.className = "stop-when";
+    when.textContent = isNow ? `${banner.version} now` : banner.version;
+
+    const what = document.createElement("div");
+    const title = document.createElement("div");
+    title.textContent = banner.character;
+    title.style.color = "var(--chalk)";
+    what.append(title);
+    for (const goal of goals) {
+      const chip = document.createElement("span");
+      chip.className = `chip ${goal.state}`;
+      chip.textContent = `${goalName(goal.goal)}, priority ${goal.goal.priority}`;
+      if (goal.state === "blocked" && goal.blocked_by) {
+        chip.title = `Behind ${goalName(goal.blocked_by)}`;
+      }
+      if (goal.actionable) chip.style.fontWeight = "600";
+      what.append(chip);
+    }
+    stop.append(when, what);
+    host.append(stop);
+  }
+  if (unscheduled.length > 0) {    const note = document.createElement("p");
+    note.className = "muted";
+    note.textContent =
+      "No banner scheduled yet: " + unscheduled.map((g) => goalName(g.goal)).join(", ") + ".";
+    host.append(note);
+  }
+}
+
+/* ---------- account editing ---------- */
+
+function renderOwnedCharacters() {
+  const host = $("owned-characters");
+  host.innerHTML = "";
+  const characters = Object.entries(state.account.account.owned_characters || {})
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (characters.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "No characters recorded yet.";
+    host.append(empty);
+    return;
+  }
+  for (const [character, constellation] of characters) {
+    const card = document.createElement("div");
+    card.className = "owned-card";
+    const name = document.createElement("strong");
+    name.textContent = character;
+    const level = document.createElement("span");
+    level.textContent = `C${constellation}`;
+    card.append(name, level);
+    host.append(card);
+  }
+}
+
+function fillAccountForm() {
+  const account = state.account.account;
+  const settings = state.account.settings;
+  $("f-wishes").value = account.wishes;
+  $("f-pity").value = account.current_pity;
+  $("f-guarantee").checked = account.character_guarantee;
+  $("f-version").value = settings.current_version;
+  $("f-phase").value = settings.current_phase;
+  $("f-confidence").value = settings.confidence;
+  $("f-scenario").value = settings.income_scenario;
+  $("save-note").textContent = "";
+}
+
+async function saveAccount() {
+  clearError();
+  $("save").disabled = true;
+  $("save-note").textContent = "Saving";
+  try {
+    state.account = await api(`/accounts/${state.account.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: state.account.label,
+        account: {
+          current_pity: Number($("f-pity").value),
+          character_guarantee: $("f-guarantee").checked,
+          wishes: Number($("f-wishes").value),
+          owned_characters: state.account.account.owned_characters,
+        },
+        settings: {
+          current_version: $("f-version").value.trim(),
+          current_phase: Number($("f-phase").value),
+          confidence: Number($("f-confidence").value),
+          income_scenario: $("f-scenario").value,
+          mechanics: state.account.settings.mechanics,
+        },
+      }),
+    });
+    state.planner = null;
+    fillAccountForm();
+    $("save-note").textContent = "Saved. Run the planner again.";
+    $("confidence").value = state.account.settings.confidence;
+    $("hero-wishes").textContent = state.account.account.wishes;
+    $("hero-pity").textContent = state.account.account.current_pity;
+    $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
+    resetVerdict();
+  } catch (error) {
+    $("save-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("save").disabled = false;
+  }
+}
+
+
+
+function goalKey(goal) {
+  return goal.character + "|" + goal.constellation;
+}
+
+function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
+  if (!state.planner || !refresh.evidence.length) return false;
+
+  const evidenceByGoal = new Map(
+    refresh.evidence.map((item) => [goalKey(item.goal), item])
+  );
+  const probabilities = new Map();
+  for (const evidence of refresh.evidence) {
+    for (const item of evidence.goal_probabilities) {
+      probabilities.set(goalKey(item.goal), item.probability);
+    }
+  }
+
+  const strategy = state.planner.strategy;
+  if (strategy) {
+    strategy.starting_wishes = refresh.account_wishes;
+    strategy.steps = strategy.steps.filter((step) => {
+      const evaluation = state.planner.goals?.goals?.find(
+        (item) => goalKey(item.goal) === goalKey(step.goal)
+      );
+      return !(step.action === "get" && evaluation?.state === "satisfied");
+    });
+
+    for (const step of strategy.steps) {
+      const evidence = evidenceByGoal.get(goalKey(step.goal));
+      if (!evidence) continue;
+      step.outcome_probability =
+        evidence.joint_probability ?? evidence.probability;
+      if (evidence.safe_spend_remaining !== null) {
+        step.safe_spend = evidence.safe_spend_remaining;
+        step.reserve_wishes = refresh.account_wishes - evidence.safe_spend_remaining;
+        step.protected_starting_wishes = evidence.protected_starting_wishes;
+        step.protected_total_wishes = evidence.protected_total_wishes;
+      }
+      if (evidence.protected_probability !== null) {
+        step.protected_probability = evidence.protected_probability;
+      }
+    }
+
+    const reserveStep = strategy.steps.find(
+      (step) => step.action === "pursue_until_reserve"
+    );
+    if (reserveStep) {
+      strategy.reserve_wishes = reserveStep.reserve_wishes;
+      strategy.reserve_probability = reserveStep.protected_probability;
+    }
+  }
+
+  const rec = state.planner.recommendation;
+  if (rec) {
+    for (const standing of rec.protected) {
+      const probability = probabilities.get(goalKey(standing.goal));
+      if (probability !== undefined) standing.probability = probability;
+    }
+    for (const rejected of rec.rejected) {
+      for (const standing of rejected.shortfalls) {
+        const probability = probabilities.get(goalKey(standing.goal));
+        if (probability !== undefined) standing.probability = probability;
+      }
+    }
+
+    const outcome = rec.outcome;
+    if (outcome) {
+      const evidence = evidenceByGoal.get(goalKey(outcome));
+      if (evidence && outcome.character === character) {
+        rec.outcome_probability =
+          evidence.joint_probability ?? evidence.probability;
+        rec.budget = Math.max(0, rec.budget - wishesUsed);
+        if (rec.plan) {
+          for (const entry of rec.plan.entries) {
+            if (
+              entry.banner.character === character &&
+              entry.banner.version === rec.banner.version &&
+              entry.banner.phase === rec.banner.phase
+            ) {
+              entry.budget = Math.max(0, entry.budget - wishesUsed);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  renderRecommendation(rec, strategy);
+  $("decision-label").className = "decision-label";
+  $("decision-label").textContent = "Strategy · Updated";
+  $("metric-budget").textContent = "—";
+  $("verdict-detail").textContent =
+    "Probabilities were updated by conditioning the retained simulations on the pull you just recorded. Run Planner for a fresh recommendation.";
+  $("provenance").textContent =
+    "Updated from retained simulation evidence; no new Monte Carlo histories were sampled.";
+  return true;
+}
+
+async function refreshPlannerAfterPull(character, outcome, wishesUsed) {
+  const params = new URLSearchParams({
+    character,
+    outcome,
+    wishes_used: String(wishesUsed),
+  });
+  const refresh = await api(
+    "/accounts/" + state.account.id + "/planner/cached-refresh?" + params.toString()
+  );
+  const updated = applyCachedPlannerRefresh(refresh, character, wishesUsed);
+  const safe = await api(
+    "/accounts/" + state.account.id + "/planner/safe-spend" +
+      query() +
+      (query() ? "&" : "?") +
+      "character=" + encodeURIComponent(character)
+  );
+  renderSafeSpend(safe);
+  return updated;
+}
+
+
+  const label = outcome === "featured" ? `Pulled ${character}` : "Lost 50/50";
+  const value = window.prompt(`${label}. How many wishes did you use?`, "0");
+  if (value === null) return;
+  const wishesUsed = Number(value);
+  if (!Number.isInteger(wishesUsed) || wishesUsed < 1) {
+    showError("Enter a positive whole number of wishes.");
+    return;
+  }
+  clearError();
+  try {
+    state.account = await api(`/accounts/${state.account.id}/pull-result`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome, wishes_used: wishesUsed, character: outcome === "featured" ? character : null }),
+    });
+    state.planner = null;
+    let refreshStage = "account form";
+    try {
+      fillAccountForm();
+      refreshStage = "owned characters";
+      renderOwnedCharacters();
+      refreshStage = "confidence";
+      $("confidence").value = state.account.settings.confidence;
+      refreshStage = "hero wishes";
+      $("hero-wishes").textContent = state.account.account.wishes;
+      refreshStage = "hero pity";
+      $("hero-pity").textContent = state.account.account.current_pity;
+      refreshStage = "banner meta";
+      $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
+      refreshStage = "verdict";
+      resetVerdict();
+    } catch (error) {
+      console.error("Pull outcome UI refresh failed", { stage: refreshStage, error });
+      showError("Account updated, but UI refresh failed at " + refreshStage + ": " + error.message);
+      return;
+    }
+    try {
+      await loadGoals();
+    } catch (error) {
+      console.error("Pull outcome refresh failed while loading goals", error);
+      showError("Account updated, but roadmap refresh failed: " + error.message);
+      return;
+    }
+
+    // Recording a pull changes account state, but does not require an
+    // expensive planner recalculation. The user can run the planner when
+    // they want a fresh recommendation for the new state.
+    resetVerdict();
+    showError("Account updated. Run the planner to recalculate your strategy.");
+  } catch (error) {
+    console.error("Pull outcome update failed", error);
+    showError(error.message);
+  }
+}
+
+/* ---------- running the optimizer ---------- */
+
+async function run() {
+  clearError();
+  console.log("Run Planner button clicked");
+  try {
+    const wishes = state.account.account.wishes;
+    const extra = {};
+    if (!$("exact-scan").checked && wishes > 8) {
+      const step = Math.ceil(wishes / 8);
+      const caps = [];
+      for (let cap = wishes; cap > 0; cap -= step) caps.push(cap);
+      caps.push(0);
+      extra.budgets = caps;
+    }
+    state.runOptions = extra;
+    await loadPlanner("Run Planner button");
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    // loadPlanner owns the planner button state while a run is active.
+  }
+}
+
+$("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
+$("auth-form").addEventListener("submit", submitAuth);
+$("auth-switch").addEventListener("click", () => {
+  state.authMode = state.authMode === "login" ? "register" : "login";
+  clearError();
+  renderAuth();
+});
+$("logout").addEventListener("click", logout);
+$("save").addEventListener("click", saveAccount);
+$("run").addEventListener("click", run);
+$("confidence").addEventListener("change", () => {
+  resetVerdict();
+  console.log("Confidence changed — planner results cleared; run the planner to recalculate");
+});
+
+renderAuth();
+loadCurrentUser();
+</script>
+</body>
+</htmlasync function recordPullOutcome(character, outcome) {
+  const label = outcome === "featured" ? "Pulled " + character : "Lost 50/50";
+  const value = window.prompt(label + ". How many wishes did you use?", "0");
+  if (value === null) return;
+  const wishesUsed = Number(value);
+  if (!Number.isInteger(wishesUsed) || wishesUsed < 1) {
+    showError("Enter a positive whole number of wishes.");
+    return;
+  }
+  clearError();
+  try {
+    state.account = await api("/accounts/" + state.account.id + "/pull-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        outcome,
+        wishes_used: wishesUsed,
+        character: outcome === "featured" ? character : null
+      }),
+    });
+
+    try {
+      fillAccountForm();
+      renderOwnedCharacters();
+      $("confidence").value = state.account.settings.confidence;
+      $("hero-wishes").textContent = state.account.account.wishes;
+      $("hero-pity").textContent = state.account.account.current_pity;
+      $("banner-meta").textContent =
+        state.account.settings.current_version + " · Phase " +
+        state.account.settings.current_phase;
+      await loadGoals();
+    } catch (error) {
+      console.error("Pull outcome UI refresh failed", error);
+      showError("Account updated, but UI refresh failed: " + error.message);
+      return;
+    }
+
+    let updated = false;
+    try {
+      updated = await refreshPlannerAfterPull(character, outcome, wishesUsed);
+    } catch (error) {
+      console.error("Cached planner refresh failed", error);
+    }
+
+    if (!updated) {
+      state.planner = null;
+      resetVerdict();
+      showError(
+        "Account updated. The recorded outcome was not represented in the retained simulations; " +
+        "run the planner to generate fresh evidence."
+      );
+    } else {
+      clearError();
+    }
+  } catch (error) {
+    console.error("Pull outcome update failed", error);
+    showError(error.message);
+  }
+}
+/* ---------- running the optimizer ---------- */
+
+async function run() {
+  clearError();
+  console.log("Run Planner button clicked");
+  try {
+    const wishes = state.account.account.wishes;
+    const extra = {};
+    if (!$("exact-scan").checked && wishes > 8) {
+      const step = Math.ceil(wishes / 8);
+      const caps = [];
+      for (let cap = wishes; cap > 0; cap -= step) caps.push(cap);
+      caps.push(0);
+      extra.budgets = caps;
+    }
+    state.runOptions = extra;
+    await loadPlanner("Run Planner button");
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    // loadPlanner owns the planner button state while a run is active.
+  }
+}
+
+$("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
+$("auth-form").addEventListener("submit", submitAuth);
+$("auth-switch").addEventListener("click", () => {
+  state.authMode = state.authMode === "login" ? "register" : "login";
+  clearError();
+  renderAuth();
+});
+$("logout").addEventListener("click", logout);
+$("save").addEventListener("click", saveAccount);
+$("run").addEventListener("click", run);
+$("confidence").addEventListener("change", () => {
+  resetVerdict();
+  console.log("Confidence changed — planner results cleared; run the planner to recalculate");
+});
+
+renderAuth();
+loadCurrentUser();
+</script>
+</body>
+</html>

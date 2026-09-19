@@ -149,6 +149,32 @@ def record_pull_result(
     if payload.wishes_used > record.account.wishes:
         raise HTTPException(status_code=400, detail="wishes_used cannot exceed the account's wishes")
 
+    # --- Impossible-state guards (§4.1, §11 transition rules) --------------
+    # These check the account's *current* state against the outcome being
+    # recorded, not the wish math (the exact wish count that triggers a
+    # 5-star is legitimately stochastic and out of scope here).
+    if payload.outcome == "lost_50_50" and record.account.character_guarantee:
+        # A guaranteed 5-star is always featured (§11): there is no 50/50
+        # left to lose. This can only be a UI double-submit or a stale
+        # client state, so reject it rather than silently corrupting pity/
+        # guarantee/Capturing Radiance.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "cannot lose the 50/50: the account's next 5-star is "
+                "already guaranteed to be featured"
+            ),
+        )
+    if (
+        payload.outcome == "featured"
+        and payload.wishes_used < 1
+    ):
+        # Already enforced by PullResultModel's ge=1, but kept explicit
+        # here as the domain-level statement of the same invariant in case
+        # the schema constraint is ever loosened independently.
+        raise HTTPException(status_code=400, detail="wishes_used must be >= 1")
+    # -------------------------------------------------------------------
+
     account = record.account
     wishes = account.wishes - payload.wishes_used
 
