@@ -16,6 +16,7 @@ wishes are reflected in the new frontier.
 """
 
 from dataclasses import dataclass, replace
+from typing import Callable
 
 from domain import Banner, Goal
 from optimizer.protection import constraining_goals, protected_groups
@@ -288,6 +289,7 @@ def _safe_spend(
     *,
     runs: int,
     seed: int | None,
+    simulation_sink: Callable[[Goal, SimulationResult], None] | None = None,
 ) -> tuple[int, SimulationResult, tuple[Goal, ...]]:
     """Calculate the current spend ceiling from the protected reserve."""
     constraining = constraining_goals(
@@ -352,6 +354,8 @@ def _safe_spend(
         runs=runs,
         seed=seed,
     )
+    if simulation_sink is not None:
+        simulation_sink(goal, result)
     return spend, result, protected_goals
 
 def build_strategy(
@@ -359,6 +363,7 @@ def build_strategy(
     *,
     runs: int = 2_000,
     seed: int | None = 0,
+    simulation_sink: Callable[[Goal, SimulationResult], None] | None = None,
 ) -> PullStrategy:
     """Build the current multi-step strategy and spend frontiers."""
     banners = available_banners(context)
@@ -398,7 +403,12 @@ def build_strategy(
     for evaluation in progression:
         banner = next(banner for banner in banners if banner.character == evaluation.goal.character)
         spend, result, protected_goals = _safe_spend(
-            context, evaluation.goal, banner, runs=runs, seed=seed
+            context,
+            evaluation.goal,
+            banner,
+            runs=runs,
+            seed=seed,
+            simulation_sink=simulation_sink,
         )
         protected_probability = None
         if protected_goals:
