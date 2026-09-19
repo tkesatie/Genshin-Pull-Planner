@@ -1272,6 +1272,17 @@ function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
   return true;
 }
 
+function setPullRefreshState(active) {
+  const label = $("decision-label");
+  if (active) {
+    label.className = "decision-label";
+    label.textContent = "Strategy · Updating…";
+  }
+  document.querySelectorAll("#strategy .strategy-outcomes button").forEach((button) => {
+    button.disabled = active;
+  });
+}
+
 async function refreshPlannerAfterPull(character, outcome, wishesUsed) {
   const previousRecommendation = state.planner && state.planner.recommendation;
   const params = new URLSearchParams({
@@ -1336,6 +1347,7 @@ async function recordPullOutcome(character, outcome) {
     }
 
     let updated = false;
+    setPullRefreshState(true);
     try {
       updated = await refreshPlannerAfterPull(character, outcome, wishesUsed);
     } catch (error) {
@@ -1353,7 +1365,9 @@ async function recordPullOutcome(character, outcome) {
     } else {
       clearError();
     }
+    setPullRefreshState(false);
   } catch (error) {
+    setPullRefreshState(false);
     console.error("Pull outcome update failed", error);
     showError(error.message);
   }
