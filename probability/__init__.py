@@ -33,13 +33,20 @@ Phase 2 invariants:
     Radiance state) within sampling error.
 """
 
-from probability.character import cumulative_probability, wishes_for_confidence
+from probability.character import (
+    cumulative_probability,
+    multi_copy_cumulative_probability,
+    multi_copy_wishes_for_confidence,
+    wishes_for_confidence,
+)
 from probability.rates import capturing_radiance_rate, featured_rate_at, pull_rate
 
 __all__ = [
     "capturing_radiance_rate",
     "cumulative_probability",
     "featured_rate_at",
+    "multi_copy_cumulative_probability",
+    "multi_copy_wishes_for_confidence",
     "pull_rate",
     "wishes_for_confidence",
 ]
