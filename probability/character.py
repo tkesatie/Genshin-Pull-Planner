@@ -160,6 +160,102 @@ def cumulative_probability(
     return curve
 
 
+
+def multi_copy_cumulative_probability(
+    wishes: int,
+    copies: int,
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int = 0,
+) -> np.ndarray:
+    """Exact probability of obtaining at least the requested featured copies."""
+    if wishes < 0:
+        raise ValueError(f"wishes must be non-negative, got {wishes}")
+    if copies < 0:
+        raise ValueError(f"copies must be non-negative, got {copies}")
+    if copies == 0:
+        return np.ones(wishes + 1)
+    if not 0 <= starting_pity < mechanics.hard_pity:
+        raise ValueError(
+            f"starting_pity must satisfy 0 <= starting_pity < "
+            f"{mechanics.hard_pity}, got {starting_pity}"
+        )
+    _validate_radiance(starting_radiance)
+
+    moves = _transitions(mechanics)
+    # state[c, p, r, g]: survival mass with c completed copies,
+    # pity p, Radiance r, and guarantee g.
+    state = np.zeros((copies, mechanics.hard_pity, 4, 2))
+    state[0, starting_pity, starting_radiance, int(guaranteed)] = 1.0
+    curve = np.empty(wishes + 1)
+    curve[0] = 0.0
+
+    for wish in range(1, wishes + 1):
+        new_state = np.zeros_like(state)
+        new_state[:, 1:, :, :] += (
+            state[:, :-1, :, :] * moves.survive[None, :, None, None]
+        )
+
+        for copy_count in range(copies):
+            for radiance in range(4):
+                rate = moves.rates
+                guaranteed_mass = state[copy_count, :, radiance, 1] * rate
+                if copy_count + 1 < copies:
+                    new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
+
+                nonguaranteed = state[copy_count, :, radiance, 0]
+                featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
+                if copy_count + 1 < copies:
+                    next_radiance = 0 if radiance <= 1 else 1
+                    new_state[copy_count + 1, 0, next_radiance, 0] += featured_mass.sum()
+
+                lost_mass = nonguaranteed * rate * (1.0 - moves.featured[:, radiance])
+                next_radiance = min(3, radiance + 1)
+                new_state[copy_count, 0, next_radiance, 1] += lost_mass.sum()
+
+        state = new_state
+        curve[wish] = 1.0 - state.sum()
+
+    return curve
+
+
+def multi_copy_wishes_for_confidence(
+    confidence: float,
+    copies: int,
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int = 0,
+) -> int:
+    """Smallest wish count reaching the requested multi-copy confidence."""
+    if not 0.0 < confidence <= 1.0:
+        raise ValueError(f"confidence must be in (0, 1], got {confidence}")
+    if copies < 0:
+        raise ValueError(f"copies must be non-negative, got {copies}")
+    if copies == 0:
+        return 0
+    if not 0 <= starting_pity < mechanics.hard_pity:
+        raise ValueError(
+            f"starting_pity must satisfy 0 <= starting_pity < "
+            f"{mechanics.hard_pity}, got {starting_pity}"
+        )
+    _validate_radiance(starting_radiance)
+
+    horizon = 2 * mechanics.hard_pity * copies
+    curve = multi_copy_cumulative_probability(
+        horizon, copies, starting_pity, guaranteed, mechanics, starting_radiance
+    )
+
+    best = float(curve.max())
+    if best < confidence:
+        raise ValueError(
+            f"confidence {confidence} is unattainable for {copies} copies; "
+            f"the curve reaches at most {best:.6f} within {horizon} wishes"
+        )
+
+    return int(np.searchsorted(curve, confidence, side="left"))
+
 def wishes_for_confidence(
     confidence: float,
     starting_pity: int,
