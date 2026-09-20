@@ -2,8 +2,8 @@
 
 The engine answers isolated probability questions and knows nothing about
 roadmaps (§10). These responses therefore echo the exact state the answer
-was computed from - starting pity, guarantee, mechanics - so a number is
-never separated from the question it answers.
+was computed from - starting pity, guarantee, Capturing Radiance counter,
+mechanics - so a number is never separated from the question it answers.
 """
 
 from pydantic import BaseModel, Field
@@ -17,6 +17,13 @@ class CharacterProbabilityView(BaseModel):
     wishes: int = Field(..., description="Wishes looked ahead.")
     starting_pity: int
     guaranteed: bool
+    starting_radiance: int = Field(
+        ...,
+        description=(
+            "Capturing Radiance loss-streak counter (0-3) this probability "
+            "was computed from."
+        ),
+    )
     probability: float = Field(
         ..., description="P(at least one featured copy within `wishes` wishes)."
     )
@@ -36,6 +43,13 @@ class WishesNeededView(BaseModel):
     confidence: float
     starting_pity: int
     guaranteed: bool
+    starting_radiance: int = Field(
+        ...,
+        description=(
+            "Capturing Radiance loss-streak counter (0-3) this result was "
+            "computed from."
+        ),
+    )
     wishes_needed: int = Field(
         ...,
         description=(

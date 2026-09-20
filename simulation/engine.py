@@ -20,8 +20,8 @@ The layers this package keeps separate:
 
     Phase 2       "What is the probability?"                   probability/
     Phase 4       "What does one possible future look like?"   this module
-    Aggregation   "Across N futures, how often?"               simulation.outcomes
-    Phase 5       "Which strategy should we run?"              not here (§13)
+    Aggregation   "Across N futures, how often?"                simulation.outcomes
+    Phase 5       "Which strategy should we run?"               not here (§13)
 
 Account state transitions (§4, §11): the simulator never mutates domain
 state. Every 5-star rebuilds the frozen Account:
@@ -32,7 +32,12 @@ state. Every 5-star rebuilds the frozen Account:
     no 5-star     -> pity +1, guarantee unchanged
 
 All per-pull rates come from `probability.pull_rate`; no rate mathematics
-lives here (§17).
+lives here (§17). Capturing Radiance's win-probability schedule and its
+loss-streak-counter transition rule are likewise single-sourced from
+`probability.capturing_radiance_rate` and
+`domain.next_capturing_radiance_counter` respectively, so this module, the
+Phase 2 analytic engine, and the account-update API cannot drift apart on
+the mechanic (see those functions' docstrings for the calibration).
 
 Multi-copy targets (§10.4): the plan's `target_constellation` is a desired
 resulting constellation, never a copy count (§4.2). `copies_needed` is
@@ -62,10 +67,17 @@ explicitly so it never reads as an accident:
 import numpy as np
 from dataclasses import replace
 
-from domain import Account, Banner, Goal, WishMechanics, copies_needed_for
+from domain import (
+    Account,
+    Banner,
+    Goal,
+    WishMechanics,
+    copies_needed_for,
+    next_capturing_radiance_counter,
+)
 from planner.banners import available_banners, current_banner
 from planner.context import PlannerContext
-from probability import pull_rate
+from probability import capturing_radiance_rate, pull_rate
 from simulation.outcomes import aggregate_runs
 from simulation.results import BannerResult, GoalOutcome, RunResult, SimulationResult
 from simulation.strategy import SpendPlan
@@ -108,6 +120,12 @@ def _pull_toward_target(
     C0, §4.2) and leaves the account at pity 0 with the guarantee off; a
     lost 50/50 leaves it at pity 0 with the guarantee on (§11).
 
+    Capturing Radiance's win probability at each state comes from
+    `probability.capturing_radiance_rate`, and the counter's transition
+    after each pull comes from `domain.next_capturing_radiance_counter` -
+    both shared with the Phase 2 analytic engine and the account-update API
+    so the three cannot silently disagree on the mechanic.
+
     Returns:
         (wishes_spent, copies_obtained, copy_wishes, account_after) where
         copy_wishes holds the 1-based within-banner wish index of each
@@ -128,31 +146,24 @@ def _pull_toward_target(
         spent += 1
         if rng.random() < pull_rate(pity, mechanics):
             was_guaranteed = guarantee
-            if guarantee:
-                featured = True
-            elif radiance >= 3:
-                featured = True
-            elif radiance == 2:
-                featured = rng.random() < (6.0 / 11.0)
-            else:
-                featured = rng.random() < mechanics.featured_rate
+            featured = (
+                True
+                if was_guaranteed
+                else rng.random() < capturing_radiance_rate(radiance, mechanics)
+            )
 
             five_star_outcomes.append((spent, featured))
+            radiance = next_capturing_radiance_counter(
+                radiance, was_guaranteed=was_guaranteed, featured=featured
+            )
             if featured:
                 obtained += 1
                 copy_wishes.append(spent)
                 owned += 1
                 ownership = ownership.with_constellation(character, owned)
                 pity, guarantee = 0, False
-                if was_guaranteed:
-                    radiance = radiance
-                elif radiance >= 3:
-                    radiance = 1
-                else:
-                    radiance = max(0, radiance - 1)
             else:
                 pity, guarantee = 0, True
-                radiance = min(3, radiance + 1)
         else:
             pity += 1
 
@@ -317,4 +328,3 @@ def simulate(
     rng = np.random.default_rng(seed)
     histories = [_run_history(context, plan, rng) for _ in range(runs)]
     return aggregate_runs(histories, plan, seed, joint_goals=joint_goals)
-

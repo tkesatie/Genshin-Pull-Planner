@@ -6,9 +6,10 @@
 
 The engine answers isolated questions and is independent of roadmap logic
 (§10). These endpoints hang off an account only because the account
-supplies the *default* starting state: pity, guarantee and mechanics are
-all overridable per request, so the engine can still be asked "what if I
-were at pity 70 with a guarantee?" without touching stored state.
+supplies the *default* starting state: pity, guarantee, Capturing Radiance
+counter and mechanics are all overridable per request, so the engine can
+still be asked "what if I were at pity 70 with a guarantee?" without
+touching stored state.
 
 `/probability/weapon` answers 501. Weapon mechanics are deliberately absent
 from the domain until verified independently (§17), and weapon pulling is
@@ -38,9 +39,10 @@ MAX_LOOKAHEAD_WISHES = 10_000
     response_model=CharacterProbabilityView,
     summary="Single-copy character probability",
     description=(
-        "P(at least one featured copy within N wishes) from a pity/guarantee "
-        "state (§10.2). Defaults to the account's current state; pass "
-        "`starting_pity` and `guaranteed` to ask about any other state."
+        "P(at least one featured copy within N wishes) from a pity/guarantee/"
+        "Capturing Radiance state (§10.2). Defaults to the account's current "
+        "state; pass `starting_pity`, `guaranteed` and/or `starting_radiance` "
+        "to ask about any other state."
     ),
 )
 def character_probability(
@@ -50,6 +52,15 @@ def character_probability(
     ),
     guaranteed: bool | None = Query(
         None, description="Defaults to the account's guarantee state."
+    ),
+    starting_radiance: int | None = Query(
+        None,
+        description=(
+            "Capturing Radiance loss-streak counter (0-3). Defaults to the "
+            "account's current counter; omitting this for an account that "
+            "currently carries a nonzero counter understates the true "
+            "probability."
+        ),
     ),
     include_curve: bool = Query(
         True,
@@ -75,11 +86,17 @@ def character_probability(
     guarantee = (
         record.account.character_guarantee if guaranteed is None else guaranteed
     )
-    curve = cumulative_probability(wishes, pity, guarantee, mechanics)
+    radiance = (
+        record.account.capturing_radiance_counter
+        if starting_radiance is None
+        else starting_radiance
+    )
+    curve = cumulative_probability(wishes, pity, guarantee, mechanics, radiance)
     return CharacterProbabilityView(
         wishes=wishes,
         starting_pity=pity,
         guaranteed=guarantee,
+        starting_radiance=radiance,
         probability=float(curve[wishes]),
         curve=[float(value) for value in curve] if include_curve else None,
         mechanics=MechanicsModel.from_domain(mechanics),
@@ -92,8 +109,8 @@ def character_probability(
     summary="Wishes needed for a confidence",
     description=(
         "Smallest wish count reaching the requested confidence from a "
-        "pity/guarantee state (§10.3). Defaults to the account's current "
-        "state and its stored confidence threshold."
+        "pity/guarantee/Capturing Radiance state (§10.3). Defaults to the "
+        "account's current state and its stored confidence threshold."
     ),
 )
 def wishes_needed(
@@ -105,6 +122,13 @@ def wishes_needed(
     ),
     guaranteed: bool | None = Query(
         None, description="Defaults to the account's guarantee state."
+    ),
+    starting_radiance: int | None = Query(
+        None,
+        description=(
+            "Capturing Radiance loss-streak counter (0-3). Defaults to the "
+            "account's current counter."
+        ),
     ),
     record: AccountRecord = Depends(get_record),
 ) -> WishesNeededView:
@@ -118,12 +142,18 @@ def wishes_needed(
     guarantee = (
         record.account.character_guarantee if guaranteed is None else guaranteed
     )
-    needed = wishes_for_confidence(threshold, pity, guarantee, mechanics)
-    curve = cumulative_probability(needed, pity, guarantee, mechanics)
+    radiance = (
+        record.account.capturing_radiance_counter
+        if starting_radiance is None
+        else starting_radiance
+    )
+    needed = wishes_for_confidence(threshold, pity, guarantee, mechanics, radiance)
+    curve = cumulative_probability(needed, pity, guarantee, mechanics, radiance)
     return WishesNeededView(
         confidence=threshold,
         starting_pity=pity,
         guaranteed=guarantee,
+        starting_radiance=radiance,
         wishes_needed=needed,
         probability_at_wishes_needed=float(curve[needed]),
         mechanics=MechanicsModel.from_domain(mechanics),

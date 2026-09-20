@@ -109,3 +109,58 @@ class Account:
     def owns(self, character: str) -> bool:
         """True if the account owns the character at any constellation."""
         return self.owned_characters.owns(character)
+
+
+def next_capturing_radiance_counter(
+    radiance: int, *, was_guaranteed: bool, featured: bool
+) -> int:
+    """Capturing Radiance counter after one 5-star pull.
+
+    Single source of truth for this transition: `simulation.engine` and the
+    account-update API both call this, so a live account's recorded state
+    can never drift from what the simulator would produce for the same
+    event. (This fixes a real bug: the account-update endpoint used to
+    reimplement this transition inline without the radiance-3 special
+    case, landing on the wrong counter value after a Capturing-Radiance-
+    guaranteed win.)
+
+    Paired with `probability.rates.capturing_radiance_rate`, which supplies
+    the win probability at each state, the schedule is:
+
+        radiance 0 or 1  ->  50% (base rate) chance of winning
+        radiance 2       ->  6/11 (~54.5%) chance of winning
+        radiance 3       ->  100% (guaranteed) chance of winning
+
+    Transition rules:
+
+    * a guaranteed pull never touches the counter - guarantee and
+      Capturing Radiance do not interact (per the mechanic's official
+      description: Capturing Radiance never applies while a guarantee is
+      already active, and using the guarantee never resets or advances the
+      counter);
+    * a non-guaranteed loss increments the streak, capped at 3 - radiance 3
+      always wins, so no more than 3 consecutive losses are possible;
+    * a non-guaranteed win from radiance 0 or 1 fully resets the streak to
+      0;
+    * a non-guaranteed win from radiance 2 or 3 (a boosted or
+      guaranteed-by-radiance win) leaves a residual mark at 1 rather than a
+      full reset to 0.
+
+    This schedule is not an arbitrary guess: solving the 4-state Markov
+    chain formed by these transitions together with
+    `capturing_radiance_rate`'s win probabilities gives a long-run average
+    win rate across all states of exactly 0.55, matching the officially
+    cited "55% overall" aggregate figure, while radiance 3 being absorbing
+    on a win reproduces the documented "guaranteed by the 4th 5-star after
+    3 consecutive losses" behavior.
+
+    Raises:
+        ValueError: if `radiance` is outside [0, 3].
+    """
+    if not 0 <= radiance <= 3:
+        raise ValueError(f"radiance must be in [0, 3], got {radiance}")
+    if was_guaranteed:
+        return radiance
+    if featured:
+        return 1 if radiance >= 2 else 0
+    return min(3, radiance + 1)

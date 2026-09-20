@@ -9,7 +9,12 @@ All types are plain frozen dataclasses holding simple data, so serialization
 can be added later wherever it is actually needed without reshaping them.
 """
 
-from domain.account import NOT_OWNED, Account, Ownership
+from domain.account import (
+    NOT_OWNED,
+    Account,
+    Ownership,
+    next_capturing_radiance_counter,
+)
 from domain.banners import Banner, sorted_chronologically
 from domain.goals import Goal, GoalStatus, copies_needed_for, goal_status, goal_statuses
 from domain.income import (
@@ -43,6 +48,7 @@ __all__ = [
     "copies_needed_for",
     "goal_status",
     "goal_statuses",
+    "next_capturing_radiance_counter",
     "parse_version",
     "sort_by_rank",
     "sorted_chronologically",

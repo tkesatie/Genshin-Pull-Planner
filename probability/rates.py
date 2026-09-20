@@ -10,6 +10,13 @@ made since the last 5-star. The *upcoming* wish is therefore pull
 
 from domain.mechanics import WishMechanics
 
+# The win probability at Capturing Radiance counter 2 (see
+# capturing_radiance_rate). Not an arbitrary guess: calibrated so the 4-state
+# Markov chain formed with domain.account.next_capturing_radiance_counter's
+# transitions has a long-run average win rate of exactly 0.55, matching the
+# officially cited "55% overall" aggregate figure for the mechanic.
+CAPTURING_RADIANCE_RATE_AT_2 = 6.0 / 11.0
+
 
 def _validate_pity(pity: int, mechanics: WishMechanics) -> None:
     """Pity is 0-based and a 5-star resets it, so pity < hard_pity always.
@@ -60,8 +67,10 @@ def featured_rate_at(
     """Probability that the next *5-star* is the featured character (§10.1).
 
     This is conditional on a 5-star occurring - it is not the probability
-    that the next wish is the featured character. That distinction matters
-    once the planner composes these rates:
+    that the next wish is the featured character. This variant does not
+    account for Capturing Radiance (see `capturing_radiance_rate` for a
+    radiance-aware version); it answers the simpler pre-Capturing-Radiance
+    question:
 
         guarantee=True   ->  1.0   (the guarantee forces the featured unit)
         guarantee=False  ->  mechanics.featured_rate (0.5 = the "50/50")
@@ -73,3 +82,34 @@ def featured_rate_at(
     if guarantee:
         return 1.0
     return mechanics.featured_rate
+
+
+def capturing_radiance_rate(radiance: int, mechanics: WishMechanics) -> float:
+    """P(the next non-guaranteed 5-star is featured), Capturing Radiance-aware.
+
+    `radiance` is the Capturing Radiance loss-streak counter (0-3; see
+    `domain.account.Account.capturing_radiance_counter` and
+    `domain.account.next_capturing_radiance_counter`). This is the
+    radiance-aware counterpart to `featured_rate_at`'s guarantee-only
+    question, and should be used instead of it whenever Capturing Radiance
+    applies - i.e. whenever the pull is not already guaranteed.
+
+        radiance 0 or 1  ->  mechanics.featured_rate (the base 50/50)
+        radiance 2       ->  6/11 (~54.5%)
+        radiance 3       ->  1.0 (guaranteed)
+
+    Single-sourced here so `simulation.engine` and `probability.character`
+    cannot drift apart on the schedule (they previously each hardcoded
+    these thresholds independently). See `CAPTURING_RADIANCE_RATE_AT_2` for
+    where the 6/11 figure comes from.
+
+    Raises:
+        ValueError: if `radiance` is outside [0, 3].
+    """
+    if not 0 <= radiance <= 3:
+        raise ValueError(f"radiance must be in [0, 3], got {radiance}")
+    if radiance < 2:
+        return mechanics.featured_rate
+    if radiance == 2:
+        return CAPTURING_RADIANCE_RATE_AT_2
+    return 1.0

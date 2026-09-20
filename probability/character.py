@@ -1,15 +1,33 @@
+"""Single-copy character probability (Design Document §10.2, §10.3).
+
+Exact dynamic programming over the `(pity, guarantee, radiance)` state
+space - no sampling. `radiance` is the Capturing Radiance loss-streak
+counter (0-3; see `domain.account`). State space is tiny
+(hard_pity x 2 x 4), so exact probability is both faster and more accurate
+than simulation, and gives the Phase 4 Monte Carlo simulator something
+deterministic to validate against - including for accounts that currently
+carry a nonzero Capturing Radiance counter, not just the radiance=0 case.
+
+The engine answers only: "starting at this pity/guarantee/radiance state,
+how likely am I to obtain ONE featured copy within N wishes?" (§10.4
+multi-copy targets are Phase 4.) It knows nothing about characters, goals,
+or roadmaps.
+"""
+
 from dataclasses import dataclass
 
 import numpy as np
 
 from domain.mechanics import WishMechanics
-from probability.rates import featured_rate_at, pull_rate
+from probability.rates import capturing_radiance_rate, pull_rate
 
 
 @dataclass(frozen=True)
 class _State:
-    no_guarantee: np.ndarray
-    guaranteed: np.ndarray
+    """Survival probability mass over `(pity, guarantee, radiance)` states."""
+
+    no_guarantee: np.ndarray  # shape (hard_pity, 4)
+    guaranteed: np.ndarray  # shape (hard_pity, 4)
 
     def total(self) -> float:
         return float(self.no_guarantee.sum() + self.guaranteed.sum())
@@ -17,6 +35,17 @@ class _State:
 
 @dataclass(frozen=True)
 class _Transitions:
+    """Per-pity vectors used to advance the distribution one wish.
+
+    Precomputed once per curve instead of per wish:
+
+        rates:         P(5-star on the next wish) at each pity
+        survive:       P(no 5-star on the next wish) at each pity
+        featured:      P(5-star is featured | 5-star occurs, not guaranteed)
+                       at each (pity, radiance) - constant across pity, but
+                       broadcast to that shape for uniform indexing
+    """
+
     rates: np.ndarray
     survive: np.ndarray
     featured: np.ndarray
@@ -26,15 +55,15 @@ def _transitions(mechanics: WishMechanics) -> _Transitions:
     pities = np.arange(mechanics.hard_pity)
     rates = np.array([pull_rate(p, mechanics) for p in pities])
     survive = 1.0 - rates
-    featured = np.array(
-        [
-            mechanics.featured_rate
-            if radiance < 2
-            else (6.0 / 11.0 if radiance == 2 else 1.0)
-            for p in pities
-            for radiance in range(4)
-        ]
-    ).reshape(mechanics.hard_pity, 4)
+    # A guaranteed 5-star is always featured, so only not-guaranteed states
+    # can lose the 50/50. The featured rate depends only on the Capturing
+    # Radiance counter, not on pity, so the same row is used at every pity
+    # (see probability.rates.capturing_radiance_rate for the single-sourced
+    # schedule shared with simulation.engine).
+    featured_by_radiance = np.array(
+        [capturing_radiance_rate(radiance, mechanics) for radiance in range(4)]
+    )
+    featured = np.tile(featured_by_radiance, (mechanics.hard_pity, 1))
     return _Transitions(rates, survive, featured)
 
 
@@ -51,6 +80,8 @@ def _initial_state(
 
 
 def _advance(state: _State, moves: _Transitions, hard_pity: int) -> _State:
+    """Apply one wish while retaining Capturing Radiance state."""
+
     carried = state.no_guarantee * moves.survive[:, None]
     carried_g = state.guaranteed * moves.survive[:, None]
     lost = state.no_guarantee * moves.rates[:, None] * (1.0 - moves.featured)
@@ -67,6 +98,13 @@ def _advance(state: _State, moves: _Transitions, hard_pity: int) -> _State:
     return _State(new_no_guarantee, new_guaranteed)
 
 
+def _validate_radiance(starting_radiance: int) -> None:
+    if not 0 <= starting_radiance <= 3:
+        raise ValueError(
+            f"starting_radiance must be in [0, 3], got {starting_radiance}"
+        )
+
+
 def cumulative_probability(
     wishes: int,
     starting_pity: int,
@@ -74,6 +112,31 @@ def cumulative_probability(
     mechanics: WishMechanics,
     starting_radiance: int = 0,
 ) -> np.ndarray:
+    """P(at least one featured copy within N wishes), for each N (§10.2).
+
+    Returns a float array of length `wishes + 1`:
+
+        result[N] = probability of obtaining the featured copy within N
+        additional wishes
+
+    The result is *cumulative*: `result[N]` is not the probability of
+    succeeding exactly on wish N. Index 0 is always 0.0 and the curve is
+    monotonically non-decreasing.
+
+    Args:
+        wishes: how many additional wishes to look ahead (>= 0).
+        starting_pity: 0-based pulls since the last 5-star
+            (0 <= starting_pity < hard_pity).
+        guaranteed: True when the next 5-star is guaranteed featured.
+        mechanics: mechanics data for the banner type (§17).
+        starting_radiance: the Capturing Radiance loss-streak counter
+            (0-3) to start from. Defaults to 0 (no accumulated streak).
+            Pass the account's actual `capturing_radiance_counter` to get
+            a probability consistent with what the Monte Carlo simulator
+            would produce for the same account state - omitting this for
+            an account that currently carries a nonzero counter understates
+            the true probability.
+    """
     if wishes < 0:
         raise ValueError(f"wishes must be non-negative, got {wishes}")
     if not 0 <= starting_pity < mechanics.hard_pity:
@@ -81,12 +144,12 @@ def cumulative_probability(
             f"starting_pity must satisfy 0 <= starting_pity < "
             f"{mechanics.hard_pity}, got {starting_pity}"
         )
-
-    if not 0 <= starting_radiance <= 3:
-        raise ValueError(f"starting_radiance must satisfy 0 <= starting_radiance <= 3, got {starting_radiance}")
+    _validate_radiance(starting_radiance)
 
     moves = _transitions(mechanics)
-    state = _initial_state(starting_pity, guaranteed, starting_radiance, mechanics.hard_pity)
+    state = _initial_state(
+        starting_pity, guaranteed, starting_radiance, mechanics.hard_pity
+    )
     curve = np.empty(wishes + 1)
     curve[0] = 0.0
 
@@ -97,63 +160,6 @@ def cumulative_probability(
     return curve
 
 
-def multi_copy_cumulative_probability(
-    wishes: int, copies: int, starting_pity: int, guaranteed: bool,
-    mechanics: WishMechanics, starting_radiance: int = 0,
-) -> np.ndarray:
-    """Exact multi-copy probability using the full pull state."""
-    if wishes < 0:
-        raise ValueError(f"wishes must be non-negative, got {wishes}")
-    if copies < 0:
-        raise ValueError(f"copies must be non-negative, got {copies}")
-    if copies == 0:
-        return np.ones(wishes + 1)
-    if not 0 <= starting_pity < mechanics.hard_pity:
-        raise ValueError(f"starting_pity must satisfy 0 <= starting_pity < {mechanics.hard_pity}, got {starting_pity}")
-    if not 0 <= starting_radiance <= 3:
-        raise ValueError(f"starting_radiance must satisfy 0 <= starting_radiance <= 3, got {starting_radiance}")
-
-    moves = _transitions(mechanics)
-    # state[c, p, r, g]: mass with c copies, pity p, Radiance r, guarantee g.
-    state = np.zeros((copies, mechanics.hard_pity, 4, 2))
-    state[0, starting_pity, starting_radiance, int(guaranteed)] = 1.0
-    curve = np.empty(wishes + 1)
-    curve[0] = 0.0
-
-    for wish in range(1, wishes + 1):
-        new_state = np.zeros_like(state)
-
-        # Both guaranteed and non-guaranteed states can survive when
-        # the wish does not produce a 5-star. Guarantee only changes the
-        # featured outcome of the next 5-star; it does not make the next
-        # wish itself a 5-star.
-        new_state[:, 1:, :, :] += (
-            state[:, :-1, :, :] * moves.survive[None, :-1, None, None]
-        )
-
-        for copy_count in range(copies):
-            for radiance in range(4):
-                rate = moves.rates
-
-                # A guarantee means that an obtained 5-star is featured.
-                guaranteed_mass = state[copy_count, :, radiance, 1] * rate
-                if copy_count + 1 < copies:
-                    new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
-
-                nonguaranteed = state[copy_count, :, radiance, 0]
-                featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
-                if copy_count + 1 < copies:
-                    next_radiance = 0 if radiance <= 1 else 1
-                    new_state[copy_count + 1, 0, next_radiance, 0] += featured_mass.sum()
-
-                lost_mass = nonguaranteed * rate * (1.0 - moves.featured[:, radiance])
-                next_radiance = min(3, radiance + 1)
-                new_state[copy_count, 0, next_radiance, 1] += lost_mass.sum()
-
-        state = new_state
-        curve[wish] = 1.0 - state.sum()
-
-    return curve
 def wishes_for_confidence(
     confidence: float,
     starting_pity: int,
@@ -161,6 +167,31 @@ def wishes_for_confidence(
     mechanics: WishMechanics,
     starting_radiance: int = 0,
 ) -> int:
+    """Smallest N with P(featured within N wishes) >= confidence (§10.3).
+
+    Answers "how many wishes are required to reach at least `confidence`
+    probability?" The horizon is derived from the mechanics (two hard-pity
+    cycles bound the 50/50), so no wish count is hard-coded:
+
+        curve = cumulative probability up to the mechanics horizon
+        if max(curve) < confidence: raise ValueError
+        else: return the first N with curve[N] >= confidence
+
+    Confidence 1.0 therefore lands on the exact worst case the mechanics
+    allow - the first wish count at which the curve is exactly 1 - because
+    the search compares against the curve itself, with no tolerance.
+
+    Args:
+        starting_radiance: the Capturing Radiance loss-streak counter
+            (0-3) to start from; see `cumulative_probability` for why this
+            matters. Defaults to 0.
+
+    Raises:
+        ValueError: if confidence is outside (0, 1], if starting_radiance
+            is outside [0, 3], or if the mechanics cannot reach the
+            requested confidence within the bounded horizon (max of the
+            cumulative curve).
+    """
     if not 0.0 < confidence <= 1.0:
         raise ValueError(
             f"confidence must be in (0, 1], got {confidence}"
@@ -170,7 +201,10 @@ def wishes_for_confidence(
             f"starting_pity must satisfy 0 <= starting_pity < "
             f"{mechanics.hard_pity}, got {starting_pity}"
         )
+    _validate_radiance(starting_radiance)
 
+    # Worst case: reach the hard-pity 5-star, lose the 50/50, then reach the
+    # next guaranteed 5-star. No more than 2 * hard_pity wishes from pity 0.
     horizon = 2 * mechanics.hard_pity
     curve = cumulative_probability(
         horizon, starting_pity, guaranteed, mechanics, starting_radiance
@@ -183,54 +217,6 @@ def wishes_for_confidence(
             f"most {best:.6f} within {horizon} wishes"
         )
 
-    return int(np.searchsorted(curve, confidence, side="left"))
-
-
-def multi_copy_wishes_for_confidence(
-    confidence: float,
-    copies: int,
-    starting_pity: int,
-    guaranteed: bool,
-    mechanics: WishMechanics,
-    starting_radiance: int = 0,
-) -> int:
-    """Smallest N with P(`copies` copies within N wishes) >= confidence.
-
-    The multi-copy counterpart of `wishes_for_confidence` (§10.3, §10.4):
-    exact, not sampled, via `multi_copy_cumulative_probability`.
-
-    Args:
-        copies: how many featured copies are needed. 0 wishes always
-            satisfies `copies=0` (the goal is already complete).
-
-    Raises:
-        ValueError: if confidence is outside (0, 1], or if the mechanics
-            cannot reach the requested confidence within the search
-            horizon (scaled by `copies`, since each additional copy can
-            add up to two more hard-pity cycles in the worst case).
-    """
-    if not 0.0 < confidence <= 1.0:
-        raise ValueError(f"confidence must be in (0, 1], got {confidence}")
-    if copies < 0:
-        raise ValueError(f"copies must be non-negative, got {copies}")
-    if copies == 0:
-        return 0
-    if not 0 <= starting_pity < mechanics.hard_pity:
-        raise ValueError(
-            f"starting_pity must satisfy 0 <= starting_pity < "
-            f"{mechanics.hard_pity}, got {starting_pity}"
-        )
-
-    horizon = 2 * mechanics.hard_pity * copies
-    curve = multi_copy_cumulative_probability(
-        horizon, copies, starting_pity, guaranteed, mechanics, starting_radiance
-    )
-
-    best = float(curve.max())
-    if best < confidence:
-        raise ValueError(
-            f"confidence {confidence} is unattainable for {copies} copies; "
-            f"the curve reaches at most {best:.6f} within {horizon} wishes"
-        )
-
+    # Exact comparison: for valid mechanics the hard-pity rate of 1.0 ends
+    # every path, so the curve is exactly 1.0 at the worst-case wish count.
     return int(np.searchsorted(curve, confidence, side="left"))
