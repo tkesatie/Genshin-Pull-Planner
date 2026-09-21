@@ -32,6 +32,17 @@ def slow_mechanics() -> WishMechanics:
     )
 
 
+def stochastic_test_mechanics() -> WishMechanics:
+    return WishMechanics(
+        banner_type="stochastic_test",
+        hard_pity=4,
+        soft_pity_start=3,
+        base_rate=0.2,
+        soft_pity_increment=0.2,
+        featured_rate=0.5,
+    )
+
+
 class ZeroRng:
     """Test RNG that makes every probabilistic draw succeed."""
 
@@ -42,6 +53,50 @@ class ZeroRng:
 
 
 class TestVectorizedBanner:
+    def test_matches_scalar_statistically(self):
+        """Independent RNG streams should produce equivalent distributions."""
+        runs = 10_000
+        mechanics = stochastic_test_mechanics()
+
+        vectorized = _pull_toward_target_vectorized(
+            current_pity=np.zeros(runs, dtype=int),
+            guarantee=np.zeros(runs, dtype=bool),
+            radiance=np.zeros(runs, dtype=int),
+            wishes=np.full(runs, 8, dtype=int),
+            owned=np.full(runs, -1, dtype=int),
+            copies_needed=np.ones(runs, dtype=int),
+            budget=np.full(runs, 8, dtype=int),
+            mechanics=mechanics,
+            rng=np.random.default_rng(12345),
+        )
+
+        scalar_spent = np.empty(runs, dtype=int)
+        scalar_obtained = np.empty(runs, dtype=int)
+        scalar_rng = np.random.default_rng(67890)
+
+        for i in range(runs):
+            account = Account(
+                owned_characters=Ownership({"Vesna": -1}),
+                wishes=8,
+            )
+            spent, obtained, _, _, _ = _pull_toward_target(
+                account,
+                "Vesna",
+                1,
+                8,
+                mechanics,
+                scalar_rng,
+            )
+            scalar_spent[i] = spent
+            scalar_obtained[i] = obtained
+
+        vector_spent, vector_obtained, *_ = vectorized
+
+        assert abs(vector_obtained.mean() - scalar_obtained.mean()) < 0.03
+        assert abs(vector_spent.mean() - scalar_spent.mean()) < 0.15
+        assert abs(vector_obtained.mean() - 0.0) > 0.1
+
+
     def test_matches_scalar_for_deterministic_featured_outcomes(self):
         """The vectorized state machine matches the scalar oracle when
         randomness is removed from the featured decision."""
