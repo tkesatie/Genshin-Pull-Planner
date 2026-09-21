@@ -428,6 +428,24 @@ def simulate_history(
     return _run_history(context, plan, rng)
 
 
+
+def _simulate_scalar(
+    context: PlannerContext,
+    plan: SpendPlan,
+    runs: int = DEFAULT_RUNS,
+    seed: int | None = DEFAULT_SEED,
+    joint_goals=(),
+) -> SimulationResult:
+    """Reference simulation using the original one-history-at-a-time engine."""
+    if runs < 1:
+        raise ValueError(f"runs must be >= 1, got {runs}")
+    plan.require_valid_for(context)
+    rng = np.random.default_rng(seed)
+    histories = [_run_history(context, plan, rng) for _ in range(runs)]
+    return aggregate_runs(histories, plan, seed, joint_goals=joint_goals)
+
+
+
 def _simulate_vectorized(
     context: PlannerContext,
     plan: SpendPlan,
