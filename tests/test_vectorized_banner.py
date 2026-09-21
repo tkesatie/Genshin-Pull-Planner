@@ -32,6 +32,15 @@ def slow_mechanics() -> WishMechanics:
     )
 
 
+class ZeroRng:
+    """Test RNG that makes every probabilistic draw succeed."""
+
+    def random(self, size=None):
+        if size is None:
+            return 0.0
+        return np.zeros(size, dtype=float)
+
+
 class TestVectorizedBanner:
     def test_matches_scalar_for_deterministic_featured_outcomes(self):
         """The vectorized state machine matches the scalar oracle when
@@ -56,7 +65,7 @@ class TestVectorizedBanner:
             copies_needed=copies_needed,
             budget=budget,
             mechanics=forced_mechanics(),
-            rng=np.random.default_rng(123),
+            rng=ZeroRng(),
         )
 
         scalar = []
@@ -82,7 +91,7 @@ class TestVectorizedBanner:
                 int(needed),
                 int(cap),
                 forced_mechanics(),
-                np.random.default_rng(123),
+                ZeroRng(),
             )
             scalar.append(
                 (
