@@ -187,7 +187,7 @@ def _pull_toward_target_vectorized(
     budget: np.ndarray,
     mechanics: WishMechanics,
     rng: np.random.Generator,
- ) -> tuple[
+) -> tuple[
     np.ndarray,
     np.ndarray,
     np.ndarray,
