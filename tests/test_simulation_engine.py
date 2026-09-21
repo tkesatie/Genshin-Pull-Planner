@@ -86,7 +86,7 @@ class TestVectorizedSimulation:
     ):
         """The integrated vectorized path preserves the scalar state machine."""
         roadmap = Roadmap(
-            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 1)],
+            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 1, 1)],
             banners=[VESNA, TSARITSA],
         )
         context = PlannerContext(
