@@ -428,6 +428,187 @@ def simulate_history(
     return _run_history(context, plan, rng)
 
 
+def _simulate_vectorized(
+    context: PlannerContext,
+    plan: SpendPlan,
+    runs: int,
+    seed: int | None,
+    joint_goals=(),
+) -> SimulationResult:
+    """Simulate many histories with banner-wise vectorization."""
+    banners = _banners_to_process(context, plan)
+    mechanics = context.mechanics
+    rng = np.random.default_rng(seed)
+
+    current_pity = np.full(runs, context.account.current_pity, dtype=int)
+    guarantee = np.full(runs, context.account.character_guarantee, dtype=bool)
+    radiance = np.full(
+        runs, context.account.capturing_radiance_counter, dtype=int
+    )
+    wishes = np.full(runs, context.account.wishes, dtype=int)
+
+    characters = (
+        {banner.character for banner in banners}
+        | {goal.character for goal in context.roadmap.goals_in_priority_order()}
+        | set(context.account.owned_characters.characters)
+    )
+    owned_by_character = {
+        character: np.full(
+            runs,
+            context.account.owned_constellation(character),
+            dtype=int,
+        )
+        for character in characters
+    }
+
+    credited_so_far = 0
+    shared_current_phase_spent = np.zeros(runs, dtype=int)
+    banner_results: list[list[BannerResult]] = [[] for _ in range(runs)]
+
+    goals = context.roadmap.goals_in_priority_order()
+    satisfied = np.zeros((len(goals), runs), dtype=bool)
+    satisfied_after: list[list[Banner | None]] = [
+        [None] * runs for _ in goals
+    ]
+    for goal_index, goal in enumerate(goals):
+        satisfied[goal_index] = (
+            owned_by_character[goal.character] >= goal.constellation
+        )
+
+    for banner in banners:
+        income_credited = 0
+        credit = context.income_available_before(banner.version, banner.phase)
+        if credit > credited_so_far:
+            income_credited = credit - credited_so_far
+            credited_so_far = credit
+            if income_credited:
+                wishes += income_credited
+
+        entry = plan.entry_for(banner)
+        copies_needed = np.zeros(runs, dtype=int)
+        budget = np.zeros(runs, dtype=int)
+        target_constellation: int | None = None
+
+        if entry is not None:
+            target_constellation = entry.target_constellation
+            owned = owned_by_character[banner.character]
+            copies_needed = np.maximum(entry.target_constellation - owned, 0)
+            budget.fill(entry.budget)
+
+            if (
+                plan.shared_current_phase_budget is not None
+                and banner.version == context.current_version
+                and banner.phase == context.current_phase
+            ):
+                budget = np.minimum(
+                    budget,
+                    np.maximum(
+                        plan.shared_current_phase_budget
+                        - shared_current_phase_spent,
+                        0,
+                    ),
+                )
+
+            (
+                spent,
+                obtained,
+                current_pity,
+                guarantee,
+                radiance,
+                updated_owned,
+                five_star_outcomes,
+            ) = _pull_toward_target_vectorized(
+                current_pity,
+                guarantee,
+                radiance,
+                wishes,
+                owned,
+                copies_needed,
+                budget,
+                mechanics,
+                rng,
+            )
+            wishes -= spent
+            owned_by_character[banner.character] = updated_owned
+
+            if (
+                plan.shared_current_phase_budget is not None
+                and banner.version == context.current_version
+                and banner.phase == context.current_phase
+            ):
+                shared_current_phase_spent += spent
+        else:
+            spent = np.zeros(runs, dtype=int)
+            obtained = np.zeros(runs, dtype=int)
+            five_star_outcomes = [[] for _ in range(runs)]
+
+        for goal_index, goal in enumerate(goals):
+            newly_satisfied = (
+                ~satisfied[goal_index]
+                & (owned_by_character[goal.character] >= goal.constellation)
+            )
+            for run_index in np.flatnonzero(newly_satisfied):
+                satisfied_after[goal_index][run_index] = banner
+            satisfied[goal_index] |= newly_satisfied
+
+        planned_budget = entry.budget if entry is not None else 0
+        for run_index in range(runs):
+            ownership = Ownership(
+                {
+                    character: int(values[run_index])
+                    for character, values in owned_by_character.items()
+                }
+            )
+            account_after = Account(
+                current_pity=int(current_pity[run_index]),
+                character_guarantee=bool(guarantee[run_index]),
+                owned_characters=ownership,
+                wishes=int(wishes[run_index]),
+                capturing_radiance_counter=int(radiance[run_index]),
+            )
+            banner_results[run_index].append(
+                BannerResult(
+                    banner=banner,
+                    target_constellation=target_constellation,
+                    budget=planned_budget,
+                    copies_needed=int(copies_needed[run_index]),
+                    income_credited=income_credited,
+                    wishes_spent=int(spent[run_index]),
+                    copies_obtained=int(obtained[run_index]),
+                    copy_wishes=tuple(
+                        wish
+                        for wish, featured in five_star_outcomes[run_index]
+                        if featured
+                    ),
+                    target_met=(
+                        entry is not None
+                        and obtained[run_index] >= copies_needed[run_index]
+                    ),
+                    account_after=account_after,
+                    five_star_outcomes=tuple(
+                        five_star_outcomes[run_index]
+                    ),
+                )
+            )
+
+    histories = tuple(
+        RunResult(
+            banner_results=tuple(banner_results[run_index]),
+            account_after=banner_results[run_index][-1].account_after,
+            goal_outcomes=tuple(
+                GoalOutcome(
+                    goal=goal,
+                    satisfied=bool(satisfied[goal_index, run_index]),
+                    satisfied_after=satisfied_after[goal_index][run_index],
+                )
+                for goal_index, goal in enumerate(goals)
+            ),
+        )
+        for run_index in range(runs)
+    )
+    return aggregate_runs(histories, plan, seed, joint_goals=joint_goals)
+
+
 def simulate(
     context: PlannerContext,
     plan: SpendPlan,
@@ -435,19 +616,14 @@ def simulate(
     seed: int | None = DEFAULT_SEED,
     joint_goals=(),
 ) -> SimulationResult:
-    """Simulate `runs` possible futures and aggregate them (§11).
+    """Simulate runs possible futures and aggregate them (§11).
 
-    The plan is validated once against the context. The default seed makes
-    re-runs reproducible (§2); `seed=None` draws entropy from the OS
-    instead.
-
-    Raises:
-        ValueError: when runs < 1, via `SpendPlan.require_valid_for`, or
-            when the context has no roadmap banner at its (version, phase).
+    Banners remain sequential while independent histories are vectorized
+    within each banner.
     """
     if runs < 1:
         raise ValueError(f"runs must be >= 1, got {runs}")
     plan.require_valid_for(context)
-    rng = np.random.default_rng(seed)
-    histories = [_run_history(context, plan, rng) for _ in range(runs)]
-    return aggregate_runs(histories, plan, seed, joint_goals=joint_goals)
+    return _simulate_vectorized(
+        context, plan, runs, seed, joint_goals=joint_goals
+    )
