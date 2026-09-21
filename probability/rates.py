@@ -61,6 +61,45 @@ def pull_rate(pity: int, mechanics: WishMechanics) -> float:
     return min(rate, 1.0)
 
 
+def pull_rate_array(pity, mechanics: WishMechanics):
+    """Vectorized equivalent of pull_rate for an array of pity values.
+
+    pity is the same 0-based state used by pull_rate. The returned array
+    contains the probability of a 5-star on the next wish for each history
+    independently.
+
+    This deliberately mirrors the scalar implementation rather than
+    introducing a separate rate model. It is intended for the vectorized
+    Monte Carlo engine, where one NumPy operation can evaluate all active
+    histories at once.
+    """
+    import numpy as np
+
+    pity = np.asarray(pity)
+    if np.any(pity < 0):
+        raise ValueError("pity must be non-negative")
+    if np.any(pity >= mechanics.hard_pity):
+        raise ValueError(
+            f"pity must be < hard_pity ({mechanics.hard_pity})"
+        )
+
+    upcoming_pull = pity + 1
+    rates = np.full(pity.shape, mechanics.base_rate, dtype=float)
+
+    soft_pity = upcoming_pull >= mechanics.soft_pity_start
+    rates = np.where(
+        soft_pity,
+        mechanics.base_rate
+        + (upcoming_pull - mechanics.soft_pity_start + 1)
+        * mechanics.soft_pity_increment,
+        rates,
+    )
+
+    return np.where(
+        upcoming_pull >= mechanics.hard_pity, 1.0, np.minimum(rates, 1.0)
+    )
+
+
 def featured_rate_at(
     pity: int, guarantee: bool, mechanics: WishMechanics
 ) -> float:
