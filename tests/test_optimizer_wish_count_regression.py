@@ -203,22 +203,33 @@ class TestOneExtraUnusedWish:
         """With the exact cap range, both accounts get cap 76.
 
         Feasibility is monotone down here (more Navia spend, less
-        Arlecchino protection): 77 through 96 are all infeasible (0.8845 at
-        77 down to 0.8010 at 96), 76 is feasible (0.914). A descending scan
-        over an exact-range window therefore lands on 76 for BOTH wish
-        counts - the optimizer's cap-selection logic does not treat the two
-        accounts differently, and the 201-wish / 75-wish candidate sits
-        strictly inside the chosen cap (76 >= 75).
+        Arlecchino protection): 77 through 96 are all infeasible (~0.88 at
+        77 down to ~0.80 at 96), 76 is feasible (~0.911 - verified against
+        BOTH the scalar and the vectorized engine at 20k-100k runs). A
+        descending scan over an exact-range window therefore lands on 76
+        for BOTH wish counts - the optimizer's cap-selection logic does not
+        treat the two accounts differently, and the 201-wish / 75-wish
+        candidate sits strictly inside the chosen cap (76 >= 75).
+
+        The 76/77 margin is ~2.7 points around the 90% threshold, i.e.
+        only ~4 standard errors at the optimizer's 2,000-run default. This
+        scan therefore runs at 20,000 runs (~13 standard errors of
+        separation) so the boundary verdict does not depend on which
+        engine's RNG stream samples the boundary: the vectorized engine
+        consumes the rng differently from the scalar oracle (statistically
+        equivalent, per simulation.engine), and its 2,000-run sample at
+        cap 76 legitimately lands below 0.9.
         """
         # A descending window that brackets the 76/77 boundary (the full
         # 77..96 range was verified in the investigation; these probes hit
         # the same first-feasible answer).
         window = [96, 90, 85, 80, 79, 78, 77, 76]
+        scan_runs = 20_000
         rec_200 = recommend(
-            self._context(200), (), runs=RUNS, seed=SEED, budgets=window
+            self._context(200), (), runs=scan_runs, seed=SEED, budgets=window
         )
         rec_201 = recommend(
-            self._context(201), (), runs=RUNS, seed=SEED, budgets=window
+            self._context(201), (), runs=scan_runs, seed=SEED, budgets=window
         )
 
         assert rec_200.action == "pursue"
@@ -226,7 +237,8 @@ class TestOneExtraUnusedWish:
         assert rec_200.budget == 76
         assert rec_201.budget == 76
         # The exact-scan recommendations are the same candidate again:
-        # materially identical Navia probability (0.5710 vs 0.5725).
+        # materially identical Navia probability (the extra wish is never
+        # spent; measured 0.5685 vs 0.5685).
         assert abs(
             rec_200.outcome_probability - rec_201.outcome_probability
         ) <= 0.01

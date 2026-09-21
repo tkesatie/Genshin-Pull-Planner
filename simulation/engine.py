@@ -71,6 +71,7 @@ from domain import (
     Account,
     Banner,
     Goal,
+    Ownership,
     WishMechanics,
     copies_needed_for,
     next_capturing_radiance_counter,
@@ -229,6 +230,29 @@ def _pull_toward_target_vectorized(
         [] for _ in range(wishes.size)
     ]
 
+    # Capturing Radiance is single-sourced, not re-derived: the featured
+    # win probability per counter state comes from
+    # probability.capturing_radiance_rate, and the counter transition per
+    # (previous counter, was guaranteed, was featured) comes from
+    # domain.next_capturing_radiance_counter - the exact functions the
+    # scalar engine calls. Both tables are tiny (4 and 4x2x2 entries), so
+    # building them once per banner call is free; the per-history work
+    # stays fully vectorized array indexing.
+    radiance_rates = np.array(
+        [capturing_radiance_rate(r, mechanics) for r in range(4)], dtype=float
+    )
+    radiance_next = np.empty((4, 2, 2), dtype=int)
+    for previous in range(4):
+        for was_guaranteed in (False, True):
+            for featured in (False, True):
+                radiance_next[previous, int(was_guaranteed), int(featured)] = (
+                    next_capturing_radiance_counter(
+                        previous,
+                        was_guaranteed=was_guaranteed,
+                        featured=featured,
+                    )
+                )
+
     max_steps = int(available.max(initial=0))
     for _ in range(max_steps):
         active = (obtained < copies_needed) & (spent < available)
@@ -248,21 +272,8 @@ def _pull_toward_target_vectorized(
             was_guaranteed = guarantee[star_indices].copy()
 
             featured_draw = rng.random(star_indices.size)
-            featured_rate = np.full(
-                star_indices.size, mechanics.featured_rate, dtype=float
-            )
-            featured_rate = np.where(
-                radiance[star_indices] == 2,
-                capturing_radiance_rate(2, mechanics),
-                featured_rate,
-            )
-            featured_rate = np.where(
-                radiance[star_indices] == 3,
-                1.0,
-                featured_rate,
-            )
             featured = was_guaranteed | (
-                featured_draw < featured_rate
+                featured_draw < radiance_rates[radiance[star_indices]]
             )
 
             for index, is_featured in zip(star_indices, featured):
@@ -270,16 +281,12 @@ def _pull_toward_target_vectorized(
                     (int(spent[index]), bool(is_featured))
                 )
 
-            previous_radiance = radiance[star_indices].copy()
-            radiance[star_indices] = np.where(
-                was_guaranteed,
+            previous_radiance = radiance[star_indices]
+            radiance[star_indices] = radiance_next[
                 previous_radiance,
-                np.where(
-                    featured,
-                    np.where(previous_radiance >= 2, 1, 0),
-                    np.minimum(previous_radiance + 1, 3),
-                ),
-            )
+                was_guaranteed.astype(int),
+                featured.astype(int),
+            ]
             current_pity[star_indices] = 0
             guarantee[star_indices] = ~featured
 
@@ -483,6 +490,15 @@ def _simulate_vectorized(
     shared_current_phase_spent = np.zeros(runs, dtype=int)
     banner_results: list[list[BannerResult]] = [[] for _ in range(runs)]
 
+    # Per-run Ownership objects, mirroring the scalar engine's reconstruction
+    # exactly (§4.2): every run's Ownership starts as the account's own frozen
+    # object (cheap: one shared reference for the all-starting-state case) and
+    # is rebuilt only for the runs that actually won a copy on a banner. A
+    # character the plan/goals merely mention is NOT auto-added with
+    # NOT_OWNED; only characters the run wins join the key set.
+    starting_ownership = context.account.owned_characters
+    ownership_by_run: list[Ownership] = [starting_ownership] * runs
+
     goals = context.roadmap.goals_in_priority_order()
     satisfied = np.zeros((len(goals), runs), dtype=bool)
     satisfied_after: list[list[Banner | None]] = [
@@ -547,6 +563,20 @@ def _simulate_vectorized(
                 rng,
             )
             wishes -= spent
+
+            # Rebuild each winning run's Ownership exactly once per banner:
+            # only runs whose constellation actually changed get a new frozen
+            # Ownership object; every other run keeps its previous one.
+            wins = np.flatnonzero(updated_owned > owned)
+            if wins.size:
+                character = banner.character
+                for run_index in wins:
+                    ownership_by_run[run_index] = Ownership(
+                        {
+                            **ownership_by_run[run_index].characters,
+                            character: int(updated_owned[run_index]),
+                        }
+                    )
             owned_by_character[banner.character] = updated_owned
 
             if (
@@ -570,42 +600,44 @@ def _simulate_vectorized(
             satisfied[goal_index] |= newly_satisfied
 
         planned_budget = entry.budget if entry is not None else 0
+        # One .tolist() per banner beats one NumPy-scalar extraction per
+        # element: the per-run loop below reads Python ints only.
+        pity_list = current_pity.tolist()
+        guarantee_list = guarantee.tolist()
+        wishes_list = wishes.tolist()
+        radiance_list = radiance.tolist()
+        copies_list = copies_needed.tolist()
+        spent_list = spent.tolist()
+        obtained_list = obtained.tolist()
+
         for run_index in range(runs):
-            ownership = Ownership(
-                {
-                    character: int(values[run_index])
-                    for character, values in owned_by_character.items()
-                }
-            )
+            ownership = ownership_by_run[run_index]
             account_after = Account(
-                current_pity=int(current_pity[run_index]),
-                character_guarantee=bool(guarantee[run_index]),
+                current_pity=pity_list[run_index],
+                character_guarantee=guarantee_list[run_index],
                 owned_characters=ownership,
-                wishes=int(wishes[run_index]),
-                capturing_radiance_counter=int(radiance[run_index]),
+                wishes=wishes_list[run_index],
+                capturing_radiance_counter=radiance_list[run_index],
             )
+            outcomes = five_star_outcomes[run_index]
             banner_results[run_index].append(
                 BannerResult(
                     banner=banner,
                     target_constellation=target_constellation,
                     budget=planned_budget,
-                    copies_needed=int(copies_needed[run_index]),
+                    copies_needed=copies_list[run_index],
                     income_credited=income_credited,
-                    wishes_spent=int(spent[run_index]),
-                    copies_obtained=int(obtained[run_index]),
+                    wishes_spent=spent_list[run_index],
+                    copies_obtained=obtained_list[run_index],
                     copy_wishes=tuple(
-                        wish
-                        for wish, featured in five_star_outcomes[run_index]
-                        if featured
+                        wish for wish, featured in outcomes if featured
                     ),
                     target_met=(
                         entry is not None
-                        and obtained[run_index] >= copies_needed[run_index]
+                        and obtained_list[run_index] >= copies_list[run_index]
                     ),
                     account_after=account_after,
-                    five_star_outcomes=tuple(
-                        five_star_outcomes[run_index]
-                    ),
+                    five_star_outcomes=tuple(outcomes),
                 )
             )
 

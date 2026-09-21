@@ -505,3 +505,115 @@ class TestStopConditions:
         ).json()
         assert stops == recommendation["stops"]
         assert stops["rules"][-1].startswith("Re-run")
+
+
+class TestCachedPullRefresh:
+    """Regression: /planner/cached-refresh raised NameError (HTTP 500) because
+    MIN_CONDITIONED_RUNS / CONDITIONED_FALLBACK_RUNS were referenced but never
+    defined, forcing every recorded pull into the expensive full-planner
+    recovery path in the frontend."""
+
+    def _run_planner(self, api_client, account_id):
+        recommendation = api_client.get(
+            f"/accounts/{account_id}/planner/recommendation"
+        )
+        assert recommendation.status_code == 200, recommendation.text
+        strategy = api_client.get(f"/accounts/{account_id}/planner/strategy")
+        assert strategy.status_code == 200, strategy.text
+        return recommendation.json()
+
+    def test_refresh_returns_200_after_a_recorded_pull(
+        self, api_client, doc_account_id
+    ):
+        rec = self._run_planner(api_client, doc_account_id)
+        assert rec["outcome"] is not None
+
+        pull = api_client.post(
+            f"/accounts/{doc_account_id}/pull-result",
+            json={"outcome": "featured", "wishes_used": 20, "character": "Vesna"},
+        )
+        assert pull.status_code == 200, pull.text
+
+        response = api_client.get(
+            f"/accounts/{doc_account_id}/planner/cached-refresh",
+            params={
+                "character": "Vesna",
+                "outcome": "featured",
+                "wishes_used": 20,
+                "recommendation_budget": rec["budget"],
+                "recommendation_constellation": rec["outcome"]["constellation"],
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    def test_refresh_answers_from_retained_evidence_without_the_optimizer(
+        self, api_client, doc_account_id, monkeypatch
+    ):
+        """The recovery path must never rerun the optimizer: cached-refresh
+        conditions or resimulates retained plans, it does not re-recommend
+        (the frontend contract calls the full rerun its own last resort)."""
+        from api.routers import planner as planner_router
+
+        # Run Planner first, with the real optimizer.
+        self._run_planner(api_client, doc_account_id)
+
+        def _forbidden(*args, **kwargs):
+            raise AssertionError("cached-refresh must not rerun the optimizer")
+
+        monkeypatch.setattr(planner_router, "recommend", _forbidden)
+        monkeypatch.setattr(planner_router, "build_strategy", _forbidden)
+
+        pull = api_client.post(
+            f"/accounts/{doc_account_id}/pull-result",
+            json={"outcome": "featured", "wishes_used": 20, "character": "Vesna"},
+        )
+        assert pull.status_code == 200, pull.text
+
+        refresh = api_client.get(
+            f"/accounts/{doc_account_id}/planner/cached-refresh",
+            params={"character": "Vesna", "outcome": "featured", "wishes_used": 20},
+        )
+        assert refresh.status_code == 200, refresh.text
+        body = refresh.json()
+        assert body["evidence"], "conditioned evidence must be returned"
+        for item in body["evidence"]:
+            # Every reported sample is either conditioned retained evidence
+            # (>= the reuse threshold) or the targeted fallback resample.
+            assert (
+                item["runs"] >= planner_router.MIN_CONDITIONED_RUNS
+                or item["runs"] == planner_router.CONDITIONED_FALLBACK_RUNS
+            )
+
+    def test_conditioned_recommendation_budget_shrinks_by_wishes_used(
+        self, api_client, doc_account_id
+    ):
+        rec = self._run_planner(api_client, doc_account_id)
+        api_client.post(
+            f"/accounts/{doc_account_id}/pull-result",
+            json={"outcome": "featured", "wishes_used": 20, "character": "Vesna"},
+        )
+        refresh = api_client.get(
+            f"/accounts/{doc_account_id}/planner/cached-refresh",
+            params={
+                "character": "Vesna",
+                "outcome": "featured",
+                "wishes_used": 20,
+                "recommendation_budget": rec["budget"],
+                "recommendation_constellation": rec["outcome"]["constellation"],
+            },
+        )
+        assert refresh.status_code == 200, refresh.text
+        body = refresh.json()
+        assert body["recommendation_budget"] == rec["budget"] - 20
+        assert body["recommendation_constellation"] == rec["outcome"]["constellation"]
+
+    def test_conditioned_thresholds_are_anchored_to_optimizer_defaults(self):
+        """The constants were historically undefined (the live NameError);
+        they must stay anchored to the optimizer's default evaluation runs
+        rather than independent magic numbers."""
+        from api.routers import planner as planner_router
+        from optimizer import DEFAULT_RUNS
+
+        assert planner_router.CONDITIONED_FALLBACK_RUNS == DEFAULT_RUNS
+        assert planner_router.MIN_CONDITIONED_RUNS == DEFAULT_RUNS // 2
+

@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from domain import Account, Ownership, WishMechanics
+from domain import Account, Ownership, WishMechanics, next_capturing_radiance_counter
+from probability import capturing_radiance_rate
 from simulation.engine import (
     _pull_toward_target,
     _pull_toward_target_vectorized,
@@ -263,3 +264,201 @@ class TestVectorizedBanner:
                 mechanics=forced_mechanics(),
                 rng=np.random.default_rng(0),
             )
+
+
+class TestCapturingRadianceVectorized:
+    """The vectorized engine must not re-derive Capturing Radiance (§6).
+
+    The featured win probability per counter state must come from
+    `probability.capturing_radiance_rate` and the counter transition from
+    `domain.next_capturing_radiance_counter` - the same functions the
+    scalar engine calls.
+    """
+
+    def test_transitions_match_next_capturing_radiance_counter(self):
+        """Every (starting counter, guarantee, outcome) combination moves
+        the counter exactly as the single-sourced domain function says."""
+        for win_forced, featured_rate in ((True, 1.0), (False, 1e-9)):
+            for guaranteed in (False, True):
+                for radiance_start in range(4):
+                    runs = 1
+                    (
+                        _,
+                        _,
+                        _,
+                        guarantee_after,
+                        radiance_after,
+                        _,
+                        outcomes,
+                    ) = _pull_toward_target_vectorized(
+                        current_pity=np.zeros(runs, dtype=int),
+                        guarantee=np.full(runs, guaranteed, dtype=bool),
+                        radiance=np.full(runs, radiance_start, dtype=int),
+                        wishes=np.ones(runs, dtype=int),
+                        owned=np.full(runs, -1, dtype=int),
+                        copies_needed=np.ones(runs, dtype=int),
+                        budget=np.ones(runs, dtype=int),
+                        mechanics=forced_mechanics(featured_rate=featured_rate),
+                        rng=np.random.default_rng(0),
+                    )
+                    # Every pull is a certain 5-star (forced mechanics):
+                    # the single wish always produces one outcome.
+                    ((_, featured),) = outcomes[0]
+                    # The featured outcome must follow the single-sourced
+                    # schedule: a guarantee forces it, radiance 3 forces it,
+                    # and radiance 0/1 at featured_rate ~0 forces a loss.
+                    # (Radiance 2 is the stochastic 6/11 state - covered by
+                    # the statistical tests below.)
+                    if guaranteed or radiance_start == 3:
+                        assert featured is True
+                    elif radiance_start <= 1 and not win_forced:
+                        assert featured is False
+                    assert guarantee_after[0] == (not featured)
+
+                    expected_radiance = next_capturing_radiance_counter(
+                        radiance_start,
+                        was_guaranteed=guaranteed,
+                        featured=featured,
+                    )
+                    assert radiance_after[0] == expected_radiance
+
+    def test_transitions_are_per_history_in_one_mixed_batch(self):
+        """All eight (guarantee, counter) starting states in one vectorized
+        call transition independently, each matching the domain function."""
+        runs = 8
+        guarantee = np.array([False, False, False, False, True, True, True, True])
+        radiance_start = np.array([0, 1, 2, 3, 0, 1, 2, 3])
+
+        (
+            _,
+            _,
+            _,
+            guarantee_after,
+            radiance_after,
+            _,
+            outcomes,
+        ) = _pull_toward_target_vectorized(
+            current_pity=np.zeros(runs, dtype=int),
+            guarantee=guarantee,
+            radiance=radiance_start.copy(),
+            wishes=np.ones(runs, dtype=int),
+            owned=np.full(runs, -1, dtype=int),
+            copies_needed=np.ones(runs, dtype=int),
+            budget=np.ones(runs, dtype=int),
+            # The guaranteed histories are featured regardless of the rate;
+            # the non-guaranteed ones all lose the 50/50 at rate ~0.
+            mechanics=forced_mechanics(featured_rate=1e-9),
+            rng=np.random.default_rng(0),
+        )
+
+        for index in range(runs):
+            was_guaranteed = bool(guarantee[index])
+            ((_, featured),) = outcomes[index]
+            expected_radiance = next_capturing_radiance_counter(
+                int(radiance_start[index]),
+                was_guaranteed=was_guaranteed,
+                featured=featured,
+            )
+            assert radiance_after[index] == expected_radiance
+            assert guarantee_after[index] == (not featured)
+            # Schedule-aware outcome check: guaranteed histories and
+            # radiance-3 histories always win; radiance 0/1 histories at
+            # featured_rate ~0 always lose; radiance 2 is the stochastic
+            # 6/11 state (either outcome is valid).
+            if was_guaranteed or int(radiance_start[index]) == 3:
+                assert featured is True
+            elif int(radiance_start[index]) <= 1:
+                assert featured is False
+
+    def test_featured_probability_matches_capturing_radiance_rate(self):
+        """Statistical check of the featured probability at every counter
+        state: 0/1 -> featured_rate, 2 -> 6/11, 3 -> guaranteed."""
+        runs = 40_000
+        # Every pull is a certain 5-star (rate 1.0) and the raw 50/50 is
+        # 0.5, so one wish per history isolates the radiance schedule.
+        mechanics = forced_mechanics(featured_rate=0.5)
+        rng = np.random.default_rng(7)
+
+        featured_fraction = {}
+        for radiance_start in range(4):
+            _, _, _, _, _, _, outcomes = _pull_toward_target_vectorized(
+                current_pity=np.zeros(runs, dtype=int),
+                guarantee=np.zeros(runs, dtype=bool),
+                radiance=np.full(runs, radiance_start, dtype=int),
+                wishes=np.ones(runs, dtype=int),
+                owned=np.full(runs, -1, dtype=int),
+                copies_needed=np.ones(runs, dtype=int),
+                budget=np.ones(runs, dtype=int),
+                mechanics=mechanics,
+                rng=rng,
+            )
+            assert len(outcomes) == runs
+            featured_fraction[radiance_start] = np.mean(
+                [outcome[0][1] for outcome in outcomes]
+            )
+
+        for radiance_start in range(4):
+            expected = capturing_radiance_rate(radiance_start, mechanics)
+            assert featured_fraction[radiance_start] == pytest.approx(
+                expected, abs=0.01
+            )
+
+    def test_radiance_2_and_3_transitions_match_the_domain_function(self):
+        """Statistical transition check for the two boosted counter states:
+        a radiance-2 loss lands on 3, a radiance-2 win leaves the residual
+        mark 1, a radiance-3 win leaves 1 - and no radiance-3 loss exists
+        (the schedule makes it a guaranteed featured win)."""
+        runs = 20_000
+        mechanics = forced_mechanics(featured_rate=0.5)
+
+        _, _, _, _, radiance_after, _, outcomes = _pull_toward_target_vectorized(
+            current_pity=np.zeros(runs, dtype=int),
+            guarantee=np.zeros(runs, dtype=bool),
+            radiance=np.full(runs, 2, dtype=int),
+            wishes=np.ones(runs, dtype=int),
+            owned=np.full(runs, -1, dtype=int),
+            copies_needed=np.ones(runs, dtype=int),
+            budget=np.ones(runs, dtype=int),
+            mechanics=mechanics,
+            rng=np.random.default_rng(11),
+        )
+
+        wins = losses = 0
+        for index, outcome in enumerate(outcomes):
+            ((_, featured),) = outcome
+            expected = next_capturing_radiance_counter(
+                2, was_guaranteed=False, featured=featured
+            )
+            assert radiance_after[index] == expected
+            if featured:
+                wins += 1
+                assert radiance_after[index] == 1  # residual mark
+            else:
+                losses += 1
+                assert radiance_after[index] == 3  # capped streak
+
+        # Both branches occurred, in radiance_rate(2) proportion.
+        assert wins > 0 and losses > 0
+        assert wins / runs == pytest.approx(
+            capturing_radiance_rate(2, mechanics), abs=0.01
+        )
+
+        # Radiance 3 is a guaranteed featured win leaving the residual 1;
+        # a loss (which would cap the streak at 3) can never happen.
+        _, _, _, _, radiance_after_3, _, outcomes_3 = (
+            _pull_toward_target_vectorized(
+                current_pity=np.zeros(runs, dtype=int),
+                guarantee=np.zeros(runs, dtype=bool),
+                radiance=np.full(runs, 3, dtype=int),
+                wishes=np.ones(runs, dtype=int),
+                owned=np.full(runs, -1, dtype=int),
+                copies_needed=np.ones(runs, dtype=int),
+                budget=np.ones(runs, dtype=int),
+                mechanics=mechanics,
+                rng=np.random.default_rng(11),
+            )
+        )
+        for index, outcome in enumerate(outcomes_3):
+            ((_, featured),) = outcome
+            assert featured is True
+            assert radiance_after_3[index] == 1

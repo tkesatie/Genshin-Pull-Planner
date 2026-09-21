@@ -37,6 +37,7 @@ from simulation.engine import _simulate_scalar
 VESNA = Banner("Vesna", "7.0", 1)
 TSARITSA = Banner("Tsaritsa", "7.1", 1)
 VODYNISTA = Banner("Vodynista", "7.2", 1)
+ARIA = Banner("Aria", "7.0", 1)
 
 
 def forced_mechanics(featured_rate: float = 1.0) -> WishMechanics:
@@ -84,9 +85,14 @@ class TestVectorizedSimulation:
     def test_vectorized_simulate_matches_scalar_for_deterministic_banners(
         self, doc_account
     ):
-        """The integrated vectorized path preserves the scalar state machine."""
+        """The integrated vectorized path preserves the scalar state machine.
+
+        The roadmap uses unique goal priorities (a Roadmap invariant) and
+        covers two sequential banners, so pity/guarantee/ownership/wishes
+        propagation between banners is exercised exactly.
+        """
         roadmap = Roadmap(
-            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 1)],
+            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 2)],
             banners=[VESNA, TSARITSA],
         )
         context = PlannerContext(
@@ -498,4 +504,355 @@ class TestIsolationAndDeterminism:
         )
         with pytest.raises(ValueError, match="no roadmap banner"):
             simulate(context, SpendPlan(), runs=5, seed=0)
+
+
+class TestVectorizedEdgeCases:
+    """The §13 edge-case battery through both engines: with deterministic
+    mechanics the vectorized `simulate()` must reproduce `_simulate_scalar`
+    exactly, scenario by scenario."""
+
+    def assert_engines_agree(self, context, plan, runs=25, seed=5):
+        vectorized = simulate(context, plan, runs=runs, seed=seed)
+        scalar = _simulate_scalar(context, plan, runs=runs, seed=seed)
+        assert vectorized == scalar
+        return vectorized
+
+    def test_zero_wishes(self):
+        context = single_banner_context(
+            Account(wishes=0), mechanics=forced_mechanics()
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 10),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.wishes_spent == 0
+        assert first.copies_obtained == 0
+        assert first.target_met is False
+
+    def test_zero_budget(self):
+        context = single_banner_context(
+            Account(wishes=10), mechanics=forced_mechanics()
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 0),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.budget == 0
+        assert first.wishes_spent == 0
+
+    def test_target_already_owned(self):
+        account = Account(owned_characters=Ownership({"Vesna": 0}), wishes=10)
+        context = single_banner_context(account, mechanics=forced_mechanics())
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 10),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.copies_needed == 0
+        assert first.wishes_spent == 0
+        assert first.target_met is True
+
+    def test_target_requiring_multiple_copies(self):
+        context = single_banner_context(
+            Account(wishes=10), mechanics=forced_mechanics()
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 2, 10),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.copies_needed == 3
+        assert first.wishes_spent == 3
+        assert first.copy_wishes == (1, 2, 3)
+        assert first.account_after.owned_constellation("Vesna") == 2
+
+    def test_insufficient_wishes(self):
+        context = single_banner_context(
+            Account(wishes=2), mechanics=forced_mechanics()
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 2, 10),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.wishes_spent == 2
+        assert first.target_met is False
+
+    def test_budget_greater_than_available_wishes(self):
+        context = single_banner_context(
+            Account(wishes=5), mechanics=forced_mechanics()
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 100),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.wishes_spent == 1
+
+    def test_starting_pity_guarantee_and_radiance_propagate(self):
+        """Pity 1 / guarantee off: the hard-pity pull loses the 50/50, the
+        carried guarantee wins, and the counter (0 -> 1 -> 2) carries while
+        the guarantee chain forces every featured outcome.
+
+        Starting at radiance 0 keeps the whole chain deterministic: a loss
+        from radiance 1 or the guaranteed win never leaves the 6/11
+        radiance-2 state exposed to a non-guaranteed pull (engines fed
+        different RNG streams legitimately diverge there - see the
+        stochastic comparison)."""
+        mechanics = forced_mechanics(featured_rate=1e-9)
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1)], banners=[VESNA, TSARITSA]
+        )
+        context = PlannerContext(
+            account=Account(current_pity=1, wishes=4),
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=mechanics,
+        )
+        plan = SpendPlan(
+            entries=(PlannedSpend(VESNA, 0, 2), PlannedSpend(TSARITSA, 0, 2))
+        )
+        result = self.assert_engines_agree(context, plan)
+        vesna, tsaritsa = result.histories[0].banner_results
+        # Vesna: hard-pity pull loses the 50/50, the guarantee wins pull 2.
+        assert vesna.wishes_spent == 2
+        assert vesna.copies_obtained == 1
+        assert vesna.copy_wishes == (2,)
+        assert vesna.account_after.character_guarantee is False
+        assert vesna.account_after.capturing_radiance_counter == 1
+        # Tsaritsa: non-guaranteed at radiance 1 loses (rate ~0), then the
+        # guarantee wins pull 2; the counter carries 1 -> 2 -> 2.
+        assert tsaritsa.wishes_spent == 2
+        assert tsaritsa.copies_obtained == 1
+        assert tsaritsa.account_after.character_guarantee is False
+        assert tsaritsa.account_after.capturing_radiance_counter == 2
+
+    def test_starting_guarantee_wins_and_preserves_radiance(self):
+        """A starting guarantee forces the featured copy on the first wish
+        and never touches the Capturing Radiance counter."""
+        mechanics = forced_mechanics(featured_rate=1e-9)
+        context = single_banner_context(
+            Account(
+                current_pity=1,
+                character_guarantee=True,
+                wishes=4,
+                capturing_radiance_counter=2,
+            ),
+            mechanics=mechanics,
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 2),))
+        result = self.assert_engines_agree(context, plan)
+        first = result.histories[0].banner_results[0]
+        assert first.wishes_spent == 1
+        assert first.copies_obtained == 1
+        assert first.account_after.character_guarantee is False
+        assert first.account_after.capturing_radiance_counter == 2
+
+    def test_pity_carrying_across_banners(self):
+        """Banner 1 spends its budget on the hard-pity pull; banner 2 starts
+        from the reset pity and (at rate ~0) gains exactly one pity."""
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1)], banners=[VESNA, TSARITSA]
+        )
+        context = PlannerContext(
+            account=Account(current_pity=2, wishes=4),
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=slow_mechanics(),
+        )
+        plan = SpendPlan(
+            entries=(PlannedSpend(VESNA, 0, 1), PlannedSpend(TSARITSA, 0, 1))
+        )
+        result = self.assert_engines_agree(context, plan)
+        vesna, tsaritsa = result.histories[0].banner_results
+        assert vesna.copies_obtained == 1
+        assert vesna.account_after.current_pity == 0
+        assert tsaritsa.copies_obtained == 0
+        assert tsaritsa.account_after.current_pity == 1
+
+    def test_guarantee_and_radiance_carry_through_skipped_banner(self):
+        """A lost 50/50's guarantee (and the incremented counter) survive a
+        skipped banner and win on the next planned one."""
+        mechanics = forced_mechanics(featured_rate=1e-9)
+        roadmap = Roadmap(
+            goals=[Goal("Vodynista", 0, 1)],
+            banners=[VESNA, TSARITSA, VODYNISTA],
+        )
+        context = PlannerContext(
+            account=Account(current_pity=1, wishes=10),
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=mechanics,
+        )
+        plan = SpendPlan(
+            entries=(PlannedSpend(VESNA, 0, 1), PlannedSpend(VODYNISTA, 0, 1))
+        )
+        result = self.assert_engines_agree(context, plan)
+        vesna, tsaritsa, vodynista = result.histories[0].banner_results
+        assert vesna.copies_obtained == 0
+        assert vesna.account_after.character_guarantee is True
+        assert vesna.account_after.capturing_radiance_counter == 1
+        assert tsaritsa.target_constellation is None
+        assert tsaritsa.wishes_spent == 0
+        assert tsaritsa.account_after.character_guarantee is True
+        assert vodynista.copies_obtained == 1
+        assert vodynista.account_after.character_guarantee is False
+        assert vodynista.account_after.capturing_radiance_counter == 1
+
+    def test_income_between_banners_and_two_banners_in_one_version(
+        self, doc_account
+    ):
+        """Income lands at the first processed banner beyond the current
+        (version, phase): Aria (7.0 p2) credits 7.0's forecast, Tsaritsa
+        (7.1 p1) credits 7.1's - and no banner is credited twice."""
+        later_phase_aria = Banner("Aria", "7.0", 2)
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 2)],
+            banners=[VESNA, later_phase_aria, TSARITSA],
+        )
+        income = IncomeForecast(
+            versions=[
+                VersionIncome("7.0", estimate=IncomeEstimate(10, 10, 10)),
+                VersionIncome("7.1", estimate=IncomeEstimate(20, 20, 20)),
+            ]
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            income=income,
+            mechanics=forced_mechanics(),
+        )
+        plan = SpendPlan(
+            entries=(PlannedSpend(VESNA, 0, 40), PlannedSpend(TSARITSA, 0, 40))
+        )
+        result = self.assert_engines_agree(context, plan)
+        vesna, aria, tsaritsa = result.histories[0].banner_results
+        assert [b.income_credited for b in (vesna, aria, tsaritsa)] == [0, 10, 20]
+
+    def test_shared_current_phase_budget(self):
+        """Two banners in the current (version, phase) share one budget;
+        the vectorized per-history accounting must match the scalar."""
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1), Goal("Aria", 1, 2)],
+            banners=[VESNA, ARIA],
+        )
+        context = PlannerContext(
+            account=Account(wishes=10),
+            roadmap=roadmap,
+            current_version="7.0",
+            current_phase=1,
+            mechanics=forced_mechanics(),
+        )
+        plan = SpendPlan(
+            entries=(PlannedSpend(VESNA, 0, 5), PlannedSpend(ARIA, 1, 5)),
+            shared_current_phase_budget=3,
+        )
+        result = self.assert_engines_agree(context, plan)
+        vesna, aria = result.histories[0].banner_results
+        assert vesna.wishes_spent == 1
+        assert aria.wishes_spent == 2
+
+    def test_goals_already_satisfied_and_satisfied_later(self, doc_account):
+        """Vodynista C0 is satisfied from the start (satisfied_after None);
+        Vesna C0 becomes satisfied on its banner."""
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1), Goal("Vodynista", 0, 2)],
+            banners=[VESNA, VODYNISTA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=forced_mechanics(),
+        )
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 2),))
+        result = self.assert_engines_agree(context, plan)
+        outcomes = result.histories[0].goal_outcomes
+        assert outcomes[0].satisfied is True
+        assert outcomes[0].satisfied_after == VESNA
+        assert outcomes[1].satisfied is True
+        assert outcomes[1].satisfied_after is None
+
+    def test_unwon_banner_characters_are_not_added_to_ownership(
+        self, doc_account
+    ):
+        """Ownership keys must match the scalar engine exactly (§4.2): a
+        character the plan or goals mention but the run never wins is not
+        auto-added with NOT_OWNED; a character the run wins is added."""
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1)], banners=[VESNA, TSARITSA]
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=forced_mechanics(),
+        )
+        # Budget 0: Vesna is never pulled, so ownership stays as it started.
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 0),))
+        result = self.assert_engines_agree(context, plan)
+        for run in result.histories:
+            assert run.account_after.owned_characters.characters == {
+                "Vodynista": 0
+            }
+
+        # Budget 1 with forced mechanics: Vesna is won and added, Tsaritsa
+        # (a skipped banner character) is not.
+        plan = SpendPlan(entries=(PlannedSpend(VESNA, 0, 1),))
+        result = self.assert_engines_agree(context, plan)
+        for run in result.histories:
+            assert run.account_after.owned_characters.characters == {
+                "Vodynista": 0,
+                "Vesna": 0,
+            }
+
+
+class TestVectorizedStochasticComparison:
+    def test_aggregates_are_statistically_consistent_with_the_scalar_oracle(
+        self, doc_account, doc_roadmap, doc_income
+    ):
+        """Genuinely stochastic mechanics: aggregate quantities from the
+        vectorized engine must be statistically consistent with the scalar
+        oracle. Seeded histories are NOT expected to match one-for-one
+        (the implementations consume the RNG differently)."""
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=doc_roadmap,
+            current_version="7.0",
+            income=doc_income,
+        )
+        plan = SpendPlan(
+            entries=(
+                PlannedSpend(VESNA, 0, 60),
+                PlannedSpend(TSARITSA, 0, 60),
+            )
+        )
+        runs = 4_000
+        vectorized = simulate(context, plan, runs=runs, seed=2024)
+        scalar = _simulate_scalar(context, plan, runs=runs, seed=999)
+
+        # Goal satisfaction probabilities.
+        for v_goal, s_goal in zip(vectorized.goals, scalar.goals):
+            assert v_goal.goal == s_goal.goal
+            assert abs(v_goal.probability - s_goal.probability) < 0.03
+
+        # Per-banner spending and success aggregates.
+        for v_banner, s_banner in zip(vectorized.banners, scalar.banners):
+            assert v_banner.banner == s_banner.banner
+            assert (
+                abs(v_banner.mean_wishes_spent - s_banner.mean_wishes_spent)
+                < 1.5
+            )
+            assert (
+                abs(
+                    v_banner.target_met_probability
+                    - s_banner.target_met_probability
+                )
+                < 0.03
+            )
+            assert (
+                abs(
+                    v_banner.mean_copies_obtained
+                    - s_banner.mean_copies_obtained
+                )
+                < 0.05
+            )
+
+        # Roadmap-wide and end-of-history aggregates.
+        assert (
+            abs(vectorized.all_goals_probability - scalar.all_goals_probability)
+            < 0.03
+        )
+        assert abs(vectorized.final_wishes_mean - scalar.final_wishes_mean) < 1.5
 

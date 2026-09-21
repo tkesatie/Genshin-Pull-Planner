@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.dependencies import ContextOverrides, context_overrides, get_record
 from api.repository import AccountRecord
 from api.planner_cache import CachedCandidateEvidence, context_fingerprint, planner_evidence_cache
+from api.refresh_metrics import cached_refresh_metrics  # TEMPORARY instrumentation
 from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.planner import (
     GoalEvaluationsView,
@@ -44,6 +45,21 @@ from planner import (
     safe_spend,
 )
 from simulation import DEFAULT_SEED, simulate
+
+# Conditioned-evidence policy for /planner/cached-refresh, anchored to the
+# optimizer's default evaluation runs (the runs the retained evidence was
+# originally sampled with):
+#
+# - CONDITIONED_FALLBACK_RUNS: when conditioning leaves too few matching
+#   histories, the retained plan is re-simulated from the post-pull account
+#   state with a full fresh sample of the same size as the original planner
+#   run - a targeted resimulation, deliberately NOT a full optimizer rerun
+#   (build_strategy / recommend are never called from this endpoint).
+# - MIN_CONDITIONED_RUNS: reuse the conditioned sample only when at least
+#   half of the original sample survived the observation filter; below that
+#   the conditional estimate is too thin and the targeted fallback runs.
+MIN_CONDITIONED_RUNS = DEFAULT_RUNS // 2
+CONDITIONED_FALLBACK_RUNS = DEFAULT_RUNS
 
 router = APIRouter(tags=["planner"])
 
@@ -387,6 +403,15 @@ def planner_cached_refresh(
         context=context,
     )
 
+    # TEMPORARY instrumentation (api/refresh_metrics.py): observes the reuse
+    # decision only; it never alters conditioning or thresholds.
+    refresh_recorder = cached_refresh_metrics.start_refresh(
+        character=character,
+        outcome=outcome,
+        wishes_used=wishes_used,
+        threshold=MIN_CONDITIONED_RUNS,
+    )
+
     available = available_banners(context)
     current_banner = next(
         (banner for banner in available if banner.character == character),
@@ -394,6 +419,11 @@ def planner_cached_refresh(
     )
 
     for goal, evidence in tuple(conditioned.items()):
+        refresh_recorder.record_goal_evidence(
+            f"{goal.character} C{goal.constellation}",
+            evidence.runs,
+            evidence.result.plan is not None,
+        )
         if evidence.runs >= MIN_CONDITIONED_RUNS or evidence.result.plan is None:
             continue
         if current_banner is None:
@@ -412,6 +442,7 @@ def planner_cached_refresh(
             entries=tuple(entries),
             shared_current_phase_budget=shared_budget,
         )
+        refresh_recorder.count_fallback_resimulation()
         refreshed_result = simulate(
             context,
             refreshed_plan,
@@ -449,6 +480,7 @@ def planner_cached_refresh(
             shared_budget = evidence.result.plan.shared_current_phase_budget
             if shared_budget is not None:
                 shared_budget = max(0, shared_budget - wishes_used)
+            refresh_recorder.count_fallback_resimulation()
             refreshed_result = simulate(
                 context,
                 replace(evidence.result.plan, entries=tuple(entries), shared_current_phase_budget=shared_budget),
@@ -487,6 +519,7 @@ def planner_cached_refresh(
                 context=context,
             )
             if conditioned_recommendation is None or conditioned_recommendation.runs < MIN_CONDITIONED_RUNS:
+                refresh_recorder.count_candidate_fallback()
                 fresh_candidate = evaluate_candidate(
                     context,
                     conditioned_recommendation.candidate.outcome,
@@ -609,6 +642,13 @@ def planner_cached_refresh(
             )
             for item in result.goals
         ]
+
+    # TEMPORARY instrumentation: classify this refresh for the metrics
+    # summary (retained / targeted fallback / full optimizer fallback).
+    refresh_recorder.finish(
+        evidence_count=len(evidence_views),
+        has_recommendation=conditioned_recommendation is not None,
+    )
 
     return CachedPlannerRefreshView(
         account_wishes=context.account.wishes,
