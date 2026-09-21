@@ -56,7 +56,7 @@ class TestVectorizedBanner:
         ]
 
     def test_guarantee_and_radiance_state_transition_are_per_history(self):
-        spent, obtained, owned, outcomes = _pull_toward_target_vectorized(
+        spent, obtained, pity, guarantee, radiance, owned, outcomes = _pull_toward_target_vectorized(
             current_pity=np.array([0, 0]),
             guarantee=np.array([False, True]),
             radiance=np.array([0, 0]),
