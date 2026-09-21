@@ -31,7 +31,7 @@ def slow_mechanics() -> WishMechanics:
 
 class TestVectorizedBanner:
     def test_independent_histories_stop_at_their_own_targets_or_budgets(self):
-        spent, obtained, owned, outcomes = _pull_toward_target_vectorized(
+        spent, obtained, pity, guarantee, radiance, owned, outcomes = _pull_toward_target_vectorized(
             current_pity=np.array([0, 0, 0]),
             guarantee=np.array([False, False, False]),
             radiance=np.array([0, 0, 0]),
@@ -45,6 +45,9 @@ class TestVectorizedBanner:
 
         np.testing.assert_array_equal(spent, [1, 2, 3])
         np.testing.assert_array_equal(obtained, [1, 2, 3])
+        np.testing.assert_array_equal(pity, [0, 0, 0])
+        np.testing.assert_array_equal(guarantee, [False, False, False])
+        np.testing.assert_array_equal(radiance, [0, 0, 0])
         np.testing.assert_array_equal(owned, [0, 1, 2])
         assert outcomes == [
             [(1, True)],
@@ -67,6 +70,9 @@ class TestVectorizedBanner:
 
         np.testing.assert_array_equal(spent, [2, 1])
         np.testing.assert_array_equal(obtained, [1, 1])
+        np.testing.assert_array_equal(pity, [0, 0])
+        np.testing.assert_array_equal(guarantee, [False, False])
+        np.testing.assert_array_equal(radiance, [1, 0])
         np.testing.assert_array_equal(owned, [0, 0])
         assert outcomes[0] == [(1, False), (2, True)]
         assert outcomes[1] == [(1, True)]
@@ -86,6 +92,9 @@ class TestVectorizedBanner:
 
         np.testing.assert_array_equal(spent, [1, 1])
         np.testing.assert_array_equal(obtained, [0, 0])
+        np.testing.assert_array_equal(pity, [1, 2])
+        np.testing.assert_array_equal(guarantee, [False, True])
+        np.testing.assert_array_equal(radiance, [0, 2])
         np.testing.assert_array_equal(owned, [-1, -1])
         assert outcomes == [[], []]
 
