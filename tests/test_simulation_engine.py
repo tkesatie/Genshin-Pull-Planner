@@ -32,6 +32,7 @@ from domain import (
 )
 from planner import PlannerContext
 from simulation import PlannedSpend, SpendPlan, simulate, simulate_history
+from simulation.engine import _simulate_scalar
 
 VESNA = Banner("Vesna", "7.0", 1)
 TSARITSA = Banner("Tsaritsa", "7.1", 1)
@@ -75,6 +76,36 @@ def single_banner_context(
     return PlannerContext(
         account=account, roadmap=roadmap, current_version=version, mechanics=mechanics
     )
+
+
+
+
+class TestVectorizedSimulation:
+    def test_vectorized_simulate_matches_scalar_for_deterministic_banners(
+        self, doc_account
+    ):
+        """The integrated vectorized path preserves the scalar state machine."""
+        roadmap = Roadmap(
+            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 1)],
+            banners=[VESNA, TSARITSA],
+        )
+        context = PlannerContext(
+            account=doc_account,
+            roadmap=roadmap,
+            current_version="7.0",
+            mechanics=forced_mechanics(),
+        )
+        plan = SpendPlan(
+            entries=(
+                PlannedSpend(VESNA, 0, 2),
+                PlannedSpend(TSARITSA, 0, 2),
+            )
+        )
+
+        vectorized = simulate(context, plan, runs=20, seed=17)
+        scalar = _simulate_scalar(context, plan, runs=20, seed=17)
+
+        assert vectorized == scalar
 
 
 class TestBannerWalk:
