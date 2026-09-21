@@ -16,8 +16,8 @@ and `planner.spend_table.spend_table`) computed every protected goal's
 reserve as a SINGLE-COPY requirement, regardless of how many copies the
 goal actually needed. A goal like Skirk C2 from an unowned account (3
 copies) was reported as "100% confidence" protected at a budget whose true
-probability of completing all 3 copies was ~58%. See
-test_multicopy_reserve_matches_exact_reference and
+probability of completing all 3 copies was ~58.7%. See
+test_multicopy_cumulative_probability_matches_reference and
 test_regression_previously_overstated_confidence_now_corrected below for
 the direct before/after evidence.
 """
@@ -34,15 +34,18 @@ from domain import (
     Ownership,
     Roadmap,
     VersionIncome,
+    next_capturing_radiance_counter,
 )
 from domain.mechanics import CHARACTER_EVENT_BANNER
 from planner.context import PlannerContext
 from planner.protection import protected_goal_outcomes
 from planner.safe_spend import safe_spend
 from probability import (
+    capturing_radiance_rate,
     cumulative_probability,
     multi_copy_cumulative_probability,
     multi_copy_wishes_for_confidence,
+    pull_rate,
 )
 
 MECHANICS = CHARACTER_EVENT_BANNER
@@ -78,22 +81,68 @@ def _context(
 
 
 # ---------------------------------------------------------------------------
-# Multi-copy reserve math itself: cross-check against the same exact
-# convolution reference used to validate the simulator.
+# Multi-copy reserve math itself: cross-check against an independently
+# written exact reference for the same pull process.
 # ---------------------------------------------------------------------------
 
-def _reference_convolved_cdf(copies: int, max_wishes: int) -> np.ndarray:
-    cdf = cumulative_probability(max_wishes, 0, False, MECHANICS)
-    pmf = np.diff(cdf, prepend=0.0)
-    total = pmf.copy()
-    for _ in range(copies - 1):
-        total = np.convolve(total, pmf)[: max_wishes + 1]
-    return np.cumsum(total)[: max_wishes + 1]
+def _reference_exact_multicopy_cdf(copies: int, max_wishes: int) -> np.ndarray:
+    """Exact multi-copy CDF of the pull process, as an independent check.
+
+    A plain convolution of the single-copy completion-time pmf is NOT exact
+    once Capturing Radiance exists: a copy won at Radiance 2 or 3 leaves the
+    loss-streak counter at 1 rather than 0 (see
+    `domain.next_capturing_radiance_counter`), so the copies are not
+    independent draws and the convolution slightly understates the curve.
+
+    This reference instead walks the same pull process recursively - a
+    different algorithm from the matrix DP it validates - while
+    single-sourcing the rates (`probability.pull_rate`,
+    `probability.capturing_radiance_rate`) and the counter transition
+    (`domain.next_capturing_radiance_counter`), so it can only agree with
+    `multi_copy_cumulative_probability` if that DP handles pity, guarantee
+    and Radiance carryover the same way the published rules say.
+    """
+    memo: dict[tuple[int, int, int, bool, int], float] = {}
+
+    def chance(
+        wishes: int, copies_left: int, pity: int, guaranteed: bool, radiance: int
+    ) -> float:
+        if copies_left <= 0:
+            return 1.0
+        if wishes <= 0:
+            return 0.0
+        key = (wishes, copies_left, pity, guaranteed, radiance)
+        if key not in memo:
+            rate = pull_rate(pity, MECHANICS)
+            total = 0.0
+            if rate < 1.0:
+                # No 5-star: pity advances (rate < 1 implies pity + 1 < hard).
+                total += (1.0 - rate) * chance(
+                    wishes - 1, copies_left, pity + 1, guaranteed, radiance
+                )
+            win = 1.0 if guaranteed else capturing_radiance_rate(radiance, MECHANICS)
+            won_radiance = next_capturing_radiance_counter(
+                radiance, was_guaranteed=guaranteed, featured=True
+            )
+            lost_radiance = next_capturing_radiance_counter(
+                radiance, was_guaranteed=guaranteed, featured=False
+            )
+            total += rate * (
+                win * chance(wishes - 1, copies_left - 1, 0, False, won_radiance)
+                + (1.0 - win)
+                * chance(wishes - 1, copies_left, 0, True, lost_radiance)
+            )
+            memo[key] = total
+        return memo[key]
+
+    return np.array(
+        [chance(wishes, copies, 0, False, 0) for wishes in range(max_wishes + 1)]
+    )
 
 
 @pytest.mark.parametrize("copies,wishes", [(1, 90), (2, 180), (3, 270), (3, 450)])
 def test_multicopy_cumulative_probability_matches_reference(copies, wishes):
-    reference = _reference_convolved_cdf(copies, wishes)
+    reference = _reference_exact_multicopy_cdf(copies, wishes)
     actual = multi_copy_cumulative_probability(wishes, copies, 0, False, MECHANICS)
     assert actual[wishes] == pytest.approx(reference[wishes], abs=1e-9)
 
@@ -118,7 +167,7 @@ def test_multicopy_wishes_for_confidence_round_trips():
 def test_skirk_c2_protection_matches_exact_multicopy_probability():
     """Skirk C2 from unowned (3 copies) as a protected future goal behind
     a current Vesna banner. The reported confidence/required_wishes must
-    match the exact 3-copy convolution, not the 1-copy curve.
+    match the exact 3-copy pull process, not the 1-copy curve.
     """
     context = _context(
         wishes=300,
@@ -130,7 +179,7 @@ def test_skirk_c2_protection_matches_exact_multicopy_probability():
     skirk = outcomes[0]
     assert skirk.goal.character == "Skirk"
 
-    reference = float(_reference_convolved_cdf(3, 300)[300])
+    reference = float(_reference_exact_multicopy_cdf(3, 300)[300])
     assert skirk.confidence == pytest.approx(reference, abs=1e-9)
     # At 300 wishes, true 3-copy confidence is well under 90% - must not
     # be reported as protected.
@@ -248,7 +297,11 @@ def test_future_income_reduces_multicopy_deficit_at_the_right_banner():
     assert skirk_with.budget_at_banner == skirk_without.budget_at_banner + 90
     assert skirk_with.confidence > skirk_without.confidence
 
-    reference_with = float(_reference_convolved_cdf(3, skirk_with.budget_at_banner)[skirk_with.budget_at_banner])
+    reference_with = float(
+        _reference_exact_multicopy_cdf(3, skirk_with.budget_at_banner)[
+            skirk_with.budget_at_banner
+        ]
+    )
     assert skirk_with.confidence == pytest.approx(reference_with, abs=1e-9)
 
 
@@ -354,7 +407,7 @@ def test_regression_previously_overstated_confidence_now_corrected():
     and meets_threshold=True for Skirk C2 (3 copies, unowned) at 300
     wishes and 90% confidence - because it evaluated the SINGLE-copy
     curve, which is indeed ~1.0 at 300 wishes. The true 3-copy probability
-    at 300 wishes is ~58%. This test locks in the corrected numbers so a
+    at 300 wishes is ~58.7%. This test locks in the corrected numbers so a
     future change can't silently reintroduce the single-copy shortcut.
     """
     context = _context(
@@ -368,8 +421,10 @@ def test_regression_previously_overstated_confidence_now_corrected():
     old_wrong_confidence = float(cumulative_probability(300, 0, False, MECHANICS)[300])
     assert old_wrong_confidence == pytest.approx(1.0, abs=1e-6)
 
-    # The corrected answer:
-    assert skirk.confidence == pytest.approx(0.5840518258672598, abs=1e-6)
+    # The corrected answer (exact 3-copy probability at 300 wishes; the
+    # convolution-of-single-copies figure of ~0.5841 was stale because it
+    # ignored the Capturing Radiance carryover between copies):
+    assert skirk.confidence == pytest.approx(0.5870392759539682, abs=1e-6)
     assert skirk.confidence < old_wrong_confidence - 0.3  # not a rounding difference
     assert skirk.meets_threshold is False
 

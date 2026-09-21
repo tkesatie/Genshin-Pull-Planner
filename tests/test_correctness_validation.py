@@ -410,11 +410,20 @@ def test_income_flows_into_simulated_banner_budget():
     _assert_matches(result.banners[1].target_met_probability, 2_000, reference, "income-funded banner")
 
 def test_multicopy_exact_model_carries_capturing_radiance_between_copies():
-    """Multi-copy probability must preserve Radiance after earlier copies."""
+    """Multi-copy probability must preserve Radiance after earlier copies.
+
+    For this toy banner (hard pity 2, so the first wish from pity 1 is a
+    guaranteed 5-star) the exact value at 4 wishes is 2595339/15125000
+    (~0.1716), derived from the pull tree / probability. The same tree with
+    the loss-streak counter force-reset to 0 after every featured win - the
+    pre-Capturing-Radiance model - gives 619497/4000000 (~0.1549), so the
+    two are measurably different. A stale hand-derived 161/968 (~0.1663)
+    matches neither and was replaced by the derived values.
+    """
     mechanics = WishMechanics(banner_type="test", hard_pity=2, soft_pity_start=1, base_rate=0.5, soft_pity_increment=0.01, featured_rate=0.5)
     curve = multi_copy_cumulative_probability(4, 3, 1, False, mechanics, starting_radiance=2)
 
-    # Three copies require later 5-star events to inherit the Radiance state
-    # created by earlier wins/losses. At 4 wishes the exact probability is
-    # 161/968; resetting Radiance after each copy produces a different value.
-    assert curve[4] == pytest.approx(161.0 / 968.0)
+    assert curve[4] == pytest.approx(2595339.0 / 15125000.0)
+    # Resetting Radiance instead of carrying the residual mark at 1 leaves
+    # strictly less probability, so this pins the carryover behaviour.
+    assert curve[4] > 619497.0 / 4000000.0

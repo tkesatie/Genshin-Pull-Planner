@@ -169,7 +169,29 @@ def multi_copy_cumulative_probability(
     mechanics: WishMechanics,
     starting_radiance: int = 0,
 ) -> np.ndarray:
-    """Exact probability of obtaining at least the requested featured copies."""
+    """Exact probability of obtaining at least the requested featured copies.
+
+    Generalizes `cumulative_probability` to a target of `copies` featured
+    copies, returning P(at least `copies` within N wishes) for every N. The
+    state space gains a completed-copies axis:
+
+        state[c, p, r, g] = survival mass with c copies obtained, pity p,
+        Capturing Radiance counter r and guarantee g
+
+    The Radiance counter is carried across copies exactly as
+    `domain.next_capturing_radiance_counter` describes - a featured win at
+    Radiance 2 or 3 leaves the residual mark at 1 rather than resetting to 0
+    - so copies are NOT independent draws and convolving the single-copy
+    completion-time pmf only approximates this curve (see
+    tests/test_reserve_accounting.py, whose reference walks the same pull
+    tree independently).
+
+    Raises:
+        ValueError: if `wishes` or `copies` is negative, if
+            `starting_pity` is outside [0, hard_pity), or if
+            `starting_radiance` is outside [0, 3].
+    """
+
     if wishes < 0:
         raise ValueError(f"wishes must be non-negative, got {wishes}")
     if copies < 0:
@@ -193,8 +215,13 @@ def multi_copy_cumulative_probability(
 
     for wish in range(1, wishes + 1):
         new_state = np.zeros_like(state)
+        # Mass at pity p advances to pity p+1 with P(no 5-star at pity p) =
+        # moves.survive[p], so the per-pity weights must be sliced down to the
+        # pities that can actually advance (all but the last, where the rate
+        # is 1.0). Without the slice the (hard_pity,) weights cannot broadcast
+        # against the (hard_pity - 1,) source pities.
         new_state[:, 1:, :, :] += (
-            state[:, :-1, :, :] * moves.survive[None, :, None, None]
+            state[:, :-1, :, :] * moves.survive[None, :-1, None, None]
         )
 
         for copy_count in range(copies):
@@ -228,7 +255,14 @@ def multi_copy_wishes_for_confidence(
     mechanics: WishMechanics,
     starting_radiance: int = 0,
 ) -> int:
-    """Smallest wish count reaching the requested multi-copy confidence."""
+    """Smallest wish count reaching the requested multi-copy confidence.
+
+    The search horizon is `2 * hard_pity * copies` wishes: the worst case in
+    which every one of the `copies` copies costs a lost 50/50 followed by a
+    guaranteed 5-star at hard pity, so the curve is exactly 1.0 there and no
+    wish count beyond it can be the first to clear `confidence`.
+    """
+
     if not 0.0 < confidence <= 1.0:
         raise ValueError(f"confidence must be in (0, 1], got {confidence}")
     if copies < 0:

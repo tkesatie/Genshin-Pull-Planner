@@ -105,7 +105,7 @@ class TestValidation:
 
         capped = np.linspace(0.0, 0.9, 181)
 
-        def fake_curve(wishes, starting_pity, guaranteed, mechanics):
+        def fake_curve(wishes, starting_pity, guaranteed, mechanics, starting_radiance=0):
             assert wishes <= 180
             return capped[: wishes + 1]
 
