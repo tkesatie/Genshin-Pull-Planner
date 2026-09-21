@@ -286,8 +286,8 @@ def _pull_toward_target_vectorized(
             featured_indices = star_indices[featured]
             obtained[featured_indices] += 1
             owned[featured_indices] += 1
-        else:
-            current_pity[active] += 1
+        non_five_star = active & ~five_star
+        current_pity[non_five_star] += 1
 
     return (
         spent,
