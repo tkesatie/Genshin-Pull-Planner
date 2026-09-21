@@ -77,7 +77,7 @@ from domain import (
 )
 from planner.banners import available_banners, current_banner
 from planner.context import PlannerContext
-from probability import capturing_radiance_rate, pull_rate
+from probability import capturing_radiance_rate, pull_rate, pull_rate_array
 from simulation.outcomes import aggregate_runs
 from simulation.results import BannerResult, GoalOutcome, RunResult, SimulationResult
 from simulation.strategy import SpendPlan
