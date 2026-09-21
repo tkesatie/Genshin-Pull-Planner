@@ -78,7 +78,7 @@ class TestVectorizedBanner:
         assert outcomes[1] == [(1, True)]
 
     def test_no_five_star_advances_pity_independently(self):
-        spent, obtained, owned, outcomes = _pull_toward_target_vectorized(
+        spent, obtained, pity, guarantee, radiance, owned, outcomes = _pull_toward_target_vectorized(
             current_pity=np.array([0, 1]),
             guarantee=np.array([False, True]),
             radiance=np.array([0, 2]),
