@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from domain import WishMechanics
+from domain import Account, Ownership, WishMechanics
 from simulation.engine import _pull_toward_target_vectorized
 
 
@@ -27,6 +27,92 @@ def slow_mechanics() -> WishMechanics:
         soft_pity_increment=1e-12,
         featured_rate=1.0,
     )
+
+
+    def test_matches_scalar_for_deterministic_featured_outcomes(self):
+        """The vectorized state machine matches the scalar oracle when
+        randomness is removed from the featured decision."""
+        initial = [
+            (0, False, 0, 5, -1, 1, 5),
+            (1, True, 0, 5, -1, 2, 5),
+            (0, False, 2, 5, 0, 2, 5),
+            (0, False, 3, 4, 1, 1, 3),
+        ]
+
+        current_pity, guarantee, radiance, wishes, owned, copies_needed, budget = map(
+            np.array, zip(*initial)
+        )
+
+        vectorized = _pull_toward_target_vectorized(
+            current_pity=current_pity,
+            guarantee=guarantee,
+            radiance=radiance,
+            wishes=wishes,
+            owned=owned,
+            copies_needed=copies_needed,
+            budget=budget,
+            mechanics=forced_mechanics(),
+            rng=np.random.default_rng(123),
+        )
+
+        scalar = []
+        for (
+            pity,
+            is_guaranteed,
+            starting_radiance,
+            available_wishes,
+            starting_owned,
+            needed,
+            cap,
+        ) in initial:
+            account = Account(
+                current_pity=int(pity),
+                character_guarantee=bool(is_guaranteed),
+                owned_characters=Ownership({"Vesna": int(starting_owned)}),
+                wishes=int(available_wishes),
+                capturing_radiance_counter=int(starting_radiance),
+            )
+            spent, obtained, copy_wishes, outcomes, account_after = _pull_toward_target(
+                account,
+                "Vesna",
+                int(needed),
+                int(cap),
+                forced_mechanics(),
+                np.random.default_rng(123),
+            )
+            scalar.append(
+                (
+                    spent,
+                    obtained,
+                    account_after.current_pity,
+                    account_after.character_guarantee,
+                    account_after.capturing_radiance_counter,
+                    account_after.owned_constellation("Vesna"),
+                    list(outcomes),
+                )
+            )
+
+        spent, obtained, pity, guarantee, radiance, owned, outcomes = vectorized
+
+        np.testing.assert_array_equal(
+            spent, [result[0] for result in scalar]
+        )
+        np.testing.assert_array_equal(
+            obtained, [result[1] for result in scalar]
+        )
+        np.testing.assert_array_equal(
+            pity, [result[2] for result in scalar]
+        )
+        np.testing.assert_array_equal(
+            guarantee, [result[3] for result in scalar]
+        )
+        np.testing.assert_array_equal(
+            radiance, [result[4] for result in scalar]
+        )
+        np.testing.assert_array_equal(
+            owned, [result[5] for result in scalar]
+        )
+        assert outcomes == [result[6] for result in scalar]
 
 
 class TestVectorizedBanner:
