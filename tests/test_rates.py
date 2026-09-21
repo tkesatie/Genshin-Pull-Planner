@@ -1,9 +1,10 @@
 """Per-pull rates: pull_rate and featured_rate_at (Design Document §10.1)."""
 
+import numpy as np
 import pytest
 
 from domain import CHARACTER_EVENT_BANNER, WishMechanics
-from probability import featured_rate_at, pull_rate
+from probability import featured_rate_at, pull_rate, pull_rate_array
 
 
 class TestPullRateConvention:
@@ -83,3 +84,53 @@ class TestFeaturedRateAt:
         assert featured_rate_at(0, False, CHARACTER_EVENT_BANNER) != pytest.approx(
             unconditional
         )
+
+
+class TestPullRateArray:
+    """The vectorized implementation must match the scalar rate model."""
+
+    def test_matches_scalar_for_every_valid_character_pity(self):
+        pity = np.arange(CHARACTER_EVENT_BANNER.hard_pity)
+        vectorized = pull_rate_array(pity, CHARACTER_EVENT_BANNER)
+        scalar = np.array(
+            [pull_rate(value, CHARACTER_EVENT_BANNER) for value in pity]
+        )
+
+        np.testing.assert_allclose(vectorized, scalar, rtol=0.0, atol=0.0)
+
+    def test_matches_scalar_for_custom_mechanics(self):
+        mechanics = WishMechanics(
+            banner_type="test",
+            hard_pity=12,
+            soft_pity_start=5,
+            base_rate=0.01,
+            soft_pity_increment=0.17,
+            featured_rate=0.5,
+        )
+        pity = np.arange(mechanics.hard_pity)
+        vectorized = pull_rate_array(pity, mechanics)
+        scalar = np.array([pull_rate(value, mechanics) for value in pity])
+
+        np.testing.assert_allclose(vectorized, scalar, rtol=0.0, atol=0.0)
+
+    def test_preserves_input_shape(self):
+        pity = np.array([[0, 73], [88, 89]])
+        result = pull_rate_array(pity, CHARACTER_EVENT_BANNER)
+
+        assert result.shape == pity.shape
+        np.testing.assert_allclose(
+            result,
+            [[0.006, 0.066], [0.966, 1.0]],
+            rtol=0.0,
+            atol=0.0,
+        )
+
+    def test_rejects_any_invalid_pity(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            pull_rate_array(np.array([0, -1, 2]), CHARACTER_EVENT_BANNER)
+
+        with pytest.raises(ValueError, match="hard_pity"):
+            pull_rate_array(
+                np.array([0, CHARACTER_EVENT_BANNER.hard_pity]),
+                CHARACTER_EVENT_BANNER,
+            )
