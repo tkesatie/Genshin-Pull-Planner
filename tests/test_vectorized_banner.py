@@ -24,7 +24,7 @@ def slow_mechanics() -> WishMechanics:
         hard_pity=90,
         soft_pity_start=74,
         base_rate=1e-12,
-        soft_pity_increment=0.0,
+        soft_pity_increment=1e-12,
         featured_rate=1.0,
     )
 
