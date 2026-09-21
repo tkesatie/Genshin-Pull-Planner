@@ -92,7 +92,11 @@ class TestVectorizedSimulation:
         propagation between banners is exercised exactly.
         """
         roadmap = Roadmap(
+<<<<<<< HEAD
             goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 2)],
+=======
+            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 1, 1)],
+>>>>>>> 9ad3c33b3cdef1398ab7ce1e03f161b1a095dfc1
             banners=[VESNA, TSARITSA],
         )
         context = PlannerContext(
