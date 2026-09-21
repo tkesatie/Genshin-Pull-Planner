@@ -187,7 +187,10 @@ def _pull_toward_target_vectorized(
     budget: np.ndarray,
     mechanics: WishMechanics,
     rng: np.random.Generator,
-) -> tuple[
+ ) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
     np.ndarray,
     np.ndarray,
     np.ndarray,
@@ -286,7 +289,15 @@ def _pull_toward_target_vectorized(
         else:
             current_pity[active] += 1
 
-    return spent, obtained, owned, five_star_outcomes
+    return (
+        spent,
+        obtained,
+        current_pity,
+        guarantee,
+        radiance,
+        owned,
+        five_star_outcomes,
+    )
 
 
 def _run_history(
