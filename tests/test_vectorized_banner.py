@@ -23,8 +23,8 @@ def slow_mechanics() -> WishMechanics:
         banner_type="slow",
         hard_pity=3,
         soft_pity_start=2,
-        base_rate=1e-9,
-        soft_pity_increment=0.5,
+        base_rate=0.0,
+        soft_pity_increment=0.0,
         featured_rate=1.0,
     )
 
