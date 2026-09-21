@@ -4,7 +4,10 @@ import numpy as np
 import pytest
 
 from domain import Account, Ownership, WishMechanics
-from simulation.engine import _pull_toward_target_vectorized
+from simulation.engine import (
+    _pull_toward_target,
+    _pull_toward_target_vectorized,
+)
 
 
 def forced_mechanics(featured_rate: float = 1.0) -> WishMechanics:
@@ -29,6 +32,7 @@ def slow_mechanics() -> WishMechanics:
     )
 
 
+class TestVectorizedBanner:
     def test_matches_scalar_for_deterministic_featured_outcomes(self):
         """The vectorized state machine matches the scalar oracle when
         randomness is removed from the featured decision."""
@@ -114,8 +118,6 @@ def slow_mechanics() -> WishMechanics:
         )
         assert outcomes == [result[6] for result in scalar]
 
-
-class TestVectorizedBanner:
     def test_independent_histories_stop_at_their_own_targets_or_budgets(self):
         spent, obtained, pity, guarantee, radiance, owned, outcomes = _pull_toward_target_vectorized(
             current_pity=np.array([0, 0, 0]),
