@@ -177,6 +177,118 @@ def _pull_toward_target(
     return spent, obtained, tuple(copy_wishes), tuple(five_star_outcomes), account_after
 
 
+def _pull_toward_target_vectorized(
+    current_pity: np.ndarray,
+    guarantee: np.ndarray,
+    radiance: np.ndarray,
+    wishes: np.ndarray,
+    owned: np.ndarray,
+    copies_needed: np.ndarray,
+    budget: np.ndarray,
+    mechanics: WishMechanics,
+    rng: np.random.Generator,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    list[list[tuple[int, bool]]],
+]:
+    """Simulate one banner across many independent histories.
+
+    This is the vectorized banner boundary: all per-history state is stored
+    in NumPy arrays, while Python loops only over the maximum number of
+    wishes any history can spend. Result reconstruction belongs to a later
+    step.
+    """
+    current_pity = np.asarray(current_pity, dtype=int).copy()
+    guarantee = np.asarray(guarantee, dtype=bool).copy()
+    radiance = np.asarray(radiance, dtype=int).copy()
+    wishes = np.asarray(wishes, dtype=int).copy()
+    owned = np.asarray(owned, dtype=int).copy()
+    copies_needed = np.asarray(copies_needed, dtype=int)
+    budget = np.asarray(budget, dtype=int)
+
+    if not (
+        current_pity.shape
+        == guarantee.shape
+        == radiance.shape
+        == wishes.shape
+        == owned.shape
+        == copies_needed.shape
+        == budget.shape
+    ):
+        raise ValueError("all vectorized banner state arrays must have the same shape")
+
+    available = np.minimum(wishes, budget)
+    spent = np.zeros_like(wishes)
+    obtained = np.zeros_like(copies_needed)
+    five_star_outcomes: list[list[tuple[int, bool]]] = [
+        [] for _ in range(wishes.size)
+    ]
+
+    max_steps = int(available.max(initial=0))
+    for _ in range(max_steps):
+        active = (obtained < copies_needed) & (spent < available)
+        if not np.any(active):
+            break
+
+        spent[active] += 1
+
+        five_star = np.zeros_like(active)
+        five_star[active] = (
+            rng.random(np.count_nonzero(active))
+            < pull_rate_array(current_pity[active], mechanics)
+        )
+
+        if np.any(five_star):
+            star_indices = np.flatnonzero(five_star)
+            was_guaranteed = guarantee[star_indices].copy()
+
+            featured_draw = rng.random(star_indices.size)
+            featured_rate = np.full(
+                star_indices.size, mechanics.featured_rate, dtype=float
+            )
+            featured_rate = np.where(
+                radiance[star_indices] == 2,
+                capturing_radiance_rate(2, mechanics),
+                featured_rate,
+            )
+            featured_rate = np.where(
+                radiance[star_indices] == 3,
+                1.0,
+                featured_rate,
+            )
+            featured = was_guaranteed | (
+                featured_draw < featured_rate
+            )
+
+            for index, is_featured in zip(star_indices, featured):
+                five_star_outcomes[index].append(
+                    (int(spent[index]), bool(is_featured))
+                )
+
+            previous_radiance = radiance[star_indices].copy()
+            radiance[star_indices] = np.where(
+                was_guaranteed,
+                previous_radiance,
+                np.where(
+                    featured,
+                    np.where(previous_radiance >= 2, 1, 0),
+                    np.minimum(previous_radiance + 1, 3),
+                ),
+            )
+            current_pity[star_indices] = 0
+            guarantee[star_indices] = ~featured
+
+            featured_indices = star_indices[featured]
+            obtained[featured_indices] += 1
+            owned[featured_indices] += 1
+        else:
+            current_pity[active] += 1
+
+    return spent, obtained, owned, five_star_outcomes
+
+
 def _run_history(
     context: PlannerContext, plan: SpendPlan, rng: np.random.Generator
 ) -> RunResult:
