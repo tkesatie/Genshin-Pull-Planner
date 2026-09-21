@@ -39,7 +39,12 @@ from probability.character import (
     multi_copy_wishes_for_confidence,
     wishes_for_confidence,
 )
-from probability.rates import capturing_radiance_rate, featured_rate_at, pull_rate
+from probability.rates import (
+    capturing_radiance_rate,
+    featured_rate_at,
+    pull_rate,
+    pull_rate_array,
+)
 
 __all__ = [
     "capturing_radiance_rate",
@@ -48,5 +53,6 @@ __all__ = [
     "multi_copy_cumulative_probability",
     "multi_copy_wishes_for_confidence",
     "pull_rate",
+    "pull_rate_array",
     "wishes_for_confidence",
 ]
