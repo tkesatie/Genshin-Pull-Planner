@@ -4,20 +4,19 @@ import dataclasses
 
 import pytest
 
-from domain import Account, Ownership
+from domain import Account, Ownership, WeaponWishState
 
 
-def test_account_holds_only_ownership_state_not_desires():
-    """§4.1: the account describes what the user owns, not what they want.
-
-    Goals live in the roadmap (§5), never on the account.
-    """
-    assert [f.name for f in dataclasses.fields(Account)] == [
+def test_account_contains_character_and_weapon_state():
+    """Phase 2: account contains both banner-state domains plus wishes/ownership."""
+    fields = [f.name for f in dataclasses.fields(Account)]
+    assert fields == [
         "current_pity",
         "character_guarantee",
         "owned_characters",
         "wishes",
         "capturing_radiance_counter",
+        "weapon_state",
     ]
 
 
@@ -28,6 +27,7 @@ def test_defaults_represent_a_fresh_account():
     assert account.owned_characters == Ownership()
     assert account.wishes == 0
     assert account.capturing_radiance_counter == 0
+    assert account.weapon_state == WeaponWishState()
 
 
 def test_delegates_ownership_lookups():
@@ -49,11 +49,6 @@ def test_negative_wishes_are_rejected():
 
 
 def test_wishes_is_a_possession_not_a_decision():
-    """`wishes` records wishes currently owned.
-
-    A spending decision (`wishes_to_spend`) belongs to the strategy layer
-    (§12-§14) and must never be stored as account state.
-    """
     account = Account(wishes=40)
     assert account.wishes == 40
     assert account.capturing_radiance_counter == 0
