@@ -675,7 +675,7 @@ def test_candidate_plan_shares_current_phase_budget_and_full_roadmap_is_subset()
     from optimizer.outcomes import OutcomeOption
 
     context = make_context()
-    outcome = OutcomeOption("Vodynista", 0, "C0")
+    outcome = OutcomeOption("Vodynista", 0, 1)
     plan = candidate_plan(context, outcome, 275, banner=VODYNISTA)
 
     assert plan.shared_current_phase_budget == 275
