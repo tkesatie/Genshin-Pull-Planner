@@ -44,6 +44,7 @@ def fake_result(plan: SpendPlan, skirk_probability: float) -> SimpleNamespace:
     vesna = plan.entry_for(VESNA)
     return SimpleNamespace(
         goals=(GoalProbability(Goal("Skirk", 2, 3), skirk_probability),),
+        all_goals_probability=0.42,
         joint_goal_probability=GoalJointProbability(
             goals=(Goal("Vodynista", 0, 1), Goal("Vesna", 2, 4)),
             probability=0.42,
@@ -85,6 +86,8 @@ def test_frontier_is_derived_from_protected_requirement(monkeypatch):
             probability = 0.91
         return SimpleNamespace(
             goals=(GoalProbability(Goal("Skirk", 2, 3), probability),),
+            all_goals_probability=probability,
+            all_goals_probability=probability,
             joint_goal_probability=GoalJointProbability(
                 goals=(Goal("Skirk", 2, 3),) if skirk is not None else (
                     Goal("Vodynista", 0, 1), Goal("Vesna", 2, 4)
