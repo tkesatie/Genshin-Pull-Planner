@@ -21,15 +21,17 @@ class GoalTarget:
             raise ValueError("target name must not be empty")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class CharacterTarget(GoalTarget):
     """A character target."""
 
-    kind: TargetKind = TargetKind.CHARACTER
+    def __init__(self, name: str) -> None:
+        super().__init__(TargetKind.CHARACTER, name)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class WeaponTarget(GoalTarget):
     """A weapon target."""
 
-    kind: TargetKind = TargetKind.WEAPON
+    def __init__(self, name: str) -> None:
+        super().__init__(TargetKind.WEAPON, name)
