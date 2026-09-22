@@ -92,7 +92,6 @@ def test_weapon_account_state_is_part_of_account():
 def test_weapon_five_star_transition_resets_pity():
     state = WeaponWishState(pity=64, guarantee=False, fate_points=1)
     updated = state.after_five_star(
-        featured=True,
         next_guarantee=False,
         next_fate_points=0,
     )
