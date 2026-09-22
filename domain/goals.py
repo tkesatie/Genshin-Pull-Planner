@@ -1,74 +1,102 @@
-"""Goals and goal status (Design Document §5, §6).
+"""Goals and goal status.
 
-A goal is a roadmap objective ("I want Vesna at C2"). Goal status is the raw
-remaining work relative to the account ("2 copies remain"). Phase 1 does not
-decide whether a goal should be pursued, whether it is actionable, or how
-goals depend on each other (§9) - that is planner logic (Phase 3+).
+Phase 2 makes goals target-agnostic: the same Goal type can represent a
+character constellation or a weapon refinement. Character properties remain
+as compatibility accessors for the existing character planner.
 """
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 
 from domain.account import Account
+from domain.targets import CharacterTarget, GoalTarget, TargetKind
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Goal:
-    """A specific objective in the user's prioritized roadmap (§5).
+    """A prioritized objective for either a character or weapon."""
 
-    A goal contains no banner information (§7) and no preference information
-    (§15). The same character may appear in several goals: Vesna C0 and
-    Vesna C2 are separate objectives (§5).
-
-    Attributes:
-        character: the character the objective is about.
-        constellation: the goal constellation ("C2" -> 2). Not a copy count.
-        priority: position in the roadmap; lower value = protected first.
-    """
-
-    character: str
-    constellation: int
+    target: GoalTarget
+    level: int
     priority: int
 
-    def __post_init__(self) -> None:
-        if self.constellation < 0:
-            raise ValueError(f"constellation must be >= 0, got {self.constellation}")
-        if self.priority < 1:
-            raise ValueError(f"priority must be >= 1, got {self.priority}")
+    def __init__(
+        self,
+        character: str | None = None,
+        constellation: int | None = None,
+        priority: int = 1,
+        *,
+        target: GoalTarget | None = None,
+        level: int | None = None,
+    ) -> None:
+        if target is None:
+            if character is None:
+                raise TypeError("Goal requires target or character")
+            if constellation is None:
+                raise TypeError("character goals require constellation")
+            target = CharacterTarget(character)
+            level = constellation if level is None else level
+        elif level is None:
+            if constellation is not None:
+                level = constellation
+            else:
+                raise TypeError("Goal requires level")
+        elif constellation is not None:
+            raise TypeError("provide level or constellation, not both")
+
+        if level is None or level < 0:
+            raise ValueError(f"level must be >= 0, got {level}")
+        if priority < 1:
+            raise ValueError(f"priority must be >= 1, got {priority}")
+
+        object.__setattr__(self, "target", target)
+        object.__setattr__(self, "level", level)
+        object.__setattr__(self, "priority", priority)
+
+    @property
+    def character(self) -> str:
+        if self.target.kind is not TargetKind.CHARACTER:
+            raise AttributeError("weapon goals do not have a character")
+        return self.target.name
+
+    @property
+    def constellation(self) -> int:
+        if self.target.kind is not TargetKind.CHARACTER:
+            raise AttributeError("weapon goals do not have a constellation")
+        return self.level
+
+    @property
+    def weapon(self) -> str:
+        if self.target.kind is not TargetKind.WEAPON:
+            raise AttributeError("character goals do not have a weapon")
+        return self.target.name
+
+    @property
+    def refinement(self) -> int:
+        if self.target.kind is not TargetKind.WEAPON:
+            raise AttributeError("character goals do not have a refinement")
+        return self.level
 
 
 @dataclass(frozen=True)
 class GoalStatus:
-    """The raw status of a goal relative to the account (§6).
-
-    Answers "how much remains to satisfy this goal?" - nothing more. It does
-    not decide whether the user should pursue the goal (§6), and it does not
-    model goal dependencies such as Vesna C2 depending on Vesna C0 (§9).
-    Dependency and actionability logic is added by the planner layer
-    (Phase 3).
-
-    Attributes:
-        goal: the goal being measured.
-        copies_needed: featured copies still required, >= 0. The Phase 4
-            simulator will consume this as its target copies (§10.4); a
-            constellation is not a number of copies (§4.2).
-    """
+    """Raw remaining work for one goal."""
 
     goal: Goal
     copies_needed: int
 
 
 def copies_needed_for(account: Account, goal: Goal) -> int:
-    """Raw remaining copies (§6): max(goal_constellation - owned_constellation, 0)."""
-    owned_constellation = account.owned_characters.owned_constellation(goal.character)
-    return max(goal.constellation - owned_constellation, 0)
+    if goal.target.kind is TargetKind.CHARACTER:
+        owned = account.owned_characters.owned_constellation(goal.target.name)
+    else:
+        owned = account.owned_characters.owned_refinement(goal.target.name)
+    return max(goal.level - owned, 0)
 
 
 def goal_status(account: Account, goal: Goal) -> GoalStatus:
-    """Compute the GoalStatus for one goal against the account (§6)."""
     return GoalStatus(goal=goal, copies_needed=copies_needed_for(account, goal))
 
 
 def goal_statuses(account: Account, goals: Iterable[Goal]) -> list[GoalStatus]:
-    """Compute GoalStatus for each goal, preserving input order."""
     return [goal_status(account, goal) for goal in goals]
