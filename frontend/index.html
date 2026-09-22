@@ -406,11 +406,23 @@
       </div>
     </details>
 
-    <section>
-      <h2>Owned characters</h2>
-      <p class="muted">Characters currently recorded on this account.</p>
-      <div class="panel"><div id="owned-characters" class="owned-list"></div></div>
-    </section>
+    <details class="account-editor">
+      <summary>Owned characters</summary>
+      <div class="panel">
+        <p class="muted">Characters currently owned on this account. Use C0–C6 for constellation level; remove a row to mark a character as not owned.</p>
+        <div class="table-panel">
+          <table class="edit-table">
+            <thead><tr><th>Character</th><th>Constellation</th><th></th></tr></thead>
+            <tbody id="owned-characters-rows"></tbody>
+          </table>
+        </div>
+        <div class="account-form-actions">
+          <button id="owned-characters-add" type="button">+ Add character</button>
+          <button id="owned-characters-save" class="primary" type="button">Save characters</button>
+          <span id="owned-characters-note" class="muted"></span>
+        </div>
+      </div>
+    </details>
 
     <section id="verdict-section">
       <div class="hero">
@@ -1261,27 +1273,91 @@ async function submitAccountCreate() {
 
 /* ---------- account editing ---------- */
 
+function addOwnedCharacterRow(character, constellation) {
+  const row = document.createElement("tr");
+  row.append(
+    editCell(textInput(character ?? "", "Character")),
+    editCell(numberInput(constellation ?? 0, { min: 0, step: 1 })),
+    editDeleteCell(row)
+  );
+  $("owned-characters-rows").append(row);
+}
+
 function renderOwnedCharacters() {
-  const host = $("owned-characters");
+  const host = $("owned-characters-rows");
   host.innerHTML = "";
   const characters = Object.entries(state.account.account.owned_characters || {})
+    .filter(([, constellation]) => Number(constellation) >= 0)
     .sort(([a], [b]) => a.localeCompare(b));
-  if (characters.length === 0) {
-    const empty = document.createElement("span");
-    empty.className = "muted";
-    empty.textContent = "No characters recorded yet.";
-    host.append(empty);
-    return;
-  }
+
   for (const [character, constellation] of characters) {
-    const card = document.createElement("div");
-    card.className = "owned-card";
-    const name = document.createElement("strong");
-    name.textContent = character;
-    const level = document.createElement("span");
-    level.textContent = `C${constellation}`;
-    card.append(name, level);
-    host.append(card);
+    addOwnedCharacterRow(character, constellation);
+  }
+  $("owned-characters-note").textContent = "";
+}
+
+async function saveOwnedCharacters() {
+  clearError();
+  $("owned-characters-save").disabled = true;
+  $("owned-characters-note").textContent = "Saving…";
+  try {
+    const rows = Array.from($("owned-characters-rows").querySelectorAll("tr"));
+    const ownedCharacters = {};
+
+    for (const row of rows) {
+      const character = row.children[0].querySelector("input").value.trim();
+      const constellation = Number(row.children[1].querySelector("input").value);
+
+      if (!character) {
+        throw new Error("Every owned-character row needs a character name.");
+      }
+      if (!Number.isInteger(constellation) || constellation < 0 || constellation > 6) {
+        throw new Error("Character constellations must be whole numbers from 0 to 6.");
+      }
+      if (Object.prototype.hasOwnProperty.call(ownedCharacters, character)) {
+        throw new Error(`Character "${character}" is listed more than once.`);
+      }
+      ownedCharacters[character] = constellation;
+    }
+
+    const account = state.account.account;
+    state.account = await api(`/accounts/${state.account.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: state.account.label,
+        account: {
+          current_pity: account.current_pity,
+          character_guarantee: account.character_guarantee,
+          wishes: account.wishes,
+          capturing_radiance_counter: account.capturing_radiance_counter,
+          owned_characters: ownedCharacters,
+        },
+        settings: {
+          current_version: state.account.settings.current_version,
+          current_phase: state.account.settings.current_phase,
+          confidence: state.account.settings.confidence,
+          income_scenario: state.account.settings.income_scenario,
+          mechanics: state.account.settings.mechanics,
+        },
+      }),
+    });
+
+    state.planner = null;
+    fillAccountForm();
+    renderOwnedCharacters();
+    $("owned-characters-note").textContent = "Saved. Run the planner again.";
+    $("confidence").value = state.account.settings.confidence;
+    $("hero-wishes").textContent = state.account.account.wishes;
+    $("hero-pity").textContent = state.account.account.current_pity;
+    $("banner-meta").textContent =
+      `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
+    resetVerdict();
+  } catch (error) {
+    $("owned-characters-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("owned-characters-save").disabled = false;
   }
 }
 
@@ -1312,6 +1388,7 @@ async function saveAccount() {
           current_pity: Number($("f-pity").value),
           character_guarantee: $("f-guarantee").checked,
           wishes: Number($("f-wishes").value),
+          capturing_radiance_counter: state.account.account.capturing_radiance_counter,
           owned_characters: state.account.account.owned_characters,
         },
         settings: {
@@ -1872,6 +1949,8 @@ $("auth-switch").addEventListener("click", () => {
 });
 $("logout").addEventListener("click", logout);
 $("save").addEventListener("click", saveAccount);
+$("owned-characters-add").addEventListener("click", () => addOwnedCharacterRow());
+$("owned-characters-save").addEventListener("click", saveOwnedCharacters);
 $("goals-add").addEventListener("click", () => addGoalRow());
 $("goals-save").addEventListener("click", saveGoals);
 $("banners-add").addEventListener("click", () => addBannerRow());
