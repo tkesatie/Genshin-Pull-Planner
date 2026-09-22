@@ -7,7 +7,9 @@ from domain import (
     Banner,
     CharacterTarget,
     Goal,
+    GoalTarget,
     Ownership,
+    Roadmap,
     TargetKind,
     WeaponTarget,
     WeaponWishState,
@@ -19,7 +21,8 @@ def test_character_and_weapon_targets_share_one_target_model():
     character = CharacterTarget("Skirk")
     weapon = WeaponTarget("Example Weapon")
 
-    assert isinstance(character, type(weapon))
+    assert isinstance(character, GoalTarget)
+    assert isinstance(weapon, GoalTarget)
     assert character.kind is TargetKind.CHARACTER
     assert weapon.kind is TargetKind.WEAPON
     assert character.name == "Skirk"
@@ -44,8 +47,6 @@ def test_weapon_goal_uses_same_goal_type():
 
 
 def test_weapon_and_character_goals_can_share_one_roadmap():
-    from domain import Roadmap
-
     roadmap = Roadmap(
         goals=[
             Goal(target=WeaponTarget("Example Weapon"), level=1, priority=2),
@@ -67,6 +68,15 @@ def test_weapon_goal_completion_uses_refinement():
     goal = Goal(target=WeaponTarget("Example Weapon"), level=2, priority=1)
 
     assert copies_needed_for(account, goal) == 1
+
+
+def test_completed_weapon_goal_needs_no_more_refinements():
+    account = Account(
+        owned_characters=Ownership(weapons={"Example Weapon": 2})
+    )
+    goal = Goal(target=WeaponTarget("Example Weapon"), level=1, priority=1)
+
+    assert copies_needed_for(account, goal) == 0
 
 
 def test_weapon_account_state_is_part_of_account():
@@ -114,8 +124,6 @@ def test_weapon_banner_does_not_expose_character_accessor():
 
 
 def test_global_priority_is_still_unique():
-    from domain import Roadmap
-
     with pytest.raises(ValueError, match="duplicates"):
         Roadmap(
             goals=[
