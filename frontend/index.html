@@ -223,6 +223,12 @@
   .account-form .check input { width:auto; }
   .account-form-actions { display:flex; align-items:center; gap:.7rem; grid-column:1 / -1; }
   @media (max-width: 720px) { .account-form { grid-template-columns:1fr 1fr; } }
+  .edit-table { border-collapse: collapse; width: 100%; margin-top: .25rem; }
+  .edit-table th, .edit-table td { padding: .4rem .5rem; text-align: left; border-bottom: 1px solid var(--border); font-size: .85rem; }
+  .edit-table th { color: #cbd3df; font-weight: 600; }
+  .edit-table input { width: 100%; padding: .35rem .5rem; font-size: .85rem; }
+  .edit-table td.col-delete { width: 2.4rem; text-align: center; padding: .4rem; }
+  .edit-table td.col-delete button { padding: .25rem .55rem; font-size: .85rem; }
   .empty { padding:3rem 0; }
   .empty .verdict { font-size:2rem; }
   .auth-panel { max-width: 28rem; margin: 5rem auto 0; }
@@ -326,6 +332,80 @@
         <div class="account-form-actions"><button id="save" class="primary">Save account state</button><span id="save-note" class="muted"></span></div>
       </div>
     </details>
+
+    <details class="account-editor">
+      <summary>Goals</summary>
+      <div class="panel">
+        <p class="muted">Roadmap objectives, in priority order (priority 1 is protected first). The same character can appear in multiple goals — e.g. C0 then C2 — that's cumulative progression, not competing alternatives.</p>
+        <div class="table-panel">
+          <table class="edit-table">
+            <thead><tr><th>Character</th><th>Constellation</th><th>Priority</th><th></th></tr></thead>
+            <tbody id="goals-rows"></tbody>
+          </table>
+        </div>
+        <div class="account-form-actions">
+          <button id="goals-add" type="button">+ Add goal</button>
+          <button id="goals-save" class="primary" type="button">Save goals</button>
+          <span id="goals-note" class="muted"></span>
+        </div>
+      </div>
+    </details>
+
+    <details class="account-editor">
+      <summary>Banners</summary>
+      <div class="panel">
+        <p class="muted">Your expected banner schedule — a user assumption, ordered chronologically by version then phase.</p>
+        <div class="table-panel">
+          <table class="edit-table">
+            <thead><tr><th>Character</th><th>Version</th><th>Phase</th><th></th></tr></thead>
+            <tbody id="banners-rows"></tbody>
+          </table>
+        </div>
+        <div class="account-form-actions">
+          <button id="banners-add" type="button">+ Add banner</button>
+          <button id="banners-save" class="primary" type="button">Save banners</button>
+          <span id="banners-note" class="muted"></span>
+        </div>
+      </div>
+    </details>
+
+    <details class="account-editor">
+      <summary>Preferences</summary>
+      <div class="panel">
+        <p class="muted">Acceptable outcomes per character, ordered by rank (1 = most preferred). Separate from goal priority — this is "if I'm going after this character, what do I want?", not where it sits in the protected roadmap.</p>
+        <div class="table-panel">
+          <table class="edit-table">
+            <thead><tr><th>Character</th><th>Rank</th><th>Constellation</th><th>Refinement</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="preferences-rows"></tbody>
+          </table>
+        </div>
+        <div class="account-form-actions">
+          <button id="preferences-add" type="button">+ Add preference</button>
+          <button id="preferences-save" class="primary" type="button">Save preferences</button>
+          <span id="preferences-note" class="muted"></span>
+        </div>
+      </div>
+    </details>
+
+    <details class="account-editor">
+      <summary>Income</summary>
+      <div class="panel">
+        <p class="muted">Expected future wishes, per version. Saving here replaces any per-source breakdown for that version with a single low/expected/high estimate. Clearing removes the forecast entirely — different from a forecast of zero wishes.</p>
+        <div class="table-panel">
+          <table class="edit-table">
+            <thead><tr><th>Version</th><th>Low</th><th>Expected</th><th>High</th><th></th></tr></thead>
+            <tbody id="income-rows"></tbody>
+          </table>
+        </div>
+        <div class="account-form-actions">
+          <button id="income-add" type="button">+ Add version</button>
+          <button id="income-save" class="primary" type="button">Save income</button>
+          <button id="income-clear" type="button">Clear forecast</button>
+          <span id="income-note" class="muted"></span>
+        </div>
+      </div>
+    </details>
+
     <section>
       <h2>Owned characters</h2>
       <p class="muted">Characters currently recorded on this account.</p>
@@ -350,16 +430,19 @@
       </div>
     </section>
 
-    <div class="split"><section id="why-section" hidden>
-      <h2>Why this is the recommendation</h2>
-      <p class="muted">More-preferred outcomes that were considered, and the future goals that prevent them.</p>
-      <div id="why"></div>
-    </section>
+    <div class="split">
+      <section id="why-section" hidden>
+        <h2>Why this is the recommendation</h2>
+        <p class="muted">More-preferred outcomes that were considered, and the future goals that prevent them.</p>
+        <div id="why"></div>
+      </section>
 
-    <section id="protected-section" hidden>
-      <h2>Protected future goals</h2>
-      <p class="muted" id="protected-caption"></p>
-      <div class="panel"><div class="bars" id="protected"></div></div>    </section>
+      <section id="protected-section" hidden>
+        <h2>Protected future goals</h2>
+        <p class="muted" id="protected-caption"></p>
+        <div class="panel"><div class="bars" id="protected"></div></div>
+      </section>
+    </div>
 
     <section id="stops-section" hidden>
       <h2>When to stop</h2>
@@ -555,6 +638,10 @@ async function selectAccount(id) {
   fillAccountForm();
   resetVerdict();
   renderOwnedCharacters();
+  renderGoalsRows(state.account.goals);
+  renderBannersRows(state.account.banners);
+  renderPreferencesRows(state.account.preferences);
+  renderIncomeRows(state.account.income);
   await loadGoals();
 }
 
@@ -1254,6 +1341,285 @@ async function saveAccount() {
 
 
 
+/* ---------- roadmap editing (goals / banners / preferences / income) ---------- */
+
+function editCell(input) {
+  const td = document.createElement("td");
+  td.append(input);
+  return td;
+}
+
+function editDeleteCell(row) {
+  const td = document.createElement("td");
+  td.className = "col-delete";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "×";
+  button.title = "Remove this row";
+  button.addEventListener("click", () => row.remove());
+  td.append(button);
+  return td;
+}
+
+function numberInput(value, { min = null, step = "1" } = {}) {
+  const input = document.createElement("input");
+  input.type = "number";
+  if (min !== null) input.min = String(min);
+  input.step = step;
+  input.value = value;
+  return input;
+}
+
+function textInput(value, placeholder = "") {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = value;
+  if (placeholder) input.placeholder = placeholder;
+  return input;
+}
+
+/* Goals */
+
+function nextGoalPriority() {
+  const priorities = Array.from($("goals-rows").querySelectorAll("tr")).map(
+    (row) => Number(row.children[2].querySelector("input").value) || 0
+  );
+  return priorities.length ? Math.max(...priorities) + 1 : 1;
+}
+
+function addGoalRow(goal) {
+  const row = document.createElement("tr");
+  row.append(
+    editCell(textInput(goal?.character ?? "", "Character")),
+    editCell(numberInput(goal?.constellation ?? 0, { min: 0 })),
+    editCell(numberInput(goal?.priority ?? nextGoalPriority(), { min: 1 })),
+    editDeleteCell(row)
+  );
+  $("goals-rows").append(row);
+}
+
+function renderGoalsRows(goals) {
+  $("goals-rows").innerHTML = "";
+  for (const goal of goals || []) addGoalRow(goal);
+  $("goals-note").textContent = "";
+}
+
+async function saveGoals() {
+  clearError();
+  $("goals-save").disabled = true;
+  $("goals-note").textContent = "Saving…";
+  try {
+    const rows = Array.from($("goals-rows").querySelectorAll("tr"));
+    const payload = {
+      goals: rows.map((row) => ({
+        character: row.children[0].querySelector("input").value.trim(),
+        constellation: Number(row.children[1].querySelector("input").value) || 0,
+        priority: Number(row.children[2].querySelector("input").value) || 0,
+      })),
+    };
+    const result = await api(`/accounts/${state.account.id}/goals`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.account.goals = result.goals;
+    renderGoalsRows(state.account.goals);
+    $("goals-note").textContent = "Saved. Re-run the planner to see the effect.";
+    state.planner = null;
+    resetVerdict();
+    await loadGoals();
+  } catch (error) {
+    $("goals-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("goals-save").disabled = false;
+  }
+}
+
+/* Banners */
+
+function addBannerRow(banner) {
+  const row = document.createElement("tr");
+  row.append(
+    editCell(textInput(banner?.character ?? "", "Character")),
+    editCell(textInput(banner?.version ?? "", "7.1")),
+    editCell(numberInput(banner?.phase ?? 1, { min: 1 })),
+    editDeleteCell(row)
+  );
+  $("banners-rows").append(row);
+}
+
+function renderBannersRows(banners) {
+  $("banners-rows").innerHTML = "";
+  for (const banner of banners || []) addBannerRow(banner);
+  $("banners-note").textContent = "";
+}
+
+async function saveBanners() {
+  clearError();
+  $("banners-save").disabled = true;
+  $("banners-note").textContent = "Saving…";
+  try {
+    const rows = Array.from($("banners-rows").querySelectorAll("tr"));
+    const payload = {
+      banners: rows.map((row) => ({
+        character: row.children[0].querySelector("input").value.trim(),
+        version: row.children[1].querySelector("input").value.trim(),
+        phase: Number(row.children[2].querySelector("input").value) || 1,
+      })),
+    };
+    const result = await api(`/accounts/${state.account.id}/banners`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.account.banners = result.banners;
+    renderBannersRows(state.account.banners);
+    $("banners-note").textContent = "Saved. Re-run the planner to see the effect.";
+    state.planner = null;
+    resetVerdict();
+    await loadGoals();
+  } catch (error) {
+    $("banners-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("banners-save").disabled = false;
+  }
+}
+
+/* Preferences */
+
+function addPreferenceRow(preference) {
+  const row = document.createElement("tr");
+  row.append(
+    editCell(textInput(preference?.character ?? "", "Character")),
+    editCell(numberInput(preference?.rank ?? 1, { min: 1 })),
+    editCell(numberInput(preference?.constellation ?? 0, { min: 0 })),
+    editCell(numberInput(preference?.weapon_refinement ?? 0, { min: 0 })),
+    editCell(textInput(preference?.notes ?? "", "Notes (optional)")),
+    editDeleteCell(row)
+  );
+  $("preferences-rows").append(row);
+}
+
+function renderPreferencesRows(preferences) {
+  $("preferences-rows").innerHTML = "";
+  for (const preference of preferences || []) addPreferenceRow(preference);
+  $("preferences-note").textContent = "";
+}
+
+async function savePreferences() {
+  clearError();
+  $("preferences-save").disabled = true;
+  $("preferences-note").textContent = "Saving…";
+  try {
+    const rows = Array.from($("preferences-rows").querySelectorAll("tr"));
+    const payload = {
+      preferences: rows.map((row) => ({
+        character: row.children[0].querySelector("input").value.trim(),
+        rank: Number(row.children[1].querySelector("input").value) || 1,
+        constellation: Number(row.children[2].querySelector("input").value) || 0,
+        weapon_refinement: Number(row.children[3].querySelector("input").value) || 0,
+        notes: row.children[4].querySelector("input").value.trim(),
+      })),
+    };
+    const result = await api(`/accounts/${state.account.id}/preferences`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.account.preferences = result.preferences;
+    renderPreferencesRows(state.account.preferences);
+    $("preferences-note").textContent = "Saved. Re-run the planner to see the effect.";
+    state.planner = null;
+    resetVerdict();
+    await loadGoals();
+  } catch (error) {
+    $("preferences-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("preferences-save").disabled = false;
+  }
+}
+
+/* Income */
+
+function addIncomeRow(entry) {
+  const row = document.createElement("tr");
+  const estimate = entry?.estimate ?? entry?.aggregate ?? null;
+  row.append(
+    editCell(textInput(entry?.version ?? "", "7.1")),
+    editCell(numberInput(estimate ? estimate.low : 0, { min: 0 })),
+    editCell(numberInput(estimate ? estimate.expected : 0, { min: 0 })),
+    editCell(numberInput(estimate ? estimate.high : 0, { min: 0 })),
+    editDeleteCell(row)
+  );
+  $("income-rows").append(row);
+}
+
+function renderIncomeRows(income) {
+  $("income-rows").innerHTML = "";
+  for (const entry of (income && income.versions) || []) addIncomeRow(entry);
+  $("income-note").textContent = "";
+}
+
+async function saveIncome() {
+  clearError();
+  $("income-save").disabled = true;
+  $("income-note").textContent = "Saving…";
+  try {
+    const rows = Array.from($("income-rows").querySelectorAll("tr"));
+    const payload = {
+      versions: rows.map((row) => ({
+        version: row.children[0].querySelector("input").value.trim(),
+        estimate: {
+          low: Number(row.children[1].querySelector("input").value) || 0,
+          expected: Number(row.children[2].querySelector("input").value) || 0,
+          high: Number(row.children[3].querySelector("input").value) || 0,
+        },
+      })),
+    };
+    const result = await api(`/accounts/${state.account.id}/income`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.account.income = result;
+    renderIncomeRows(state.account.income);
+    $("income-note").textContent = "Saved. Re-run the planner to see the effect.";
+    state.planner = null;
+    resetVerdict();
+    await loadGoals();
+  } catch (error) {
+    $("income-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("income-save").disabled = false;
+  }
+}
+
+async function clearIncome() {
+  clearError();
+  $("income-clear").disabled = true;
+  $("income-note").textContent = "Clearing…";
+  try {
+    await api(`/accounts/${state.account.id}/income`, { method: "DELETE" });
+    state.account.income = null;
+    renderIncomeRows(null);
+    $("income-note").textContent = "Cleared. Re-run the planner to see the effect.";
+    state.planner = null;
+    resetVerdict();
+    await loadGoals();
+  } catch (error) {
+    $("income-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("income-clear").disabled = false;
+  }
+}
+
+
+
 function goalKey(goal) {
   return goal.character + "|" + goal.constellation;
 }
@@ -1506,6 +1872,15 @@ $("auth-switch").addEventListener("click", () => {
 });
 $("logout").addEventListener("click", logout);
 $("save").addEventListener("click", saveAccount);
+$("goals-add").addEventListener("click", () => addGoalRow());
+$("goals-save").addEventListener("click", saveGoals);
+$("banners-add").addEventListener("click", () => addBannerRow());
+$("banners-save").addEventListener("click", saveBanners);
+$("preferences-add").addEventListener("click", () => addPreferenceRow());
+$("preferences-save").addEventListener("click", savePreferences);
+$("income-add").addEventListener("click", () => addIncomeRow());
+$("income-save").addEventListener("click", saveIncome);
+$("income-clear").addEventListener("click", clearIncome);
 $("run").addEventListener("click", run);
 $("confidence").addEventListener("change", () => {
   resetVerdict();
