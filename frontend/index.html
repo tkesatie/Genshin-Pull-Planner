@@ -867,7 +867,8 @@ function renderRecommendation(rec, strategy) {
         ? "Strategy · Discretionary"
         : "Strategy · Skip";
 
-  $("metric-budget").textContent = wishWord(rec.budget);
+  const metricStopAt = strategy?.reserve_wishes ?? null;
+  $("metric-budget").textContent = metricStopAt === null ? "—" : wishWord(metricStopAt);
   // Full-roadmap probability must come from the same executable plan as the
   // displayed progression frontier. Recommendation and strategy are
   // separate evaluations; using rec.all_goals_probability here could compare
