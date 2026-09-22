@@ -96,6 +96,7 @@ def fake_strategy_result(
     vesna_entry = plan.entry_for(VESNA)
     return SimpleNamespace(
         goals=(GoalProbability(Goal("Skirk", 2, 3), skirk_probability),),
+        all_goals_probability=joint_probability,
         joint_goal_probability=GoalJointProbability(
             goals=joint_goals,
             probability=joint_probability,
