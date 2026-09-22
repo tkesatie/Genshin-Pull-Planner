@@ -39,6 +39,7 @@ class StrategyStep:
     future_income: int | None = None
     protected_starting_wishes: int | None = None
     protected_total_wishes: int | None = None
+    all_goals_probability: float | None = None
 
 
 @dataclass(frozen=True)
@@ -443,6 +444,11 @@ def build_strategy(
                 if result.joint_goal_probability is not None
                 else 0.0
             ),
+            # This is the roadmap-wide probability from the SAME executable
+            # plan that produced outcome_probability. The recommendation
+            # endpoint evaluates a different candidate plan, so its
+            # all_goals_probability is not the strategy shown here.
+            all_goals_probability=result.all_goals_probability,
             protected_probability=protected_probability,
             future_income=reserve_income,
             protected_starting_wishes=reserve,

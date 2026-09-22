@@ -170,6 +170,7 @@ class StrategyStepView(BaseModel):
     future_income: int | None = None
     protected_starting_wishes: int | None = None
     protected_total_wishes: int | None = None
+    all_goals_probability: float | None = None
 
     @classmethod
     def from_domain(cls, step: StrategyStep):
@@ -184,6 +185,7 @@ class StrategyStepView(BaseModel):
             future_income=step.future_income,
             protected_starting_wishes=step.protected_starting_wishes,
             protected_total_wishes=step.protected_total_wishes,
+            all_goals_probability=step.all_goals_probability,
         )
 
 

@@ -846,6 +846,16 @@ function barRow(label, sublabel, probability, threshold, meets) {
   return row;
 }
 
+function stepsForFullRoadmap(strategy) {
+  if (!strategy || !Array.isArray(strategy.steps)) return null;
+  // The first pursue-until-reserve step is the current executable progression
+  // frontier. Its simulation includes every roadmap goal, including lower-
+  // priority goals that do not constrain the spend.
+  return strategy.steps.find(
+    (step) => step.action === "pursue_until_reserve" && step.all_goals_probability !== null
+  ) || null;
+}
+
 function renderRecommendation(rec, strategy) {
   const banner = bannerName(rec.banner);
   $("banner-meta").textContent = banner;
@@ -858,7 +868,13 @@ function renderRecommendation(rec, strategy) {
         : "Strategy · Skip";
 
   $("metric-budget").textContent = wishWord(rec.budget);
-  $("metric-roadmap-probability").textContent = pct(rec.all_goals_probability);
+  // Full-roadmap probability must come from the same executable plan as the
+  // displayed progression frontier. Recommendation and strategy are
+  // separate evaluations; using rec.all_goals_probability here could compare
+  // a different plan against the strategy's Vesna C2 probability.
+  const roadmapProbabilityStep = stepsForFullRoadmap(strategy);
+  const roadmapProbability = roadmapProbabilityStep?.all_goals_probability ?? rec.all_goals_probability;
+  $("metric-roadmap-probability").textContent = pct(roadmapProbability);
 
   const strategyList = $("strategy");
   strategyList.innerHTML = "";

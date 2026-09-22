@@ -487,6 +487,23 @@ def test_strategy_vesna_c2_probability_is_joint_with_vodynista(capsys):
     assert 0.15 < vesna_c2.outcome_probability < 0.21
 
 
+
+def test_full_roadmap_probability_uses_same_plan_as_vesna_frontier(capsys):
+    """Full-roadmap probability is a subset of the displayed Vesna C2 plan."""
+    from optimizer.strategy import build_strategy
+
+    context = make_context()
+    strategy = build_strategy(context, runs=10_000, seed=0)
+    vesna_c2 = next(
+        step for step in strategy.steps
+        if step.goal == Goal("Vesna", 2, 4)
+    )
+
+    assert vesna_c2.all_goals_probability is not None
+    assert vesna_c2.all_goals_probability <= vesna_c2.outcome_probability
+
+
+
 def test_future_income_cannot_fund_current_phase(capsys):
     """Current-phase spending uses only wishes already available now."""
     from optimizer.strategy import build_strategy
