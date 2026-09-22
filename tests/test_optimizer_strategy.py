@@ -129,6 +129,7 @@ def test_frontier_is_monotonic_and_does_not_scan_every_spend(monkeypatch):
             probability = 1.0
         return SimpleNamespace(
             goals=(GoalProbability(Goal("Skirk", 2, 3), probability),),
+            all_goals_probability=probability,
             joint_goal_probability=GoalJointProbability(
                 goals=(Goal("Skirk", 2, 3),) if skirk is not None else (
                     Goal("Vodynista", 0, 1),
