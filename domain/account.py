@@ -112,21 +112,19 @@ class WeaponWishState:
     def after_five_star(
         self,
         *,
-        featured: bool,
-        next_guarantee: bool | None = None,
-        next_fate_points: int | None = None,
+        next_guarantee: bool,
+        next_fate_points: int,
     ) -> "WeaponWishState":
         """Apply an observed five-star result.
 
-        Mechanic-specific guarantee and fate-point outcomes are explicit
-        inputs; probability rules remain outside the Phase 2 domain model.
+        Weapon-specific mechanics determine the next guarantee and fate-point
+        values. They are explicit here so this domain transition does not
+        silently assume character-banner rules.
         """
         return WeaponWishState(
             pity=0,
-            guarantee=(not featured if next_guarantee is None else next_guarantee),
-            fate_points=(
-                self.fate_points if next_fate_points is None else next_fate_points
-            ),
+            guarantee=next_guarantee,
+            fate_points=next_fate_points,
         )
 
 
