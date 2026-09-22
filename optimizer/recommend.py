@@ -107,6 +107,7 @@ from optimizer.evaluation import (
     GoalStanding,
     evaluate_candidate,
     evaluate_skip_baseline_full,
+    SkipBaseline,
 )
 from optimizer.outcomes import OutcomeOption, available_outcomes
 from optimizer.protection import constraining_goals, priority_for_outcome
@@ -225,17 +226,18 @@ def _skip(
     runs: int,
     seed: int | None,
     rejected: tuple[RejectedOutcome, ...] = (),
-    skip_baseline_lookup: "Callable[[Banner], tuple[GoalStanding, ...] | None] | None" = None,
-    skip_baseline_sink: "Callable[[Banner, tuple[GoalStanding, ...]], None] | None" = None,
+    skip_baseline_lookup: "Callable[[Banner], SkipBaseline | None] | None" = None,
+    skip_baseline_sink: "Callable[[Banner, SkipBaseline], None] | None" = None,
 ) -> Recommendation:
     """A do-not-spend recommendation with the do-nothing baseline (§1, §2)."""
     banners = available_banners(context)
     banner = banners[0] if banners else current_banner(context)
 
-    # The current cache contract stores protected standings only, while
-    # Recommendation also reports the baseline's roadmap-wide probability.
-    # Keep the full baseline evaluation here until the cache stores both.
-    baseline = evaluate_skip_baseline_full(context, runs=runs, seed=seed)
+    baseline = skip_baseline_lookup(banner) if skip_baseline_lookup is not None and banner is not None else None
+    if baseline is None:
+        baseline = evaluate_skip_baseline_full(context, runs=runs, seed=seed)
+        if skip_baseline_sink is not None and banner is not None:
+            skip_baseline_sink(banner, baseline)
     return Recommendation(
         banner=banner,
         action="skip",
