@@ -667,3 +667,25 @@ def test_carried_state_distribution_near_skirk_frontier(capsys):
     assert all(0.0 <= row[2] <= 1.0 for row in rows)
     assert all(row[3] >= 0 for row in rows)
     assert all(0 <= row[4] <= 540 for row in rows)
+
+
+def test_candidate_plan_shares_current_phase_budget_and_full_roadmap_is_subset():
+    """The displayed full-roadmap probability cannot exceed a required goal."""
+    from optimizer.candidates import candidate_plan
+    from optimizer.outcomes import OutcomeOption
+
+    context = make_context()
+    outcome = OutcomeOption("Vodynista", 0, "C0")
+    plan = candidate_plan(context, outcome, 275, banner=VODYNISTA)
+
+    assert plan.shared_current_phase_budget == 275
+
+    result = simulate(context, plan, runs=10_000, seed=0)
+    vesna_c2 = next(
+        item.probability
+        for item in result.goals
+        if item.goal == Goal("Vesna", 2, 4)
+    )
+
+    # Completing the entire roadmap necessarily includes Vesna C2.
+    assert result.all_goals_probability <= vesna_c2
