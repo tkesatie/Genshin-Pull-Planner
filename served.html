@@ -723,7 +723,8 @@ function renderRecommendation(rec, strategy) {
         ? "Strategy · Discretionary"
         : "Strategy · Skip";
 
-  $("metric-budget").textContent = wishWord(rec.budget);
+  const metricStopAt = strategy?.reserve_wishes ?? null;
+  $("metric-budget").textContent = metricStopAt === null ? "—" : wishWord(metricStopAt);
   $("metric-roadmap-probability").textContent = "—";
 
   const strategyList = $("strategy");
