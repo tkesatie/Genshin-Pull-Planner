@@ -935,7 +935,7 @@ function renderRecommendation(rec, strategy) {
     if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
       const startingWishes = state.account.account.wishes;
       const spend = Math.max(0, startingWishes - step.safe_spend);
-      meta.textContent += ` · ${wishWord(step.safe_spend)} spent`;
+      meta.textContent += ` · spend up to ${wishWord(spend)}`;
 
       const frontier = document.createElement("div");
       frontier.className = "strategy-frontier";
@@ -950,7 +950,7 @@ function renderRecommendation(rec, strategy) {
 
       const keep = document.createElement("div");
       keep.innerHTML =
-        `<span class="frontier-label">Spend down to</span> <strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>`;
+        `<span class="frontier-label">Stop at</span> <strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>`;
 
       const probability = document.createElement("div");
       probability.innerHTML =
@@ -983,7 +983,7 @@ function renderRecommendation(rec, strategy) {
 
   if (rec.action === "pursue") {
     $("verdict-detail").textContent =
-      "Follow the plan in order. The spending frontier is recalculated when your account, banners, or assumptions change.";
+      "Follow the plan in order. Your spending limit is recalculated when your account, banners, or assumptions change.";
   } else if (rec.action === "discretionary") {
     $("verdict-detail").textContent =
       rec.discretionary_reason || "The current opportunity is feasible, but is below the ordinary recommendation threshold.";
