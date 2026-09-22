@@ -204,7 +204,7 @@ class PlannerEvidenceCache:
         baseline, fingerprint = entry
         if fingerprint != context_fingerprint(context):
             return None
-        return baseline.protected
+        return baseline.protected if isinstance(baseline, SkipBaseline) else baseline
 
     def get_skip_baseline_full(self, account_id, banner, *, context):
         key = (account_id, banner.version, banner.phase)
