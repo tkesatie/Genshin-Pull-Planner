@@ -128,3 +128,5 @@ scratch/
 *.rej
 
 .clineignore
+beta_checklist.md
+beta_itinerary.md
