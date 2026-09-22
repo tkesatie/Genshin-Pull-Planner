@@ -83,7 +83,7 @@ def test_status_is_raw_data_not_actionability():
 
 class TestGoalValidation:
     def test_negative_constellation_rejected(self):
-        with pytest.raises(ValueError, match="constellation"):
+        with pytest.raises(ValueError, match="level"):
             Goal("Vesna", -1, 1)
 
     def test_priority_must_be_at_least_one(self):
