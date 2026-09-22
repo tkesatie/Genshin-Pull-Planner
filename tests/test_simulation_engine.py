@@ -93,7 +93,6 @@ class TestVectorizedSimulation:
         """
         roadmap = Roadmap(
             goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 0, 2)],
-            goals=[Goal("Vesna", 0, 1), Goal("Tsaritsa", 1, 1)],
 
             banners=[VESNA, TSARITSA],
         )
