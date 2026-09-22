@@ -283,6 +283,8 @@ Response:
 
 This section is explanatory decision analysis. The recommendation endpoint remains the authoritative decision.
 
+**Known gap (tracked, not yet redesigned):** the current implementation only evaluates the current banner's own character. It does not show how spending on the current banner moves probabilities for other characters' future goals beyond the aggregate `protected` list (i.e. no per-row breakdown of "how does this spend change my Tsaritsa C0 chance specifically" beyond what `protected` already reports). This is being reconsidered given that pull-history conditioning (`/planner/cached-refresh`, §12 below) now keeps evidence fresh after each recorded pull, which changes what this table needs to show. Do not build UI against a redesigned shape until that's settled.
+
 ## 8. Recommendation response
 
 GET /accounts/{id}/planner/recommendation
@@ -318,6 +320,7 @@ Query parameters:
     ]
   },
   "outcome_probability": 0.91,
+  "all_goals_probability": 0.86,
   "confidence": 0.9,
   "minimum_outcome_probability": 0.5,
   "protected": [
@@ -367,6 +370,7 @@ Query parameters:
     ]
   },
   "outcome_probability": 0.41,
+  "all_goals_probability": 0.37,
   "confidence": 0.9,
   "minimum_outcome_probability": 0.5,
   "protected": [],
@@ -394,6 +398,7 @@ Query parameters:
   "budget": 0,
   "plan": null,
   "outcome_probability": 0.0,
+  "all_goals_probability": 0.58,
   "confidence": 0.9,
   "minimum_outcome_probability": 0.5,
   "protected": [],
@@ -433,6 +438,8 @@ Query parameters:
 }
 ~~~
 
+For a skip, `all_goals_probability` is the do-nothing baseline's roadmap-wide figure (§1, §2): "if I spend nothing on this banner, what's my chance of completing the whole roadmap?" It is not derived from `rejected` and is computed from its own simulation of the baseline plan.
+
 Recommendation semantics:
 
 - pursue = feasible and outcome_probability meets minimum_outcome_probability.
@@ -443,6 +450,7 @@ Recommendation semantics:
 - optimizer selection is lexicographic: most-preferred feasible outcome first, then largest feasible cap for that outcome.
 - protected[].constraining identifies goals whose thresholds actually gate the decision.
 - rejected explains more-preferred outcomes that were infeasible.
+- all_goals_probability is roadmap-wide (every goal, not just protected ones) and is NOT the product of the individual protected probabilities - goals share one simulated history and are not independent.
 
 ## 9. Probability distinctions
 
@@ -451,6 +459,7 @@ Do not collapse these into one number:
 | Field/concept | Meaning |
 |---|---|
 | outcome_probability | Chance of achieving the selected current-banner outcome |
+| all_goals_probability | Chance every roadmap goal (protected or not) ends satisfied under the recommendation, or under the do-nothing baseline when skipping |
 | protected[].probability | Chance of satisfying a future protected goal |
 | confidence | Required probability for protected goals |
 | minimum_outcome_probability | Probability floor for an ordinary pursue recommendation |
@@ -460,6 +469,8 @@ Do not collapse these into one number:
 | planned_budget | Cap encoded in a simulation plan |
 
 **Important:** minimum_outcome_probability is not the confidence/protection threshold.
+
+**Important:** all_goals_probability is not derivable from protected[] by multiplying probabilities together; it comes from the simulator counting histories where every goal held at once.
 
 **Important:** a displayed/coarse spend amount is not necessarily the exact maximum safe spend. If the UI supplies a coarse budgets list, it can miss a narrow feasible cap window.
 

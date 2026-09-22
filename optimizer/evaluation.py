@@ -84,7 +84,9 @@ class CandidateStrategy:
             (§12).
         plan: the executed SpendPlan (current + protected entries).
         result: the aggregated simulation (§11) - full provenance for
-            audits (per-banner spending, final wishes, seeds).
+            audits (per-banner spending, final wishes, seeds), and the
+            source of `result.all_goals_probability` - the chance every
+            roadmap goal, not just the protected ones, ends satisfied.
         outcome_probability: empirical P(the outcome's target is met on
             the current banner within the cap).
         protected: each protected goal's standing, in the protected
@@ -106,6 +108,30 @@ class CandidateStrategy:
     protected: tuple[GoalStanding, ...]
     min_protected_probability: float | None
     feasible: bool
+
+
+@dataclass(frozen=True)
+class SkipBaseline:
+    """The do-nothing baseline, in full (§1, §2).
+
+    `evaluate_skip_baseline` only ever returned the protected standings;
+    a do-not-spend recommendation also wants the roadmap-wide number -
+    "if I spend nothing here, what's my chance of completing the WHOLE
+    roadmap?" - which requires the underlying SimulationResult. This
+    carries both out of one simulation so callers needing the roadmap-wide
+    figure don't have to duplicate the run.
+
+    Attributes:
+        protected: each protected goal's standing under the baseline -
+            identical to what `evaluate_skip_baseline` returns.
+        all_goals_probability: fraction of simulated histories in which
+            EVERY roadmap goal was satisfied under the baseline, not just
+            the protected ones (mirrors SimulationResult.all_goals_probability,
+            §11).
+    """
+
+    protected: tuple[GoalStanding, ...]
+    all_goals_probability: float
 
 
 def _standings(
@@ -201,20 +227,23 @@ def evaluate_candidate(
     return candidate
 
 
-def evaluate_skip_baseline(
+def evaluate_skip_baseline_full(
     context: PlannerContext,
     runs: int = DEFAULT_RUNS,
     seed: int | None = DEFAULT_SEED,
-) -> tuple[GoalStanding, ...]:
-    """Protected standings under a do-nothing decision (§1, §2).
+) -> SkipBaseline:
+    """The do-nothing baseline, protected standings plus the roadmap-wide
+    probability, from a single simulation (§1, §2).
 
     The skip baseline processes every future banner with its protected
     pursuits and no current-banner spending: "what does my roadmap look
-    like if I do not spend?" - the diagnostic behind a do-not-spend
-    recommendation (§1). There is no specific outcome being pursued here,
-    so the whole-decision anchor (`current_goal_priority`, via
-    `constraining_goals`'s default) applies, same as before this module
-    started gating per outcome.
+    like if I do not spend?" - both the per-goal protected view (§1) and
+    the "chance of completing the whole roadmap" figure
+    (`all_goals_probability`) come from the same run, so this never pays
+    for two simulations to answer one question.
+
+    `evaluate_skip_baseline` wraps this and returns only `.protected`, so
+    existing callers of that function are unaffected by this addition.
     """
     from optimizer.protection import constraining_goals, protected_groups
 
@@ -233,4 +262,31 @@ def evaluate_skip_baseline(
         )
     )
     result = simulate(context, plan, runs=runs, seed=seed)
-    return _standings(context, result, constraining_goals(context, banner=selected), banner=selected)
+    standings = _standings(
+        context, result, constraining_goals(context, banner=selected), banner=selected
+    )
+    return SkipBaseline(
+        protected=standings, all_goals_probability=result.all_goals_probability
+    )
+
+
+def evaluate_skip_baseline(
+    context: PlannerContext,
+    runs: int = DEFAULT_RUNS,
+    seed: int | None = DEFAULT_SEED,
+) -> tuple[GoalStanding, ...]:
+    """Protected standings under a do-nothing decision (§1, §2).
+
+    The skip baseline processes every future banner with its protected
+    pursuits and no current-banner spending: "what does my roadmap look
+    like if I do not spend?" - the diagnostic behind a do-not-spend
+    recommendation (§1). There is no specific outcome being pursued here,
+    so the whole-decision anchor (`current_goal_priority`, via
+    `constraining_goals`'s default) applies, same as before this module
+    started gating per outcome.
+
+    See `evaluate_skip_baseline_full` for the same computation plus the
+    roadmap-wide `all_goals_probability`, from one simulation instead of
+    two.
+    """
+    return evaluate_skip_baseline_full(context, runs=runs, seed=seed).protected

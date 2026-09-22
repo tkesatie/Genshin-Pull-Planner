@@ -127,6 +127,13 @@ Phase 5 invariants:
     `action="discretionary"`: the spend is disclosed as available and safe
     for the roadmap, but not recommended, because "allowed to spend" and
     "recommended to spend" are different claims.
+15. `Recommendation.all_goals_probability` (and, for skip decisions,
+    `SkipBaseline.all_goals_probability` via `evaluate_skip_baseline_full`)
+    is the roadmap-wide figure: the fraction of simulated histories in
+    which EVERY roadmap goal ended satisfied, not just the protected ones.
+    It comes straight off `SimulationResult.all_goals_probability` (§11)
+    for the winning candidate's own simulation, so it is never a separate
+    computation and never double-simulates.
 """
 
 from optimizer.candidates import candidate_plan
@@ -134,8 +141,10 @@ from optimizer.evaluation import (
     DEFAULT_RUNS,
     CandidateStrategy,
     GoalStanding,
+    SkipBaseline,
     evaluate_candidate,
     evaluate_skip_baseline,
+    evaluate_skip_baseline_full,
 )
 from optimizer.outcomes import OutcomeOption, available_outcomes
 from optimizer.protection import (
@@ -163,6 +172,7 @@ __all__ = [
     "ProtectedGroup",
     "Recommendation",
     "RejectedOutcome",
+    "SkipBaseline",
     "StopConditions",
     "available_outcomes",
     "candidate_plan",
@@ -170,6 +180,7 @@ __all__ = [
     "current_goal_priority",
     "evaluate_candidate",
     "evaluate_skip_baseline",
+    "evaluate_skip_baseline_full",
     "for_discretionary",
     "for_pursue",
     "for_skip",

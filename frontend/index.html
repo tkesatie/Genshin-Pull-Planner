@@ -256,6 +256,7 @@
       <label>Account
         <select id="account-picker"><option value="">Loading</option></select>
       </label>
+      <button id="new-account-btn" type="button">+ New account</button>
       <label>Confidence
         <input id="confidence" type="number" min="0.01" max="1" step="0.05" style="width: 5rem">
       </label>
@@ -265,6 +266,32 @@
   </header>
 
   <div id="status" class="status" role="alert"></div>
+
+  <section id="account-create-panel" class="panel" hidden>
+    <h2 id="account-create-title">Create account</h2>
+    <p class="muted">Set up a new Genshin account to plan. You can add goals, banners, preferences and income for it afterward.</p>
+    <div class="account-form">
+      <label>Label <input id="ca-label" type="text" placeholder="e.g. Main Account"></label>
+      <label>Current version <input id="ca-version" type="text" inputmode="decimal" placeholder="7.1" required></label>
+      <label>Phase <input id="ca-phase" type="number" min="1" step="1" value="1"></label>
+      <label>Wishes <input id="ca-wishes" type="number" min="0" step="1" value="0"></label>
+      <label>Character pity <input id="ca-pity" type="number" min="0" max="89" step="1" value="0"></label>
+      <label class="check"><input id="ca-guarantee" type="checkbox"> Character guarantee</label>
+      <label>Confidence <input id="ca-confidence" type="number" min="0.01" max="1" step="0.05" value="0.9"></label>
+      <label>Income scenario
+        <select id="ca-scenario">
+          <option value="low">Low</option>
+          <option value="expected" selected>Expected</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+      <div class="account-form-actions">
+        <button id="ca-submit" class="primary" type="button">Create account</button>
+        <button id="ca-cancel" type="button" hidden>Cancel</button>
+        <span id="ca-note" class="muted"></span>
+      </div>
+    </div>
+  </section>
 
   <section id="auth" class="auth-panel panel" hidden>
     <h2 id="auth-title">Sign in</h2>
@@ -281,7 +308,7 @@
 
   <div id="empty" class="empty" hidden>
     <p class="verdict">No accounts yet.</p>
-    <p>Create an account through the API to start planning: <code>POST /accounts</code>.</p>
+    <p class="muted">Create your first account below to start planning.</p>
   </div>
 
   <div id="dashboard" hidden>
@@ -484,6 +511,8 @@ async function logout() {
     $("account-picker").hidden = false;
     $("empty").hidden = true;
     $("dashboard").hidden = true;
+    hideAccountCreatePanel();
+    resetAccountCreateForm();
     renderAuth();
   } catch (error) {
     showError(error.message);
@@ -500,6 +529,7 @@ async function loadAccounts() {
     $("empty").hidden = false;
     $("dashboard").hidden = true;
     picker.hidden = true;
+    showAccountCreatePanel({ cancellable: false });
     return;
   }
   for (const account of accounts) {
@@ -511,6 +541,7 @@ async function loadAccounts() {
   }
   $("empty").hidden = true;
   $("dashboard").hidden = false;
+  hideAccountCreatePanel();
   await selectAccount(accounts[0].id);
 }
 
@@ -728,7 +759,7 @@ function renderRecommendation(rec, strategy) {
         : "Strategy · Skip";
 
   $("metric-budget").textContent = wishWord(rec.budget);
-  $("metric-roadmap-probability").textContent = "—";
+  $("metric-roadmap-probability").textContent = pct(rec.all_goals_probability);
 
   const strategyList = $("strategy");
   strategyList.innerHTML = "";
@@ -1075,6 +1106,72 @@ function renderRoadmap(view) {
   }
 }
 
+/* ---------- account creation ---------- */
+
+function showAccountCreatePanel({ cancellable }) {
+  $("account-create-panel").hidden = false;
+  $("ca-cancel").hidden = !cancellable;
+  $("ca-note").textContent = "";
+}
+
+function hideAccountCreatePanel() {
+  $("account-create-panel").hidden = true;
+}
+
+function resetAccountCreateForm() {
+  $("ca-label").value = "";
+  $("ca-version").value = "";
+  $("ca-phase").value = "1";
+  $("ca-wishes").value = "0";
+  $("ca-pity").value = "0";
+  $("ca-guarantee").checked = false;
+  $("ca-confidence").value = "0.9";
+  $("ca-scenario").value = "expected";
+  $("ca-note").textContent = "";
+}
+
+async function submitAccountCreate() {
+  clearError();
+  const version = $("ca-version").value.trim();
+  if (!version) {
+    showError("Enter a current version (e.g. 7.1) to create the account.");
+    return;
+  }
+  $("ca-submit").disabled = true;
+  $("ca-note").textContent = "Creating…";
+  try {
+    const created = await api("/accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: $("ca-label").value.trim(),
+        account: {
+          current_pity: Number($("ca-pity").value) || 0,
+          character_guarantee: $("ca-guarantee").checked,
+          wishes: Number($("ca-wishes").value) || 0,
+          owned_characters: {},
+        },
+        settings: {
+          current_version: version,
+          current_phase: Number($("ca-phase").value) || 1,
+          confidence: Number($("ca-confidence").value) || 0.9,
+          income_scenario: $("ca-scenario").value,
+        },
+      }),
+    });
+    resetAccountCreateForm();
+    hideAccountCreatePanel();
+    await loadAccounts();
+    $("account-picker").value = created.id;
+    await selectAccount(created.id);
+  } catch (error) {
+    $("ca-note").textContent = "";
+    showError(error.message);
+  } finally {
+    $("ca-submit").disabled = false;
+  }
+}
+
 /* ---------- account editing ---------- */
 
 function renderOwnedCharacters() {
@@ -1265,6 +1362,7 @@ function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
   $("decision-label").className = "decision-label";
   $("decision-label").textContent = "Strategy · Updated";
   $("metric-budget").textContent = "—";
+  $("metric-roadmap-probability").textContent = "—";
   $("verdict-detail").textContent =
     "Probabilities were updated by conditioning the retained simulations on the pull you just recorded. Run Planner for a fresh recommendation.";
   $("provenance").textContent =
@@ -1397,6 +1495,9 @@ async function run() {
 }
 
 $("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
+$("new-account-btn").addEventListener("click", () => showAccountCreatePanel({ cancellable: true }));
+$("ca-cancel").addEventListener("click", () => { hideAccountCreatePanel(); resetAccountCreateForm(); });
+$("ca-submit").addEventListener("click", submitAccountCreate);
 $("auth-form").addEventListener("submit", submitAuth);
 $("auth-switch").addEventListener("click", () => {
   state.authMode = state.authMode === "login" ? "register" : "login";

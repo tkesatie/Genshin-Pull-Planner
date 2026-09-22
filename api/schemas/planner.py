@@ -279,6 +279,16 @@ class RecommendationView(BaseModel):
     budget: int
     plan: SpendPlanModel | None
     outcome_probability: float
+    all_goals_probability: float = Field(
+        ...,
+        description=(
+            "Fraction of simulated histories in which EVERY roadmap goal ended "
+            "satisfied under this recommendation - not just the protected ones. "
+            "Under a skip, this is the do-nothing baseline's own roadmap-wide "
+            "figure. Not the product of the individual protected probabilities: "
+            "goals are not independent across one shared history."
+        ),
+    )
     confidence: float
     minimum_outcome_probability: float
     protected: list[GoalStandingView]
@@ -298,6 +308,7 @@ class RecommendationView(BaseModel):
             budget=recommendation.budget,
             plan=None if recommendation.plan is None else SpendPlanModel.from_domain(recommendation.plan),
             outcome_probability=recommendation.outcome_probability,
+            all_goals_probability=recommendation.all_goals_probability,
             confidence=confidence,
             minimum_outcome_probability=minimum_outcome_probability,
             protected=[GoalStandingView.from_domain(standing) for standing in recommendation.protected],
