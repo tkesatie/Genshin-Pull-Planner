@@ -5,6 +5,9 @@ Phase 4 `SpendPlan` the simulator executes faithfully (§12):
 
     current banner:  pursue the outcome's constellation, capped at the
                      candidate's spend budget
+    current-phase alternatives: share that same cap, so spending on one
+                     current-banner character reduces what remains for the
+                     others
     future banners:  every protected group pursued with its strategic
                      budget (optimizer.protection) - the confidence
                      question is "can the roadmap still be completed if I
@@ -29,7 +32,13 @@ def candidate_plan(
     banner=None,
 ) -> SpendPlan:
     """The executable plan for pursuing `outcome` with `budget` wishes
-    capped on the current banner (§13 step 3).
+    capped across the current phase (§13 step 3).
+
+    If multiple roadmap banners share the current version/phase, they are
+    alternatives within the same spend pool. The candidate budget is
+    therefore a shared current-phase cap, not an independent budget for
+    every same-slot banner. This is required for the roadmap-wide result to
+    describe the same resource allocation as the recommendation.
 
     Raises:
         ValueError: if `budget` is negative or exceeds the account's
@@ -57,4 +66,7 @@ def candidate_plan(
         )
         for group in protected_groups(context, banner=selected_banner)
     )
-    return SpendPlan(entries=tuple(entries))
+    return SpendPlan(
+        entries=tuple(entries),
+        shared_current_phase_budget=budget,
+    )
