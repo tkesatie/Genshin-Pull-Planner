@@ -93,6 +93,7 @@ probabilities are never mistaken for exact values.
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Callable
 
 from domain import Banner, Preference
 from planner import PlannerContext
@@ -117,6 +118,9 @@ from optimizer.stops import StopConditions, for_discretionary, for_pursue, for_s
 # keeps those future goals safe, is likely enough to present as a normal
 # recommendation rather than a disclosed gamble (module docstring, §14).
 MINIMUM_OUTCOME_PROBABILITY = 0.25
+
+# Optional recommendation-cache lookup supplied by the API layer.
+CandidateLookup = Callable[[OutcomeOption, int, Banner], "CandidateStrategy | None"]
 
 
 @dataclass(frozen=True)
@@ -221,11 +225,21 @@ def _skip(
     runs: int,
     seed: int | None,
     rejected: tuple[RejectedOutcome, ...] = (),
+    skip_baseline_lookup: "Callable[[Banner], tuple[GoalStanding, ...] | None] | None" = None,
+    skip_baseline_sink: "Callable[[Banner, tuple[GoalStanding, ...]], None] | None" = None,
 ) -> Recommendation:
     """A do-not-spend recommendation with the do-nothing baseline (§1, §2)."""
     banners = available_banners(context)
     banner = banners[0] if banners else current_banner(context)
-    baseline = evaluate_skip_baseline_full(context, runs=runs, seed=seed)
+
+    protected = None
+    if skip_baseline_lookup is not None:
+        protected = skip_baseline_lookup(banner)
+    if protected is None:
+        baseline = evaluate_skip_baseline_full(context, runs=runs, seed=seed)
+        protected = baseline.protected
+        if skip_baseline_sink is not None:
+            skip_baseline_sink(banner, protected)
     return Recommendation(
         banner=banner,
         action="skip",
@@ -233,8 +247,8 @@ def _skip(
         budget=0,
         plan=None,
         outcome_probability=0.0,
-        all_goals_probability=baseline.all_goals_probability,
-        protected=baseline.protected,
+        all_goals_probability=0.0,
+        protected=protected,
         rejected=rejected,
         skip_reason=reason,
         stops=for_skip(reason),
@@ -279,6 +293,27 @@ def _diagnostic_key(candidate: CandidateStrategy) -> tuple[float, float, int]:
     return (floor, candidate.outcome_probability, candidate.budget)
 
 
+def _evaluate_cap(
+    context: PlannerContext,
+    outcome: OutcomeOption,
+    cap: int,
+    banner: Banner,
+    runs: int,
+    seed: int | None,
+    simulation_sink,
+    candidate_lookup: CandidateLookup | None,
+) -> CandidateStrategy:
+    """Evaluate one cap, using the recommendation cache when available."""
+    if candidate_lookup is not None:
+        cached = candidate_lookup(outcome, cap, banner)
+        if cached is not None:
+            return cached
+    return evaluate_candidate(
+        context, outcome, cap, banner=banner, runs=runs, seed=seed,
+        simulation_sink=simulation_sink,
+    )
+
+
 def _caps(context: PlannerContext, budgets: Iterable[int] | None) -> list[int]:
     """Candidate caps, largest first; the default is every spend 0..wishes.
 
@@ -311,6 +346,9 @@ def recommend(
     budgets: Iterable[int] | None = None,
     minimum_outcome_probability: float = MINIMUM_OUTCOME_PROBABILITY,
     simulation_sink=None,
+    candidate_lookup: CandidateLookup | None = None,
+    skip_baseline_lookup: "Callable[[Banner], tuple[GoalStanding, ...] | None] | None" = None,
+    skip_baseline_sink: "Callable[[Banner, tuple[GoalStanding, ...]], None] | None" = None,
 ) -> Recommendation:
     """The highest-preference feasible outcome and its largest feasible
     cap (§13, §14).
@@ -368,6 +406,8 @@ def recommend(
             "no roadmap banner at the current version/phase",
             runs,
             seed,
+            skip_baseline_lookup=skip_baseline_lookup,
+            skip_baseline_sink=skip_baseline_sink,
         )
 
     all_caps = _caps(context, budgets)
@@ -390,9 +430,9 @@ def recommend(
             diagnostic_best: CandidateStrategy | None = None
             first_feasible: CandidateStrategy | None = None
             for cap in caps:
-                candidate = evaluate_candidate(
-                    context, outcome, cap, banner=banner, runs=runs, seed=seed,
-                    simulation_sink=simulation_sink,
+                candidate = _evaluate_cap(
+                    context, outcome, cap, banner, runs, seed, simulation_sink,
+                    candidate_lookup,
                 )
                 if (
                     diagnostic_best is None
@@ -433,6 +473,8 @@ def recommend(
             runs,
             seed,
             rejected=tuple(rejected),
+            skip_baseline_lookup=skip_baseline_lookup,
+            skip_baseline_sink=skip_baseline_sink,
         )
 
     def opportunity_key(item):
