@@ -1,41 +1,60 @@
-"""Banners (Design Document §7).
-
-A banner is a chronological opportunity to pull. Banner order and priority
-order are deliberately allowed to differ (§7).
-"""
+"""Unified character/weapon banner representation."""
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from domain.targets import CharacterTarget, GoalTarget, TargetKind
 from domain.versions import parse_version
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Banner:
-    """An opportunity to pull for a character (§7).
+    """A chronological opportunity to pull for a character or weapon."""
 
-    Attributes:
-        character: the featured character.
-        version: game version in "<major>.<minor>" form, e.g. "7.0".
-        phase: 1-based phase within the version.
-    """
-
-    character: str
+    target: GoalTarget
     version: str
     phase: int = 1
 
-    def __post_init__(self) -> None:
-        parse_version(self.version)  # validates the format
-        if self.phase < 1:
-            raise ValueError(f"phase must be >= 1, got {self.phase}")
+    def __init__(
+        self,
+        character: str | None = None,
+        version: str | None = None,
+        phase: int = 1,
+        *,
+        target: GoalTarget | None = None,
+    ) -> None:
+        if version is None:
+            raise TypeError("Banner requires version")
+        if target is None:
+            if character is None:
+                raise TypeError("Banner requires target or character")
+            target = CharacterTarget(character)
+        elif character is not None:
+            raise TypeError("provide target or character, not both")
+        parse_version(version)
+        if phase < 1:
+            raise ValueError(f"phase must be >= 1, got {phase}")
+        object.__setattr__(self, "target", target)
+        object.__setattr__(self, "version", version)
+        object.__setattr__(self, "phase", phase)
+
+    @property
+    def character(self) -> str:
+        if self.target.kind is not TargetKind.CHARACTER:
+            raise AttributeError("weapon banners do not have a character")
+        return self.target.name
+
+    @property
+    def weapon(self) -> str:
+        if self.target.kind is not TargetKind.WEAPON:
+            raise AttributeError("character banners do not have a weapon")
+        return self.target.name
 
     @property
     def order_key(self) -> tuple[int, int, int]:
-        """Chronological sort key: (major, minor, phase)."""
         major, minor = parse_version(self.version)
         return (major, minor, self.phase)
 
 
 def sorted_chronologically(banners: Iterable[Banner]) -> list[Banner]:
-    """Return banners in chronological order (§7): version first, then phase."""
     return sorted(banners, key=lambda banner: banner.order_key)
