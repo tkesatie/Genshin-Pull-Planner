@@ -232,14 +232,10 @@ def _skip(
     banners = available_banners(context)
     banner = banners[0] if banners else current_banner(context)
 
-    protected = None
-    if skip_baseline_lookup is not None:
-        protected = skip_baseline_lookup(banner)
-    if protected is None:
-        baseline = evaluate_skip_baseline_full(context, runs=runs, seed=seed)
-        protected = baseline.protected
-        if skip_baseline_sink is not None:
-            skip_baseline_sink(banner, protected)
+    # The current cache contract stores protected standings only, while
+    # Recommendation also reports the baseline's roadmap-wide probability.
+    # Keep the full baseline evaluation here until the cache stores both.
+    baseline = evaluate_skip_baseline_full(context, runs=runs, seed=seed)
     return Recommendation(
         banner=banner,
         action="skip",
@@ -247,8 +243,8 @@ def _skip(
         budget=0,
         plan=None,
         outcome_probability=0.0,
-        all_goals_probability=0.0,
-        protected=protected,
+        all_goals_probability=baseline.all_goals_probability,
+        protected=baseline.protected,
         rejected=rejected,
         skip_reason=reason,
         stops=for_skip(reason),
