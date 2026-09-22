@@ -17,14 +17,14 @@ from domain.income import (
     IncomeSource,
     VersionIncome,
 )
-from domain.mechanics import CHARACTER_EVENT_BANNER, WishMechanics
+from domain.mechanics import CHARACTER_EVENT_BANNER, WEAPON_EVENT_BANNER, WishMechanics
 from domain.preference import Preference, sort_by_rank
 from domain.roadmap import Roadmap
 from domain.targets import CharacterTarget, GoalTarget, TargetKind, WeaponTarget
 from domain.versions import parse_version
 
 __all__ = [
-    "NOT_OWNED", "SCENARIOS", "CHARACTER_EVENT_BANNER",
+    "NOT_OWNED", "SCENARIOS", "CHARACTER_EVENT_BANNER", "WEAPON_EVENT_BANNER",
     "Account", "Banner", "Goal", "GoalStatus", "IncomeEstimate",
     "IncomeForecast", "IncomeSource", "Ownership", "Preference", "Roadmap",
     "VersionIncome", "WishMechanics", "CharacterWishState", "WeaponWishState",

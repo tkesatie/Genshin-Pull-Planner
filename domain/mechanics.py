@@ -53,6 +53,29 @@ class WishMechanics:
             )
 
 
+WEAPON_EVENT_BANNER = WishMechanics(
+    banner_type="weapon_event",
+    hard_pity=80,
+    soft_pity_start=64,
+    base_rate=0.007,
+    soft_pity_increment=0.06,
+    featured_rate=0.75,
+)
+# Weapon-banner constants (§17):
+#   * Official (in-game Details text): base 5-star rate 0.7%, consolidated
+#     1.85%, hard pity 80, 75% rate-up share, Epitomized Path at 1 Fate
+#     Point (Version 5.0; previously 2).
+#   * Soft pity is NOT published by HoYoverse. soft_pity_start=64 with a
+#     0.06 increment is a community-documented schedule; it was selected
+#     because (a) the ramp saturates exactly at the pull-80 hard pity and
+#     (b) the resulting mean of ~54.1 pulls per 5-star matches the
+#     officially published 1.85% consolidated rate (implied 54.05) to
+#     within ~0.06 pulls. This validates the choice against known reference
+#     data without inventing unpublished values as fact - if HoYoverse
+#     ever publishes the real schedule, update this data and the probability
+#     logic follows (mechanics as data, §17).
+
+
 CHARACTER_EVENT_BANNER = WishMechanics(
     banner_type="character_event",
     hard_pity=90,

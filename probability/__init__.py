@@ -45,14 +45,25 @@ from probability.rates import (
     pull_rate,
     pull_rate_array,
 )
+from probability.weapon import (
+    DEFAULT_FATE_POINTS_REQUIRED,
+    designated_rate,
+    refinement_cumulative_probability,
+    weapon_cumulative_probability,
+    weapon_wishes_for_confidence,
+)
 
 __all__ = [
+    "DEFAULT_FATE_POINTS_REQUIRED",
     "capturing_radiance_rate",
     "cumulative_probability",
+    "designated_rate",
     "featured_rate_at",
     "multi_copy_cumulative_probability",
     "multi_copy_wishes_for_confidence",
     "pull_rate",
     "pull_rate_array",
-    "wishes_for_confidence",
+    "refinement_cumulative_probability",
+    "weapon_cumulative_probability",
+    "weapon_wishes_for_confidence",
 ]
