@@ -71,10 +71,10 @@ def _wire_cache(cache: PlannerEvidenceCache, context: PlannerContext, runs: int,
         cache.put_candidate(ACCOUNT_ID, candidate, runs=runs, seed=seed, context=context)
 
     def skip_lookup(banner):
-        return cache.get_skip_baseline(ACCOUNT_ID, banner, context=context)
+        return cache.get_skip_baseline_full(ACCOUNT_ID, banner, context=context)
 
-    def skip_sink(banner, protected):
-        cache.put_skip_baseline(ACCOUNT_ID, banner, protected, context=context)
+    def skip_sink(banner, baseline):
+        cache.put_skip_baseline(ACCOUNT_ID, banner, baseline, context=context)
 
     return dict(
         candidate_lookup=lookup,
