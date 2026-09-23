@@ -465,7 +465,7 @@
         <div class="strategy-plan-head">
           <div>
             <div class="eyebrow">Your plan</div>
-            <div class="banner-name">Current account</div>
+            <div class="banner-name" id="hero-banner-name">Current plan</div>
             <div class="banner-meta" id="banner-meta">Loading account</div>
           </div>
           <div class="plan-resources">
@@ -698,6 +698,7 @@ async function selectAccount(id) {
   $("hero-wishes").textContent = state.account.account.wishes;
   $("hero-pity").textContent = state.account.account.current_pity;
   $("hero-guarantee").textContent = state.account.account.character_guarantee ? "Guaranteed" : "50/50";
+  $("hero-banner-name").textContent = "Current plan";
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   resetVerdict();
@@ -893,7 +894,8 @@ function renderRecommendation(rec, strategy) {
   const levelLabel = rec.target_kind === "weapon" ? `R${level}` : `C${level}`;
   const recommendationLabel = rec.outcome ? `${recommendationTarget} ${levelLabel}` : recommendationTarget;
 
-  $("banner-meta").textContent = bannerName(rec.banner);
+  $("hero-banner-name").textContent = bannerName(rec.banner);
+  $("banner-meta").textContent = "Current banner";
   $("decision-label").className = `decision-label ${rec.action}`;
   $("decision-label").textContent = rec.action === "pursue" ? "Pursue" : rec.action === "discretionary" ? "Discretionary" : "Skip";
 
@@ -1379,6 +1381,8 @@ async function saveAccount() {
     $("confidence").value = state.account.settings.confidence;
     $("hero-wishes").textContent = state.account.account.wishes;
     $("hero-pity").textContent = state.account.account.current_pity;
+    $("hero-guarantee").textContent = state.account.account.character_guarantee ? "Guaranteed" : "50/50";
+    $("hero-banner-name").textContent = "Current plan";
     $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
     resetVerdict();
   } catch (error) {
