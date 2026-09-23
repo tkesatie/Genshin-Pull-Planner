@@ -158,6 +158,7 @@ from optimizer.recommend import (
     MINIMUM_OUTCOME_PROBABILITY,
     Recommendation,
     RejectedOutcome,
+    UnsafeCurrentGoal,
     recommend,
 )
 from optimizer.stops import StopConditions, for_discretionary, for_pursue, for_skip
@@ -172,6 +173,7 @@ __all__ = [
     "ProtectedGroup",
     "Recommendation",
     "RejectedOutcome",
+    "UnsafeCurrentGoal",
     "SkipBaseline",
     "StopConditions",
     "available_outcomes",
