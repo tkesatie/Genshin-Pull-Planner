@@ -11,7 +11,7 @@ Labels such as "C2R1" are derived for display and never accepted as input
 (§15).
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from domain import (
     Account,
@@ -24,6 +24,9 @@ from domain import (
     Preference,
     VersionIncome,
     WishMechanics,
+    TargetKind,
+    WeaponTarget,
+    CharacterTarget,
 )
 
 
@@ -33,32 +36,52 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AccountStateModel(StrictModel):
-    """Current account state (§4.1)."""
+class WeaponWishStateModel(StrictModel):
+    """Current weapon-banner pity and Epitomized Path state."""
 
-    current_pity: int = Field(
-        0, description="Pulls made on the character banner since the last 5-star."
-    )
-    character_guarantee: bool = Field(
-        False, description="True when the next 5-star is guaranteed featured."
-    )
-    wishes: int = Field(0, description="Wishes currently owned, as a resource.")
-    capturing_radiance_counter: int = Field(0, description="Current Capturing Radiance counter (0-3).")
-    owned_characters: dict[str, int] = Field(
-        default_factory=dict,
-        description=(
-            "Owned constellation per character: -1 not owned, 0 is C0, 1 is C1. "
-            "A constellation is not a number of copies (§4.2)."
-        ),
-    )
+    pity: int = Field(0, ge=0, lt=80)
+    guarantee: bool = False
+    fate_points: int = Field(0, ge=0, le=1)
+
+    def to_domain(self):
+        from domain import WeaponWishState
+        return WeaponWishState(
+            pity=self.pity,
+            guarantee=self.guarantee,
+            fate_points=self.fate_points,
+        )
+
+    @classmethod
+    def from_domain(cls, state) -> "WeaponWishStateModel":
+        return cls(
+            pity=state.pity,
+            guarantee=state.guarantee,
+            fate_points=state.fate_points,
+        )
+
+
+class AccountStateModel(StrictModel):
+    """Current unified character + weapon account state."""
+
+    current_pity: int = Field(0, ge=0)
+    character_guarantee: bool = False
+    wishes: int = Field(0, ge=0)
+    capturing_radiance_counter: int = Field(0, ge=0, le=3)
+    owned_characters: dict[str, int] = Field(default_factory=dict)
+    owned_weapons: dict[str, int] = Field(default_factory=dict)
+    weapon_state: WeaponWishStateModel = Field(default_factory=WeaponWishStateModel)
 
     def to_domain(self) -> Account:
         return Account(
             current_pity=self.current_pity,
             character_guarantee=self.character_guarantee,
-            owned_characters=Ownership(dict(self.owned_characters)),
+            owned_characters=Ownership(
+                dict(self.owned_characters),
+                dict(self.owned_weapons),
+            ),
             wishes=self.wishes,
             capturing_radiance_counter=self.capturing_radiance_counter,
+            weapon_state=self.weapon_state.to_domain(),
         )
 
     @classmethod
@@ -69,52 +92,146 @@ class AccountStateModel(StrictModel):
             wishes=account.wishes,
             capturing_radiance_counter=account.capturing_radiance_counter,
             owned_characters=dict(account.owned_characters.characters),
+            owned_weapons=dict(account.owned_characters.weapons),
+            weapon_state=WeaponWishStateModel.from_domain(account.weapon_state),
         )
 
 
 class GoalModel(StrictModel):
-    """A roadmap objective (§5)."""
+    """Unified character/weapon goal with legacy character fields accepted."""
 
-    character: str
-    constellation: int = Field(
-        ..., description='Goal constellation ("C2" is 2). Not a copy count.'
-    )
-    priority: int = Field(
-        ..., description="Protection order; 1 is protected first. Unique per roadmap."
-    )
+    target_kind: TargetKind | None = None
+    target_name: str | None = None
+    level: int | None = Field(None, ge=0)
+    priority: int = Field(..., ge=1)
+
+    # Compatibility fields for the existing character UI/API.
+    character: str | None = None
+    constellation: int | None = Field(None, ge=0)
+    weapon: str | None = None
+    refinement: int | None = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def normalize_target(self):
+        if self.target_kind is None:
+            if self.weapon is not None:
+                self.target_kind = TargetKind.WEAPON
+                self.target_name = self.weapon
+                self.level = self.refinement if self.level is None else self.level
+            elif self.character is not None:
+                self.target_kind = TargetKind.CHARACTER
+                self.target_name = self.character
+                self.level = self.constellation if self.level is None else self.level
+            else:
+                raise ValueError("goal requires a character or weapon target")
+        if self.target_name is None or not self.target_name.strip():
+            raise ValueError("goal target_name must not be empty")
+        if self.level is None:
+            raise ValueError("goal requires level")
+        if self.target_kind is TargetKind.CHARACTER:
+            if self.character is None:
+                self.character = self.target_name
+            if self.constellation is None:
+                self.constellation = self.level
+            if self.weapon is not None or self.refinement is not None:
+                raise ValueError("character goals cannot specify weapon/refinement")
+        else:
+            if self.weapon is None:
+                self.weapon = self.target_name
+            if self.refinement is None:
+                self.refinement = self.level
+            if self.character is not None or self.constellation is not None:
+                raise ValueError("weapon goals cannot specify character/constellation")
+        return self
 
     def to_domain(self) -> Goal:
-        return Goal(
-            character=self.character,
-            constellation=self.constellation,
-            priority=self.priority,
+        target = (
+            CharacterTarget(self.target_name)
+            if self.target_kind is TargetKind.CHARACTER
+            else WeaponTarget(self.target_name)
         )
+        return Goal(target=target, level=self.level, priority=self.priority)
 
     @classmethod
     def from_domain(cls, goal: Goal) -> "GoalModel":
+        if goal.target.kind is TargetKind.CHARACTER:
+            return cls(
+                target_kind=TargetKind.CHARACTER,
+                target_name=goal.target.name,
+                level=goal.level,
+                priority=goal.priority,
+                character=goal.target.name,
+                constellation=goal.level,
+            )
         return cls(
-            character=goal.character,
-            constellation=goal.constellation,
+            target_kind=TargetKind.WEAPON,
+            target_name=goal.target.name,
+            level=goal.level,
             priority=goal.priority,
+            weapon=goal.target.name,
+            refinement=goal.level,
         )
 
 
 class BannerModel(StrictModel):
-    """An opportunity to pull (§7)."""
+    """Unified character/weapon banner with legacy fields accepted."""
 
-    character: str
-    version: str = Field(..., description='Game version, e.g. "7.0".')
-    phase: int = Field(1, description="1-based phase within the version.")
+    target_kind: TargetKind | None = None
+    target_name: str | None = None
+    version: str
+    phase: int = Field(1, ge=1)
+    character: str | None = None
+    weapon: str | None = None
+
+    @model_validator(mode="after")
+    def normalize_target(self):
+        if self.target_kind is None:
+            if self.weapon is not None:
+                self.target_kind = TargetKind.WEAPON
+                self.target_name = self.weapon
+            elif self.character is not None:
+                self.target_kind = TargetKind.CHARACTER
+                self.target_name = self.character
+            else:
+                raise ValueError("banner requires a character or weapon target")
+        if self.target_name is None or not self.target_name.strip():
+            raise ValueError("banner target_name must not be empty")
+        if self.target_kind is TargetKind.CHARACTER:
+            if self.character is None:
+                self.character = self.target_name
+            if self.weapon is not None:
+                raise ValueError("character banners cannot specify weapon")
+        else:
+            if self.weapon is None:
+                self.weapon = self.target_name
+            if self.character is not None:
+                raise ValueError("weapon banners cannot specify character")
+        return self
 
     def to_domain(self) -> Banner:
-        return Banner(
-            character=self.character, version=self.version, phase=self.phase
+        target = (
+            CharacterTarget(self.target_name)
+            if self.target_kind is TargetKind.CHARACTER
+            else WeaponTarget(self.target_name)
         )
+        return Banner(target=target, version=self.version, phase=self.phase)
 
     @classmethod
     def from_domain(cls, banner: Banner) -> "BannerModel":
+        if banner.target.kind is TargetKind.CHARACTER:
+            return cls(
+                target_kind=TargetKind.CHARACTER,
+                target_name=banner.target.name,
+                version=banner.version,
+                phase=banner.phase,
+                character=banner.target.name,
+            )
         return cls(
-            character=banner.character, version=banner.version, phase=banner.phase
+            target_kind=TargetKind.WEAPON,
+            target_name=banner.target.name,
+            version=banner.version,
+            phase=banner.phase,
+            weapon=banner.target.name,
         )
 
 
