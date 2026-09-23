@@ -90,7 +90,7 @@ class GoalEvaluationView(BaseModel):
             goal=PlannerGoalView.from_domain(evaluation.goal),
             copies_needed=evaluation.copies_needed,
             state=evaluation.state.value,
-            blocked_by=None if evaluation.blocked_by is None else PlannerGoalView.from_domain(evaluation.blocked_by),
+            blocked_by=None if evaluation.blocked_by is None else GoalModel.from_domain(evaluation.blocked_by),
             next_banner=None if evaluation.next_banner is None else BannerModel.from_domain(evaluation.next_banner),
             relevant=relevant,
             actionable=actionable,
@@ -106,12 +106,12 @@ class GoalEvaluationsView(BaseModel):
 
 
 class CachedGoalProbabilityView(BaseModel):
-    goal: PlannerGoalView
+    goal: GoalModel
     probability: float
 
 
 class CachedGoalEvidenceView(BaseModel):
-    goal: PlannerGoalView
+    goal: GoalModel
     probability: float
     goal_probabilities: list[CachedGoalProbabilityView]
     joint_probability: float | None
@@ -133,7 +133,7 @@ class CachedPlannerRefreshView(BaseModel):
 
 
 class ProtectedGoalOutcomeView(BaseModel):
-    goal: PlannerGoalView
+    goal: GoalModel
     banner: BannerModel
     budget_at_banner: int
     required_wishes: int
@@ -274,7 +274,7 @@ class PullStrategyView(BaseModel):
 
 
 class GoalStandingView(BaseModel):
-    goal: PlannerGoalView
+    goal: GoalModel
     banner: BannerModel
     probability: float
     meets_threshold: bool
