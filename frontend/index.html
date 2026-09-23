@@ -1144,7 +1144,9 @@ function renderAdvancedRecommendation(rec) {
     item.textContent = rule;
     mechanics.append(item);
   }
-  $("mechanics-note").textContent = "The recommendation uses " + rec.runs.toLocaleString() + " simulation runs" + (rec.seed === null || rec.seed === undefined ? " with a random seed" : " with a fixed seed for reproducibility") + ". These details are provided for transparency, not as a second recommendation.";
+  $("mechanics-note").textContent = isWeapon
+    ? "Weapon outcome probabilities use the planner's exact weapon probability model; the run count shown here applies to simulation-backed parts of the overall plan."
+    : "Character outcome probabilities use " + rec.runs.toLocaleString() + " simulation runs" + (rec.seed === null || rec.seed === undefined ? " with a random seed" : " with a fixed seed for reproducibility") + ". These details are provided for transparency, not as a second recommendation.";
   $("mechanics-section").hidden = false;
   $("advanced-details").hidden = !((rec.protected || []).length || (rec.stops?.rules || []).length || assumptions.length);
 }
