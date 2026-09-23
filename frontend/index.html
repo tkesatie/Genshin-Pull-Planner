@@ -538,7 +538,8 @@ const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
 const wishWord = (n) => `${n} ${n === 1 ? "wish" : "wishes"}`;
 const targetName = (value) => value?.target_name || value?.character || value?.weapon || "Unknown target";
-const targetLevel = (value) => value?.level ?? value?.constellation ?? value?.refinement ?? 0;
+const targetLevel = (value) =>
+  value?.level ?? value?.constellation ?? value?.refinement ?? value?.weapon_refinement ?? 0;
 const bannerName = (b) => `${targetName(b)} ${b.version}`;
 const goalName = (g) => {
   const name = targetName(g);
@@ -982,7 +983,9 @@ function renderNextGoals(view, rec) {
     return;
   }
 
-  const currentKey = rec.outcome ? goalKey(rec.outcome) : null;
+  const currentKey = rec.target_name && rec.target_kind
+    ? `${rec.target_name}|${targetLevel(rec.outcome)}`
+    : rec.outcome ? goalKey(rec.outcome) : null;
   const protectedKey = rec.protected_goal ? goalKey(rec.protected_goal) : null;
   const sorted = view.goals.slice().sort((a,b) => a.goal.priority - b.goal.priority);
   const nextActionable = sorted.find(item => item.state !== "satisfied" && item.actionable && goalKey(item.goal) !== currentKey && goalKey(item.goal) !== protectedKey);
@@ -1766,14 +1769,14 @@ function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
     const outcome = rec.outcome;
     if (outcome) {
       const evidence = evidenceByGoal.get(goalKey(outcome));
-      if (evidence && outcome.character === character) {
+      if (evidence && goalKey(outcome) === goalKey(rec.outcome)) {
         rec.outcome_probability =
           evidence.joint_probability ?? evidence.probability;
         rec.budget = Math.max(0, rec.budget - wishesUsed);
         if (rec.plan) {
           for (const entry of rec.plan.entries) {
             if (
-              entry.banner.character === character &&
+              targetName(entry.banner) === targetName(rec.banner) &&
               entry.banner.version === rec.banner.version &&
               entry.banner.phase === rec.banner.phase
             ) {
