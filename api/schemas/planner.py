@@ -280,6 +280,12 @@ class GoalStandingView(BaseModel):
         )
 
 
+class RecommendationAlternativeView(BaseModel):
+    outcome: OutcomeView
+    budget: int
+    outcome_probability: float
+
+
 class RejectedOutcomeView(BaseModel):
     outcome: OutcomeView
     best_budget: int
@@ -344,6 +350,7 @@ class RecommendationView(BaseModel):
     reasons: list[str]
     protected: list[GoalStandingView]
     rejected: list[RejectedOutcomeView]
+    alternatives: list[RecommendationAlternativeView] = Field(default_factory=list)
     skip_reason: str | None
     discretionary_reason: str | None = None
     stops: StopConditionsView
@@ -375,6 +382,14 @@ class RecommendationView(BaseModel):
             reasons=list(recommendation.reasons),
             protected=[GoalStandingView.from_domain(standing) for standing in recommendation.protected],
             rejected=[RejectedOutcomeView.from_domain(rejected) for rejected in recommendation.rejected],
+            alternatives=[
+                RecommendationAlternativeView(
+                    outcome=OutcomeView.from_domain(alternative.outcome),
+                    budget=alternative.budget,
+                    outcome_probability=alternative.outcome_probability,
+                )
+                for alternative in recommendation.alternatives
+            ],
             skip_reason=recommendation.skip_reason,
             discretionary_reason=recommendation.discretionary_reason,
             stops=StopConditionsView.from_domain(recommendation.stops),
