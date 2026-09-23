@@ -495,7 +495,7 @@ def _weapon_progression_step(
             protected_probability = min(confidences)
 
     weapon_state = context.account.weapon_state
-    owned = context.account.owned_characters.owned_refinement(goal.target.name)
+    owned = context.account.owned_characters.weapons.get(goal.target.name, -1)
     curve = refinement_cumulative_probability(
         spend,
         owned,
