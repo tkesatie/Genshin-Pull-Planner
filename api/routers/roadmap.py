@@ -40,7 +40,7 @@ from api.schemas.domain import (
     IncomeForecastView,
     PreferenceView,
 )
-from domain import GoalState, sort_by_rank
+from domain import sort_by_rank
 from planner.goals import evaluate_goals
 
 router = APIRouter(tags=["roadmap"])
