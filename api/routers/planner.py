@@ -376,13 +376,12 @@ def planner_strategy(
             context=context,
         )
 
-    try:
-        strategy = build_strategy(
-            context,
-            runs=runs,
-            seed=seed,
-            simulation_sink=cache_simulation,
-        )
+    strategy = build_strategy(
+        context,
+        runs=runs,
+        seed=seed,
+        simulation_sink=cache_simulation,
+    )
     return PullStrategyView.from_domain(
         strategy,
         confidence=context.confidence,
