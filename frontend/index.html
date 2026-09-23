@@ -286,6 +286,21 @@
     .metric:last-child { border-bottom:0; }
     .split { grid-template-columns:1fr; }
   }
+
+  .app-nav { display:flex; gap:.25rem; margin:1rem 0 0; border-bottom:1px solid var(--border); }
+  .nav-tab { background:transparent; border:0; border-bottom:2px solid transparent; border-radius:0; padding:.65rem .9rem; color:var(--muted); font-weight:650; }
+  .nav-tab:hover:not(:disabled) { color:var(--text); border-color:var(--border); }
+  .nav-tab.active { color:var(--gold-bright); border-color:var(--gold); }
+  .screen { margin-top:1.25rem; }
+  .screen > section:first-child, .screen > details:first-child { margin-top:0; }
+  .screen-intro { margin:0 0 1rem; }
+  .account-summary { display:grid; grid-template-columns:1.4fr repeat(3, 1fr); gap:.65rem; }
+  .summary-card { padding:.85rem .95rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
+  .summary-card span { display:block; color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
+  .summary-card strong { display:block; color:var(--text); font-size:1.15rem; margin-top:.15rem; }
+  .summary-card small { display:block; color:var(--muted); margin-top:.1rem; }
+  @media (max-width: 720px) { .account-summary { grid-template-columns:1fr 1fr; } }
+
 </style>
 </head>
 <body>
@@ -293,6 +308,13 @@
   <header>
     <div class="brand"><span class="brand-mark"></span><h1>Pull Planner</h1></div>
     <div id="user-controls" class="user-controls" hidden><span id="user-name" class="user-name"></span><button id="logout">Log out</button></div>
+
+    <nav id="app-nav" class="app-nav" aria-label="Planner sections" hidden>
+      <button type="button" class="nav-tab active" data-screen="strategy">Strategy</button>
+      <button type="button" class="nav-tab" data-screen="account">Account</button>
+      <button type="button" class="nav-tab" data-screen="goals">Goals</button>
+    </nav>
+
     <div id="planner-controls" class="controls" hidden>
       <label>Account
         <select id="account-picker"><option value="">Loading</option></select>
@@ -353,6 +375,17 @@
   </div>
 
   <div id="dashboard" hidden>
+
+
+    <section id="account-summary-section">
+      <h2>Account summary</h2>
+      <div class="panel account-summary">
+        <div class="summary-card"><span>Account</span><strong id="summary-account-name">—</strong><small id="summary-version">—</small></div>
+        <div class="summary-card"><span>Wishes</span><strong id="summary-wishes">—</strong><small>Available now</small></div>
+        <div class="summary-card"><span>Character</span><strong id="summary-character-state">—</strong><small id="summary-character-pity">—</small></div>
+        <div class="summary-card"><span>Weapon</span><strong id="summary-weapon-state">—</strong><small id="summary-weapon-pity">—</small></div>
+      </div>
+    </section>
 
     <details class="account-editor">
       <summary>Account state</summary>
@@ -536,7 +569,7 @@
 <script>
 "use strict";
 
-const state = { user: null, authMode: "login", account: null, planner: null, runOptions: {}, plannerLoading: false, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null };
+const state = { user: null, authMode: "login", account: null, planner: null, runOptions: {}, plannerLoading: false, plannerTiming: [], plannerStarted: null, plannerRunId: 0, plannerRunSource: null, activeScreen: "strategy" };
 
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
@@ -1279,6 +1312,68 @@ async function submitAccountCreate() {
   }
 }
 
+function setupScreens() {
+  const dashboard = $("dashboard");
+  if (!dashboard || $("strategy-screen")) return;
+
+  const strategyScreen = document.createElement("div");
+  strategyScreen.id = "strategy-screen";
+  strategyScreen.className = "screen";
+  const accountScreen = document.createElement("div");
+  accountScreen.id = "account-screen";
+  accountScreen.className = "screen";
+  accountScreen.hidden = true;
+  const goalsScreen = document.createElement("div");
+  goalsScreen.id = "goals-screen";
+  goalsScreen.className = "screen";
+  goalsScreen.hidden = true;
+
+  const summarySection = $("account-summary-section");
+  if (summarySection) accountScreen.append(summarySection);
+
+  const editors = Array.from(dashboard.querySelectorAll(":scope > details.account-editor"));
+  for (const editor of editors) {
+    const label = editor.querySelector("summary")?.textContent.trim().toLowerCase();
+    if (label === "goals") goalsScreen.append(editor);
+    else accountScreen.append(editor);
+  }
+
+  const strategyNodes = Array.from(dashboard.children).filter(
+    (node) => node !== summarySection && node.tagName !== "DETAILS"
+  );
+  for (const node of strategyNodes) strategyScreen.append(node);
+
+  dashboard.append(strategyScreen, accountScreen, goalsScreen);
+}
+
+function setScreen(screen) {
+  const screens = {
+    strategy: $("strategy-screen"),
+    account: $("account-screen"),
+    goals: $("goals-screen"),
+  };
+  for (const [name, node] of Object.entries(screens)) {
+    if (node) node.hidden = name !== screen;
+  }
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.screen === screen);
+  });
+  state.activeScreen = screen;
+}
+
+function refreshAccountSummary() {
+  if (!state.account) return;
+  const account = state.account.account || {};
+  const settings = state.account.settings || {};
+  const weapon = account.weapon_state || {};
+  $("summary-account-name").textContent = state.account.label || "Account";
+  $("summary-version").textContent = (settings.current_version || "—") + " · Phase " + (settings.current_phase ?? "—");
+  $("summary-wishes").textContent = account.wishes ?? 0;
+  $("summary-character-state").textContent = account.character_guarantee ? "Guaranteed" : "50/50";
+  $("summary-character-pity").textContent = "Pity " + (account.current_pity ?? 0);
+  $("summary-weapon-state").textContent = weapon.guarantee ? "Guaranteed" : "Rate-up";
+  $("summary-weapon-pity").textContent = "Pity " + (weapon.pity ?? 0) + " · Fate " + (weapon.fate_points ?? 0);
+}
 /* ---------- account editing ---------- */
 
 function addOwnedCharacterRow(kind = "character", name = "", level = 0) {
@@ -1368,6 +1463,7 @@ async function saveOwnedCharacters() {
 
     state.planner = null;
     fillAccountForm();
+    refreshAccountSummary();
     renderOwnedCharacters();
     $("owned-characters-note").textContent = "Saved. Run the planner again.";
     $("confidence").value = state.account.settings.confidence;
@@ -1432,6 +1528,7 @@ async function saveAccount() {
     });
     state.planner = null;
     fillAccountForm();
+    refreshAccountSummary();
     $("save-note").textContent = "Saved. Run the planner again.";
     $("confidence").value = state.account.settings.confidence;
     $("hero-wishes").textContent = state.account.account.wishes;
@@ -1978,6 +2075,11 @@ async function run() {
     // loadPlanner owns the planner button state while a run is active.
   }
 }
+
+setupScreens();
+$("app-nav").hidden = false;
+document.querySelectorAll(".nav-tab").forEach((tab) => tab.addEventListener("click", () => setScreen(tab.dataset.screen)));
+setScreen("strategy");
 
 $("account-picker").addEventListener("change", (event) => selectAccount(event.target.value));
 $("new-account-btn").addEventListener("click", () => showAccountCreatePanel({ cancellable: true }));
