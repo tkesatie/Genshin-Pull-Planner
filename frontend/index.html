@@ -359,11 +359,14 @@
       <div class="panel account-form">
         <label>Wishes <input id="f-wishes" type="number" min="0" step="1"></label>
         <label>Character pity <input id="f-pity" type="number" min="0" max="89" step="1"></label>
+        <label>Character guarantee <select id="f-guarantee"><option value="false">50/50</option><option value="true">Guaranteed</option></select></label>
+        <label>Weapon pity <input id="f-weapon-pity" type="number" min="0" max="79" step="1"></label>
+        <label>Weapon guarantee <select id="f-weapon-guarantee"><option value="false">Rate-up</option><option value="true">Guaranteed</option></select></label>
+        <label>Fate Points <input id="f-fate-points" type="number" min="0" max="2" step="1"></label>
         <label>Version <input id="f-version" type="text" inputmode="decimal"></label>
         <label>Phase <input id="f-phase" type="number" min="1" step="1"></label>
         <label>Income scenario <select id="f-scenario"><option value="low">Low</option><option value="expected">Expected</option><option value="high">High</option></select></label>
         <label>Confidence <input id="f-confidence" type="number" min="0.01" max="1" step="0.05"></label>
-        <label class="check"><input id="f-guarantee" type="checkbox"> Character guarantee</label>
         <div class="account-form-actions"><button id="save" class="primary">Save account state</button><span id="save-note" class="muted"></span></div>
       </div>
     </details>
@@ -371,10 +374,10 @@
     <details class="account-editor">
       <summary>Goals</summary>
       <div class="panel">
-        <p class="muted">Roadmap objectives, in priority order (priority 1 is protected first). The same character can appear in multiple goals — e.g. C0 then C2 — that's cumulative progression, not competing alternatives.</p>
+        <p class="muted">Roadmap objectives, in priority order (priority 1 is protected first). Add either a character constellation goal or a weapon refinement goal.</p>
         <div class="table-panel">
           <table class="edit-table">
-            <thead><tr><th>Character</th><th>Constellation</th><th>Priority</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Target</th><th>Level</th><th>Priority</th><th></th></tr></thead>
             <tbody id="goals-rows"></tbody>
           </table>
         </div>
@@ -389,10 +392,10 @@
     <details class="account-editor">
       <summary>Banners</summary>
       <div class="panel">
-        <p class="muted">Your expected banner schedule — a user assumption, ordered chronologically by version then phase.</p>
+        <p class="muted">Your expected banner schedule — a user assumption, ordered chronologically by version then phase. Add either a character or weapon banner.</p>
         <div class="table-panel">
           <table class="edit-table">
-            <thead><tr><th>Character</th><th>Version</th><th>Phase</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Target</th><th>Version</th><th>Phase</th><th></th></tr></thead>
             <tbody id="banners-rows"></tbody>
           </table>
         </div>
@@ -442,18 +445,18 @@
     </details>
 
     <details class="account-editor">
-      <summary>Owned characters</summary>
+      <summary>Owned characters and weapons</summary>
       <div class="panel">
-        <p class="muted">Characters currently owned on this account. Use C0–C6 for constellation level; remove a row to mark a character as not owned.</p>
+        <p class="muted">Track what you already own. Characters use C0–C6; weapons use R0–R5. Remove a row to mark an item as not owned.</p>
         <div class="table-panel">
           <table class="edit-table">
-            <thead><tr><th>Character</th><th>Constellation</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Name</th><th>Level</th><th></th></tr></thead>
             <tbody id="owned-characters-rows"></tbody>
           </table>
         </div>
         <div class="account-form-actions">
-          <button id="owned-characters-add" type="button">+ Add character</button>
-          <button id="owned-characters-save" class="primary" type="button">Save characters</button>
+          <button id="owned-characters-add" type="button">+ Add item</button>
+          <button id="owned-characters-save" class="primary" type="button">Save ownership</button>
           <span id="owned-characters-note" class="muted"></span>
         </div>
       </div>
@@ -1278,11 +1281,22 @@ async function submitAccountCreate() {
 
 /* ---------- account editing ---------- */
 
-function addOwnedCharacterRow(character, constellation) {
+function addOwnedCharacterRow(kind = "character", name = "", level = 0) {
   const row = document.createElement("tr");
+  const type = document.createElement("select");
+  type.innerHTML = '<option value="character">Character</option><option value="weapon">Weapon</option>';
+  type.value = kind;
+  type.addEventListener("change", () => {
+    levelInput.max = type.value === "weapon" ? "5" : "6";
+    levelInput.placeholder = type.value === "weapon" ? "R0–R5" : "C0–C6";
+  });
+  const levelInput = numberInput(level ?? 0, { min: 0, step: 1 });
+  levelInput.max = kind === "weapon" ? "5" : "6";
+  levelInput.placeholder = kind === "weapon" ? "R0–R5" : "C0–C6";
   row.append(
-    editCell(textInput(character ?? "", "Character")),
-    editCell(numberInput(constellation ?? 0, { min: 0, step: 1 })),
+    editCell(type),
+    editCell(textInput(name ?? "", "Name")),
+    editCell(levelInput),
     editDeleteCell(row)
   );
   $("owned-characters-rows").append(row);
@@ -1294,10 +1308,11 @@ function renderOwnedCharacters() {
   const characters = Object.entries(state.account.account.owned_characters || {})
     .filter(([, constellation]) => Number(constellation) >= 0)
     .sort(([a], [b]) => a.localeCompare(b));
-
-  for (const [character, constellation] of characters) {
-    addOwnedCharacterRow(character, constellation);
-  }
+  const weapons = Object.entries(state.account.account.owned_weapons || {})
+    .filter(([, refinement]) => Number(refinement) >= 0)
+    .sort(([a], [b]) => a.localeCompare(b));
+  for (const [character, constellation] of characters) addOwnedCharacterRow("character", character, constellation);
+  for (const [weapon, refinement] of weapons) addOwnedCharacterRow("weapon", weapon, refinement);
   $("owned-characters-note").textContent = "";
 }
 
@@ -1308,21 +1323,22 @@ async function saveOwnedCharacters() {
   try {
     const rows = Array.from($("owned-characters-rows").querySelectorAll("tr"));
     const ownedCharacters = {};
+    const ownedWeapons = {};
 
     for (const row of rows) {
-      const character = row.children[0].querySelector("input").value.trim();
-      const constellation = Number(row.children[1].querySelector("input").value);
-
-      if (!character) {
-        throw new Error("Every owned-character row needs a character name.");
+      const kind = row.children[0].querySelector("select").value;
+      const name = row.children[1].querySelector("input").value.trim();
+      const level = Number(row.children[2].querySelector("input").value);
+      if (!name) throw new Error(`Every owned-${kind} row needs a name.`);
+      const max = kind === "weapon" ? 5 : 6;
+      if (!Number.isInteger(level) || level < 0 || level > max) {
+        throw new Error(`${kind === "weapon" ? "Weapon refinements" : "Character constellations"} must be whole numbers from 0 to ${max}.`);
       }
-      if (!Number.isInteger(constellation) || constellation < 0 || constellation > 6) {
-        throw new Error("Character constellations must be whole numbers from 0 to 6.");
+      const target = kind === "weapon" ? ownedWeapons : ownedCharacters;
+      if (Object.prototype.hasOwnProperty.call(target, name)) {
+        throw new Error(`${kind === "weapon" ? "Weapon" : "Character"} "${name}" is listed more than once.`);
       }
-      if (Object.prototype.hasOwnProperty.call(ownedCharacters, character)) {
-        throw new Error(`Character "${character}" is listed more than once.`);
-      }
-      ownedCharacters[character] = constellation;
+      target[name] = level;
     }
 
     const account = state.account.account;
@@ -1337,12 +1353,8 @@ async function saveOwnedCharacters() {
           wishes: account.wishes,
           capturing_radiance_counter: account.capturing_radiance_counter,
           owned_characters: ownedCharacters,
-          owned_weapons: account.owned_weapons || {},
-          weapon_state: account.weapon_state || {
-            pity: 0,
-            guarantee: false,
-            fate_points: 0,
-          },
+          owned_weapons: ownedWeapons,
+          weapon_state: account.weapon_state || { pity: 0, guarantee: false, fate_points: 0 },
         },
         settings: {
           current_version: state.account.settings.current_version,
@@ -1360,9 +1372,6 @@ async function saveOwnedCharacters() {
     $("owned-characters-note").textContent = "Saved. Run the planner again.";
     $("confidence").value = state.account.settings.confidence;
     $("hero-wishes").textContent = state.account.account.wishes;
-    $("hero-pity").textContent = state.account.account.current_pity;
-    $("banner-meta").textContent =
-      `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
     resetVerdict();
   } catch (error) {
     $("owned-characters-note").textContent = "";
@@ -1375,9 +1384,13 @@ async function saveOwnedCharacters() {
 function fillAccountForm() {
   const account = state.account.account;
   const settings = state.account.settings;
+  const weaponState = account.weapon_state || {};
   $("f-wishes").value = account.wishes;
   $("f-pity").value = account.current_pity;
-  $("f-guarantee").checked = account.character_guarantee;
+  $("f-guarantee").value = String(Boolean(account.character_guarantee));
+  $("f-weapon-pity").value = weaponState.pity ?? 0;
+  $("f-weapon-guarantee").value = String(Boolean(weaponState.guarantee));
+  $("f-fate-points").value = weaponState.fate_points ?? 0;
   $("f-version").value = settings.current_version;
   $("f-phase").value = settings.current_phase;
   $("f-confidence").value = settings.confidence;
@@ -1397,10 +1410,16 @@ async function saveAccount() {
         label: state.account.label,
         account: {
           current_pity: Number($("f-pity").value),
-          character_guarantee: $("f-guarantee").checked,
+          character_guarantee: $("f-guarantee").value === "true",
           wishes: Number($("f-wishes").value),
           capturing_radiance_counter: state.account.account.capturing_radiance_counter,
-          owned_characters: state.account.account.owned_characters,
+          owned_characters: state.account.account.owned_characters || {},
+          owned_weapons: state.account.account.owned_weapons || {},
+          weapon_state: {
+            pity: Number($("f-weapon-pity").value),
+            guarantee: $("f-weapon-guarantee").value === "true",
+            fate_points: Number($("f-fate-points").value),
+          },
         },
         settings: {
           current_version: $("f-version").value.trim(),
@@ -1479,9 +1498,22 @@ function nextGoalPriority() {
 
 function addGoalRow(goal) {
   const row = document.createElement("tr");
+  const type = document.createElement("select");
+  type.innerHTML = '<option value="character">Character</option><option value="weapon">Weapon</option>';
+  const kind = goal?.target_kind || (goal?.weapon != null ? "weapon" : "character");
+  type.value = kind;
+  const target = textInput(goal?.target_name ?? goal?.character ?? goal?.weapon ?? "", "Character or weapon");
+  const level = numberInput(goal?.level ?? goal?.constellation ?? goal?.refinement ?? 0, { min: 0 });
+  level.max = kind === "weapon" ? "5" : "6";
+  type.addEventListener("change", () => {
+    level.max = type.value === "weapon" ? "5" : "6";
+    level.value = Math.min(Number(level.value) || 0, Number(level.max));
+    target.placeholder = type.value === "weapon" ? "Weapon" : "Character";
+  });
   row.append(
-    editCell(textInput(goal?.character ?? "", "Character")),
-    editCell(numberInput(goal?.constellation ?? 0, { min: 0 })),
+    editCell(type),
+    editCell(target),
+    editCell(level),
     editCell(numberInput(goal?.priority ?? nextGoalPriority(), { min: 1 })),
     editDeleteCell(row)
   );
@@ -1501,11 +1533,18 @@ async function saveGoals() {
   try {
     const rows = Array.from($("goals-rows").querySelectorAll("tr"));
     const payload = {
-      goals: rows.map((row) => ({
-        character: row.children[0].querySelector("input").value.trim(),
-        constellation: Number(row.children[1].querySelector("input").value) || 0,
-        priority: Number(row.children[2].querySelector("input").value) || 0,
-      })),
+      goals: rows.map((row) => {
+        const kind = row.children[0].querySelector("select").value;
+        const name = row.children[1].querySelector("input").value.trim();
+        const level = Number(row.children[2].querySelector("input").value) || 0;
+        const priority = Number(row.children[3].querySelector("input").value) || 0;
+        return {
+          target_kind: kind,
+          target_name: name,
+          level,
+          priority,
+        };
+      }),
     };
     const result = await api(`/accounts/${state.account.id}/goals`, {
       method: "PUT",
@@ -1530,8 +1569,12 @@ async function saveGoals() {
 
 function addBannerRow(banner) {
   const row = document.createElement("tr");
+  const type = document.createElement("select");
+  type.innerHTML = '<option value="character">Character</option><option value="weapon">Weapon</option>';
+  type.value = banner?.target_kind || (banner?.weapon != null ? "weapon" : "character");
   row.append(
-    editCell(textInput(banner?.character ?? "", "Character")),
+    editCell(type),
+    editCell(textInput(banner?.target_name ?? banner?.character ?? banner?.weapon ?? "", "Character or weapon")),
     editCell(textInput(banner?.version ?? "", "7.1")),
     editCell(numberInput(banner?.phase ?? 1, { min: 1 })),
     editDeleteCell(row)
@@ -1553,9 +1596,10 @@ async function saveBanners() {
     const rows = Array.from($("banners-rows").querySelectorAll("tr"));
     const payload = {
       banners: rows.map((row) => ({
-        character: row.children[0].querySelector("input").value.trim(),
-        version: row.children[1].querySelector("input").value.trim(),
-        phase: Number(row.children[2].querySelector("input").value) || 1,
+        target_kind: row.children[0].querySelector("select").value,
+        target_name: row.children[1].querySelector("input").value.trim(),
+        version: row.children[2].querySelector("input").value.trim(),
+        phase: Number(row.children[3].querySelector("input").value) || 1,
       })),
     };
     const result = await api(`/accounts/${state.account.id}/banners`, {
