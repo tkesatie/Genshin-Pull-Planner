@@ -136,6 +136,37 @@
   }
   .verdict-cap { color:var(--gold-bright); }
   .decision-detail { max-width: 58rem; font-size:.92rem; color:#aab4c3; }
+
+  .strategy-plan-head { display:flex; justify-content:space-between; align-items:flex-start; gap:2rem; position:relative; z-index:1; }
+  .plan-resources { display:flex; gap:1.4rem; text-align:right; }
+  .recommendation-panel { padding:1.5rem 1.6rem; }
+  .recommendation-limit { margin-top:1rem; padding:1rem 1.1rem; border:1px solid var(--border); border-radius:7px; background:rgba(217,170,82,.06); }
+  .limit-label { display:block; color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.09em; }
+  .limit-value { display:block; color:var(--gold-bright); font-size:1.65rem; font-weight:700; margin-top:.15rem; }
+  .limit-note { display:block; color:var(--text); font-size:.82rem; margin-top:.2rem; }
+  .why-reason { padding:.8rem .9rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
+  .why-reason + .why-reason { margin-top:.55rem; }
+  .goal-roadmap { display:grid; gap:.55rem; }
+  .goal-row { display:grid; grid-template-columns:2.2rem 1fr auto; gap:.8rem; align-items:center; padding:.8rem .85rem; border:1px solid var(--border); border-radius:7px; background:var(--surface-2); }
+  .goal-row.current { border-color:var(--gold); }
+  .goal-row.protected { border-color:#8a6f35; }
+  .goal-number { color:var(--gold-bright); font-weight:700; }
+  .goal-title { color:var(--text); font-weight:650; }
+  .goal-meta { color:var(--muted); font-size:.74rem; margin-top:.1rem; }
+  .goal-status { color:var(--muted); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; }
+  .goal-status.current { color:var(--gold-bright); font-weight:700; }
+  .goal-status.protected { color:var(--gold); font-weight:700; }
+  .goal-status.next { color:var(--text); }
+  .goal-status.complete { color:var(--green); }
+  .plan-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .plan-metric { padding:.25rem 1.2rem; border-right:1px solid var(--border); }
+  .plan-metric:first-child { padding-left:0; }
+  .plan-metric:last-child { border-right:0; padding-right:0; }
+  .advanced-details { margin-top:1.5rem; }
+  .advanced-details summary { cursor:pointer; color:var(--muted); font-size:.82rem; }
+  .advanced-content section:first-child { margin-top:1rem; }
+  .advanced-content section { margin-top:1.25rem; }
+
   .strategy-list { display:grid; gap:.55rem; margin:0 0 .7rem; }
   .strategy-item { display:grid; grid-template-columns:2rem 1fr; gap:.8rem; align-items:start; padding:.75rem 0; border-bottom:1px solid var(--border); }
   .strategy-item:last-child { border-bottom:0; }
@@ -245,7 +276,11 @@
     main { padding:1rem .85rem 4rem; }
     .hero { padding:1.5rem; }
     .hero-top { flex-direction:column; gap:1rem; }
-    .resources { text-align:left; }
+    .resources, .plan-resources { text-align:left; }
+    .strategy-plan-head { flex-direction:column; gap:1rem; }
+    .plan-summary { grid-template-columns:1fr; }
+    .plan-metric, .plan-metric:first-child, .plan-metric:last-child { padding:.8rem 0; border-right:0; border-bottom:1px solid var(--border); }
+    .plan-metric:last-child { border-bottom:0; }
     .metrics { grid-template-columns:1fr; }
     .metric, .metric + .metric { padding: .8rem 0; border-right:0; border-bottom:1px solid var(--border); }
     .metric:last-child { border-bottom:0; }
@@ -424,64 +459,72 @@
       </div>
     </details>
 
-    <section id="verdict-section">
+
+    <section id="strategy-plan-section">
       <div class="hero">
-        <div class="hero-top">
-          <div><div class="eyebrow">Pull strategy</div><div class="banner-name">Your current plan</div><div class="banner-meta" id="banner-meta">Loading account</div></div>
-          <div class="resources"><div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div><div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div></div>
-        </div>
-        <div class="decision">
-          <div id="decision-label" class="decision-label">Strategy</div>
-          <div id="strategy" class="strategy-list">
-            <p class="verdict" id="verdict">Run the planner to build your current strategy.</p>
+        <div class="strategy-plan-head">
+          <div>
+            <div class="eyebrow">Your plan</div>
+            <div class="banner-name">Current account</div>
+            <div class="banner-meta" id="banner-meta">Loading account</div>
           </div>
-          <p id="verdict-detail" class="decision-detail">The strategy is based on your goal priorities, available banners, and protection thresholds.</p>
-          <div class="metrics"><div class="metric"><span class="metric-label">Stop at</span><span class="metric-value" id="metric-budget">—</span></div><div class="metric"><span class="metric-label">Chance of full roadmap</span><span class="metric-value" id="metric-roadmap-probability">—</span></div></div>
-          <div class="resource-breakdown" id="resource-breakdown"></div><p class="provenance" id="provenance"></p>
+          <div class="plan-resources">
+            <div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div>
+            <div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div>
+            <div class="resource"><strong id="hero-guarantee">—</strong><span>50/50</span></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <div class="split">
-      <section id="why-section" hidden>
-        <h2>Why this is the recommendation</h2>
-        <p class="muted">More-preferred outcomes that were considered, and the future goals that prevent them.</p>
-        <div id="why"></div>
-      </section>
-
-      <section id="protected-section" hidden>
-        <h2>Protected future goals</h2>
-        <p class="muted" id="protected-caption"></p>
-        <div class="panel"><div class="bars" id="protected"></div></div>
-      </section>
-    </div>
-
-    <section id="stops-section" hidden>
-      <h2>When to stop</h2>
-      <div class="panel"><ul class="rules" id="stops"></ul></div>
-    </section>
-
-    <section>
-      <h2>Quick reserve check</h2>
-      <p class="muted" id="safe-caption"></p>
-      <div class="panel">
-        <p class="verdict" id="safe-spend" style="font-size: 1.8rem"></p>
-        <div class="bars" id="safe-bars"></div>
+    <section id="verdict-section">
+      <h2>Current recommendation</h2>
+      <div class="recommendation-panel panel">
+        <div id="decision-label" class="decision-label">Strategy</div>
+        <div id="strategy"><p class="verdict" id="verdict">Run the planner to build your current recommendation.</p></div>
+        <div class="recommendation-limit" id="recommendation-limit"></div>
+        <p id="verdict-detail" class="decision-detail">The recommendation is based on your goals, available banners, account state, and protection threshold.</p>
       </div>
     </section>
 
-    <section>
-      <h2>Spending analysis</h2>
-      <div class="panel">
-        <p class="muted">Placeholder — this section is temporarily disabled while the spending-analysis view is redesigned.</p>
+    <section id="why-section">
+      <h2>Why?</h2>
+      <div class="panel"><div id="why"></div></div>
+    </section>
+
+    <section id="next-goals-section">
+      <h2>Next goals</h2>
+      <div class="panel"><div id="next-goals" class="goal-roadmap"></div></div>
+    </section>
+
+    <section id="plan-section">
+      <h2>Plan</h2>
+      <div class="panel plan-summary">
+        <div class="plan-metric"><span class="metric-label">Confidence</span><span class="metric-value" id="plan-confidence">—</span></div>
+        <div class="plan-metric"><span class="metric-label">Protected</span><span class="metric-value" id="plan-protected">—</span></div>
+        <div class="plan-metric"><span class="metric-label">Future income</span><span class="metric-value" id="plan-income">—</span></div>
       </div>
     </section>
 
-    <section>
-      <h2>Upcoming goals</h2>
-      <p class="muted">Your banner schedule and the goals attached to each banner.</p>
-      <div class="panel timeline" id="roadmap"></div>
-    </section>
+    <details id="advanced-details" class="advanced-details" hidden>
+      <summary>Advanced planner details</summary>
+      <div class="advanced-content">
+        <section id="protected-section" hidden>
+          <h2>Protected future goals</h2>
+          <p class="muted" id="protected-caption"></p>
+          <div class="panel"><div class="bars" id="protected"></div></div>
+        </section>
+        <section id="stops-section" hidden>
+          <h2>When to stop</h2>
+          <div class="panel"><ul class="rules" id="stops"></ul></div>
+        </section>
+        <section id="safe-section" hidden>
+          <h2>Quick reserve check</h2>
+          <p class="muted" id="safe-caption"></p>
+          <div class="panel"><p class="verdict" id="safe-spend" style="font-size:1.8rem"></p><div class="bars" id="safe-bars"></div></div>
+        </section>
+      </div>
+    </details>
 
   </div>
 </main>
@@ -494,8 +537,16 @@ const state = { user: null, authMode: "login", account: null, planner: null, run
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(0)}%`;
 const wishWord = (n) => `${n} ${n === 1 ? "wish" : "wishes"}`;
-const bannerName = (b) => `${b.character} ${b.version}`;
-const goalName = (g) => `${g.character} C${g.constellation}`;
+const targetName = (value) => value?.target_name || value?.character || value?.weapon || "Unknown target";
+const targetLevel = (value) => value?.level ?? value?.constellation ?? value?.refinement ?? 0;
+const bannerName = (b) => `${targetName(b)} ${b.version}`;
+const goalName = (g) => {
+  const name = targetName(g);
+  const level = targetLevel(g);
+  const weapon = g?.weapon != null || g?.refinement != null;
+  return `${name} ${weapon ? "R" : "C"}${level}`;
+};
+const goalKey = (g) => `${targetName(g)}|${targetLevel(g)}`;
 
 function showError(message) {
   $("status").textContent = message;
@@ -646,6 +697,7 @@ async function selectAccount(id) {
   $("confidence").value = state.account.settings.confidence;
   $("hero-wishes").textContent = state.account.account.wishes;
   $("hero-pity").textContent = state.account.account.current_pity;
+  $("hero-guarantee").textContent = state.account.account.character_guarantee ? "Guaranteed" : "50/50";
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   resetVerdict();
@@ -717,30 +769,10 @@ async function loadPlanner(source = "unknown") {
       strategyPromise,
     ]);
 
-    const available = goals.available_banners || [];
-    let character = recommendation && recommendation.banner
-      ? recommendation.banner.character
-      : null;
-
-    if (!character && available.length) {
-      const actionable = goals.goals
-        .filter((goal) => goal.actionable)
-        .sort((a, b) => a.goal.priority - b.goal.priority);
-      const selectedGoal = actionable[0];
-      character = selectedGoal
-        ? available.find((banner) => banner.character === selectedGoal.goal.character)?.character
-        : available[0].character;
-    }
-
-    const bannerQuery = character ? { character } : {};
-    const safe = await api(
-      `/accounts/${id}/planner/safe-spend${query(bannerQuery)}`
-    );
-
-    state.planner = { recommendation, goals, safe, strategy };
+    // Recommendation contains the user-facing spend limit and protected reserve.
+    // Avoid the separate safe-spend request on the primary Strategy page.
+    state.planner = { recommendation, goals, strategy };
     if (recommendation) renderRecommendation(recommendation, strategy);
-    renderSafeSpend(safe);
-    renderRoadmap(goals);
 
     await new Promise((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -792,23 +824,22 @@ async function loadPlanner(source = "unknown") {
 /* ---------- rendering ---------- */
 
 function resetVerdict() {
-  // renderRecommendation replaces the contents of #strategy, including the
-  // initial #verdict placeholder. Recreate it when clearing a completed run.
-  const strategy = $("strategy");
-  strategy.innerHTML = "";
+  $("strategy").innerHTML = "";
   const verdict = document.createElement("p");
   verdict.className = "verdict";
   verdict.id = "verdict";
   verdict.textContent = "Run the planner to see the current recommendation.";
-  strategy.append(verdict);
-
-  $("verdict-detail").textContent =
-    "Every candidate spend is simulated, so this takes a few seconds.";
-  $("provenance").textContent = "";
-  $("resource-breakdown").innerHTML = "";
+  $("strategy").append(verdict);
+  $("recommendation-limit").innerHTML = "";
+  $("verdict-detail").textContent = "The recommendation is based on your goals, available banners, account state, and protection threshold.";
+  $("why").innerHTML = "";
+  $("next-goals").innerHTML = "";
+  $("plan-confidence").textContent = "—";
+  $("plan-protected").textContent = "—";
+  $("plan-income").textContent = "—";
   $("why-section").hidden = true;
-  $("protected-section").hidden = true;
-  $("stops-section").hidden = true;
+  $("next-goals-section").hidden = true;
+  $("advanced-details").open = false;
 }
 
 function barRow(label, sublabel, probability, threshold, meets) {
@@ -857,201 +888,126 @@ function stepsForFullRoadmap(strategy) {
 }
 
 function renderRecommendation(rec, strategy) {
-  const banner = bannerName(rec.banner);
-  $("banner-meta").textContent = banner;
-  $("decision-label").className = `decision-label ${rec.action}`;
-  $("decision-label").textContent =
-    rec.action === "pursue"
-      ? "Strategy · Pursue"
-      : rec.action === "discretionary"
-        ? "Strategy · Discretionary"
-        : "Strategy · Skip";
+  const recommendationTarget = rec.target_name || targetName(rec.outcome) || targetName(rec.banner);
+  const level = targetLevel(rec.outcome);
+  const levelLabel = rec.target_kind === "weapon" ? `R${level}` : `C${level}`;
+  const recommendationLabel = rec.outcome ? `${recommendationTarget} ${levelLabel}` : recommendationTarget;
 
-  const metricStopAt = strategy?.reserve_wishes ?? null;
-  $("metric-budget").textContent = metricStopAt === null ? "—" : wishWord(metricStopAt);
-  // Full-roadmap probability must come from the same executable plan as the
-  // displayed progression frontier. Recommendation and strategy are
-  // separate evaluations; using rec.all_goals_probability here could compare
-  // a different plan against the strategy's Vesna C2 probability.
-  const roadmapProbabilityStep = stepsForFullRoadmap(strategy);
-  const roadmapProbability = roadmapProbabilityStep?.all_goals_probability ?? rec.all_goals_probability;
-  $("metric-roadmap-probability").textContent = pct(roadmapProbability);
+  $("banner-meta").textContent = bannerName(rec.banner);
+  $("decision-label").className = `decision-label ${rec.action}`;
+  $("decision-label").textContent = rec.action === "pursue" ? "Pursue" : rec.action === "discretionary" ? "Discretionary" : "Skip";
 
   const strategyList = $("strategy");
   strategyList.innerHTML = "";
+  const verdict = document.createElement("p");
+  verdict.className = "verdict";
+  verdict.id = "verdict";
+  verdict.textContent = rec.action === "skip" ? `Don't spend on ${recommendationTarget}.` : `Get ${recommendationLabel}`;
+  strategyList.append(verdict);
 
-  const steps = strategy && strategy.steps ? strategy.steps : [];
-  let number = 1;
-
-  if (strategy) {
-    $("resource-breakdown").innerHTML = `
-      <div class="resource-card"><span>Available now</span><strong>${wishWord(strategy.starting_wishes)}</strong></div>
-      <div class="resource-card"><span>Expected future income</span><strong>+${wishWord(strategy.future_income)}</strong></div>
-      <div class="resource-card"><span>Protected now</span><strong>${strategy.reserve_wishes === null ? "—" : wishWord(strategy.reserve_wishes)}</strong></div>
-    `;
-  }
-
-  for (const step of steps) {
-    const item = document.createElement("div");
-    item.className = "strategy-item";
-
-    const index = document.createElement("div");
-    index.className = "strategy-number";
-    index.textContent = number++;
-
-    const body = document.createElement("div");    const action = document.createElement("div");
-    action.className = "strategy-action";
-
-    if (step.action === "get") {
-      action.textContent = `Get ${goalName(step.goal)}`;
-    } else if (step.action === "pursue_until_reserve") {
-      action.textContent = `Work toward ${goalName(step.goal)}`;
-    } else if (step.action === "save") {
-      action.textContent = `Protect ${goalName(step.goal)}`;
-    } else {
-      action.textContent = step.action;
-    }
-
-    const meta = document.createElement("div");
-    meta.className = "strategy-meta";
-    meta.textContent =
-      `Priority ${step.goal.priority} · ${bannerName(step.banner)}`;
-
-    if (step.action === "get" || step.action === "pursue_until_reserve") {
-      const outcomes = document.createElement("div");
-      outcomes.className = "strategy-outcomes";
-      const pulled = document.createElement("button");
-      pulled.textContent = `Pulled ${step.goal.character}`;
-      pulled.addEventListener("click", () => recordPullOutcome(step.goal.character, "featured"));
-      if (!state.account.account.character_guarantee) {
-        const lost = document.createElement("button");
-        lost.textContent = "Lost 50/50";
-        lost.addEventListener("click", () => recordPullOutcome(step.goal.character, "lost_50_50"));
-        outcomes.append(lost);
-      }
-      outcomes.prepend(pulled);
-      body.append(outcomes);
-    }
-
-    if (step.action === "pursue_until_reserve" && step.safe_spend !== null) {
-      const startingWishes = state.account.account.wishes;
-      const spend = Math.max(0, startingWishes - step.safe_spend);
-      meta.textContent += ` · spend up to ${wishWord(spend)}`;
-
-      const frontier = document.createElement("div");
-      frontier.className = "strategy-frontier";
-
-      const accounting = document.createElement("div");
-      accounting.className = "strategy-accounting";
-      accounting.innerHTML = `
-        <span>Starting reserve</span><strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>
-        <span>Future income before ${goalName(step.goal)}</span><strong>+${wishWord(step.future_income ?? 0)}</strong>
-        <span>Total resources for future protection</span><strong>${wishWord(step.protected_total_wishes ?? step.reserve_wishes)}</strong>
-      `;
-
-      const keep = document.createElement("div");
-      keep.innerHTML =
-        `<span class="frontier-label">Stop at</span> <strong>${wishWord(step.protected_starting_wishes ?? step.reserve_wishes)}</strong>`;
-
-      const probability = document.createElement("div");
-      probability.innerHTML =
-        `<span class="frontier-label">Chance of ${goalName(step.goal)}</span> <span class="frontier-probability">${pct(step.outcome_probability)}</span>`;
-
-      frontier.append(keep, probability);
-      body.append(accounting);
-      body.append(action, meta, frontier);
-      item.append(index, body);
-      item.classList.add("recommended");
-      strategyList.append(item);
-      continue;
-    } else if (step.action === "save" && step.reserve_wishes !== null) {
-      meta.textContent += ` · keep ${wishWord(step.reserve_wishes)}`;
-    }
-
-    body.append(action, meta);
-    item.append(index, body);
-    strategyList.append(item);
-  }
-
-  if (steps.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "verdict";
-    empty.style.fontSize = "1.8rem";
-    empty.textContent =
-      rec.action === "skip" ? `Don't spend on ${banner}.` : "No current strategy is available.";
-    strategyList.append(empty);
-  }
+  const spendDownTo = Number.isFinite(rec.spend_down_to) ? rec.spend_down_to : rec.protected_reserve;
+  $("recommendation-limit").innerHTML = `
+    <span class="limit-label">Spending limit</span>
+    <span class="limit-value">Spend down to ${wishWord(spendDownTo)}.</span>
+    <span class="limit-note">${rec.protected_goal ? `Protects ${goalName(rec.protected_goal)} at ${pct(rec.confidence)}.` : `Protected reserve: ${wishWord(rec.protected_reserve)}.`}</span>
+  `;
 
   if (rec.action === "pursue") {
-    $("verdict-detail").textContent =
-      "Follow the plan in order. Your spending limit is recalculated when your account, banners, or assumptions change.";
+    $("verdict-detail").textContent = "Follow this recommendation while maintaining the protected reserve. The limit updates when your account or planning assumptions change.";
   } else if (rec.action === "discretionary") {
-    $("verdict-detail").textContent =
-      rec.discretionary_reason || "The current opportunity is feasible, but is below the ordinary recommendation threshold.";
+    $("verdict-detail").textContent = rec.discretionary_reason || "This opportunity is feasible but falls below the ordinary recommendation threshold.";
   } else {
-    $("verdict-detail").textContent =
-      rec.skip_reason || "No current-banner outcome can be pursued safely.";
+    $("verdict-detail").textContent = rec.skip_reason || "No current-banner outcome can be pursued safely.";
   }
-
-  $("provenance").textContent =
-    `${rec.runs.toLocaleString()} simulated futures, seed ${rec.seed === null ? "random" : rec.seed}. Run again when your account or banner assumptions change.`;
 
   const why = $("why");
   why.innerHTML = "";
-  for (const rejected of rec.rejected) {
-    const panel = document.createElement("div");
-    panel.className = "panel";
-    panel.style.marginBottom = ".75rem";
-    const head = document.createElement("p");
-    head.innerHTML =
-      `<strong>${rejected.outcome.character} ${rejected.outcome.label}</strong> is out of reach: at best ${pct(rejected.outcome_probability)} for the outcome with up to ${wishWord(rejected.best_budget)} spent.`;
-    panel.append(head);
-    const bars = document.createElement("div");
-    bars.className = "bars";
-    for (const short of rejected.shortfalls) {
-      bars.append(
-        barRow(goalName(short.goal), bannerName(short.banner), short.probability, rec.confidence, false)
-      );
-    }
-    panel.append(bars);
-    why.append(panel);
+  for (const reason of rec.reasons || []) {
+    const item = document.createElement("div");
+    item.className = "why-reason";
+    item.textContent = reason;
+    why.append(item);
   }
-  $("why-section").hidden = rec.rejected.length === 0;
+  if (rec.protected_goal) {
+    const item = document.createElement("div");
+    item.className = "why-reason";
+    item.innerHTML = `<strong>Protected reserve:</strong> ${wishWord(rec.protected_reserve)} for ${goalName(rec.protected_goal)} at ${pct(rec.confidence)}.`;
+    why.append(item);
+  }
+  $("why-section").hidden = why.children.length === 0;
 
+  renderNextGoals(state.planner?.goals, rec);
+  $("plan-confidence").textContent = pct(rec.confidence);
+  $("plan-protected").textContent = wishWord(rec.protected_reserve);
+  $("plan-income").textContent = strategy ? `+${wishWord(strategy.future_income)}` : "—";
+  renderAdvancedRecommendation(rec);
+}
+
+function renderAdvancedRecommendation(rec) {
   const protectedBars = $("protected");
   protectedBars.innerHTML = "";
-  for (const standing of rec.protected) {
-    protectedBars.append(
-      barRow(
-        goalName(standing.goal),
-        standing.constraining === false
-          ? `${bannerName(standing.banner)} · lower priority: does not cap this spend`
-          : bannerName(standing.banner),
-        standing.probability,
-        rec.confidence,
-        standing.meets_threshold
-      )
-    );
+  for (const standing of rec.protected || []) {
+    protectedBars.append(barRow(goalName(standing.goal), bannerName(standing.banner), standing.probability, rec.confidence, standing.meets_threshold));
   }
-  const nonGating = rec.protected.filter((standing) => standing.constraining === false);
-  $("protected-caption").textContent =
-    (rec.action === "pursue"
-      ? "Where your roadmap lands if you follow this recommendation. "
-      : "Where your roadmap lands if you spend nothing here. ") +
-    (nonGating.length
-      ? "Goals ranked below this banner's goal are shown, but only higher-priority goals cap the spend. "
-      : "") +
-    `The dashed line is your ${pct(rec.confidence)} protection threshold.`;
-  $("protected-section").hidden = rec.protected.length === 0;
+  $("protected-caption").textContent = `The dashed line is your ${pct(rec.confidence)} protection threshold.`;
+  $("protected-section").hidden = !(rec.protected || []).length;
 
   const stops = $("stops");
   stops.innerHTML = "";
-  for (const rule of rec.stops.rules) {
+  for (const rule of (rec.stops?.rules || [])) {
     const item = document.createElement("li");
     item.textContent = rule;
     stops.append(item);
   }
-  $("stops-section").hidden = false;
+  $("stops-section").hidden = !(rec.stops?.rules || []).length;
+  $("advanced-details").hidden = !((rec.protected || []).length || (rec.stops?.rules || []).length);
+}
+
+function renderNextGoals(view, rec) {
+  const host = $("next-goals");
+  host.innerHTML = "";
+  if (!view || !Array.isArray(view.goals) || view.goals.length === 0) {
+    $("next-goals-section").hidden = true;
+    return;
+  }
+
+  const currentKey = rec.outcome ? goalKey(rec.outcome) : null;
+  const protectedKey = rec.protected_goal ? goalKey(rec.protected_goal) : null;
+  const sorted = view.goals.slice().sort((a,b) => a.goal.priority - b.goal.priority);
+  const nextActionable = sorted.find(item => item.state !== "satisfied" && item.actionable && goalKey(item.goal) !== currentKey && goalKey(item.goal) !== protectedKey);
+
+  sorted.forEach((item,index) => {
+    const key = goalKey(item.goal);
+    const row = document.createElement("div");
+    row.className = "goal-row";
+    if (key === currentKey) row.classList.add("current");
+    if (key === protectedKey) row.classList.add("protected");
+
+    const number = document.createElement("div");
+    number.className = "goal-number";
+    number.textContent = String(index + 1);
+
+    const body = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "goal-title";
+    title.textContent = goalName(item.goal);
+    const meta = document.createElement("div");
+    meta.className = "goal-meta";
+    meta.textContent = item.next_banner ? bannerName(item.next_banner) : item.state === "satisfied" ? "Complete" : "No scheduled banner";
+    body.append(title, meta);
+
+    const status = document.createElement("div");
+    let statusText = "LATER", statusClass = "";
+    if (item.state === "satisfied") { statusText = "COMPLETE"; statusClass = "complete"; }
+    else if (key === currentKey) { statusText = "CURRENT"; statusClass = "current"; }
+    else if (key === protectedKey) { statusText = "PROTECTED"; statusClass = "protected"; }
+    else if (nextActionable && key === goalKey(nextActionable.goal)) { statusText = "NEXT"; statusClass = "next"; }
+    status.className = `goal-status ${statusClass}`;
+    status.textContent = statusText;
+    row.append(number, body, status);
+    host.append(row);
+  });
+  $("next-goals-section").hidden = false;
 }
 
 function renderSafeSpend(safe) {
