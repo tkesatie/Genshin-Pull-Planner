@@ -1164,8 +1164,8 @@ function renderNextGoals(view, rec) {
     ? rec.target_name + "|" + targetLevel(rec.outcome)
     : rec.outcome ? goalKey(rec.outcome) : null;
   const protectedKey = rec.protected_goal ? goalKey(rec.protected_goal) : null;
-  const alternativeByGoal = new Map(
-    (rec.alternatives || []).map((alternative) => [goalKey(alternative.outcome), alternative])
+  const unsafeByGoal = new Map(
+    (rec.unsafe_current || []).map((unsafe) => [goalKey(unsafe.goal), unsafe])
   );
   const currentBannerKeys = new Set(
     (view.available_banners || []).map((banner) => bannerKey(banner))
@@ -1192,12 +1192,11 @@ function renderNextGoals(view, rec) {
     meta.className = "goal-meta";
     meta.textContent = item.next_banner ? bannerName(item.next_banner) : item.state === "satisfied" ? "Complete" : "No scheduled banner";
 
-    const alternative = alternativeByGoal.get(key);
-    const onCurrentBanner = item.next_banner && currentBannerKeys.has(bannerKey(item.next_banner));
-    if (alternative && onCurrentBanner && alternative.outcome_probability < rec.minimum_outcome_probability) {
+    const unsafe = unsafeByGoal.get(key);
+    if (unsafe) {
       const risk = document.createElement("span");
       risk.className = "goal-risk";
-      risk.textContent = "Chance: " + pct(alternative.outcome_probability) + " at the evaluated spend limit";
+      risk.textContent = "Chance: " + pct(unsafe.outcome_probability);
       meta.append(risk);
     }
 
@@ -1208,7 +1207,7 @@ function renderNextGoals(view, rec) {
     if (item.state === "satisfied") { statusText = "COMPLETE"; statusClass = "complete"; }
     else if (key === currentKey) { statusText = "CURRENT"; statusClass = "current"; }
     else if (key === protectedKey) { statusText = "PROTECTED"; statusClass = "protected"; }
-    else if (alternative && onCurrentBanner && alternative.outcome_probability < rec.minimum_outcome_probability) {
+    else if (unsafe) {
       statusText = "NOT SAFE NOW";
       statusClass = "risky";
     }
