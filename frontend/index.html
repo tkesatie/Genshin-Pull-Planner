@@ -1686,8 +1686,7 @@ async function saveGoals() {
       if (!Number.isInteger(priority) || priority < 1) throw new Error("Goal priority must be a positive whole number.");
       return { target_kind: kind, target_name: name, level, priority };
     });
-    const payload = { goals };      }),
-    };
+    const payload = { goals };
     const result = await api(`/accounts/${state.account.id}/goals`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
