@@ -103,6 +103,23 @@ def test_unified_goals_accept_character_and_weapon_targets_and_status(api_client
     assert statuses[1]["status"] == "active"
     assert statuses[1]["copies_needed"] == 1
 
+    completed = api_client.put(
+        f"/accounts/{account_id}",
+        json={
+            "label": "goals",
+            "account": {
+                "owned_characters": {"Skirk": 2},
+                "owned_weapons": {"Existing Weapon": 0},
+                "wishes": 100,
+            },
+            "settings": {"current_version": "7.1", "current_phase": 1},
+        },
+    )
+    assert completed.status_code == 200, completed.text
+    completed_status = api_client.get(f"/accounts/{account_id}/goals/status").json()["goals"]
+    assert completed_status[0]["status"] == "satisfied"
+    assert completed_status[0]["copies_needed"] == 0
+
 
 def test_goal_priority_edit_and_deletion_are_persisted(api_client, doc_account_id):
     response = api_client.put(
