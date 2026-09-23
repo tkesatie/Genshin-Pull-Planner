@@ -664,14 +664,17 @@ def build_strategy(
             protected_total_wishes=reserve_total,
         ))
 
+    reserve_banner = None
     if reserve_goal is not None:
-        reserve_banner = min(
-            (banner for banner in context.roadmap.banners
-             if banner.target == reserve_goal.target
-             and banner.order_key > banners[0].order_key),
-            key=lambda banner: banner.order_key,
-        )
-        steps.append(StrategyStep("save", reserve_goal, reserve_banner))
+        future_banners = [
+            banner
+            for banner in context.roadmap.banners
+            if banner.target == reserve_goal.target
+            and banner.order_key > banners[0].order_key
+        ]
+        if future_banners:
+            reserve_banner = min(future_banners, key=lambda banner: banner.order_key)
+            steps.append(StrategyStep("save", reserve_goal, reserve_banner))
 
     return PullStrategy(
         steps=tuple(steps), reserve_goal=reserve_goal,
