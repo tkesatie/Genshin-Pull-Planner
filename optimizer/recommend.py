@@ -663,6 +663,13 @@ def recommend(
     # Presentation-only diagnostic: roadmap goals on any currently available
     # banner that are not safe enough to recommend at the selected spend.
     # This does not participate in selection or protection.
+    winner_target_key = (
+        winner_outcome.target.kind.value if winner_outcome.target is not None
+        else TargetKind.CHARACTER.value,
+        winner_outcome.character,
+        winner_outcome.constellation,
+    )
+
     unsafe_items: list[UnsafeCurrentGoal] = []
     known_unsafe_keys: set[tuple[str, str, int]] = set()
     for banner in banners:
