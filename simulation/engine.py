@@ -100,6 +100,10 @@ def _banners_to_process(context: PlannerContext, plan: SpendPlan) -> list[Banner
             banner
             for banner in context.roadmap.banners_in_chronological_order()
             if banner.order_key >= current.order_key
+            # Weapon probability is handled analytically by the optimizer;
+            # the character Monte Carlo engine must never attempt to process
+            # a weapon banner through Banner.character.
+            and banner.target.kind.value == "character"
         ),
         key=lambda banner: (banner.order_key, plan_order.get(banner, len(plan.entries))),
     )
