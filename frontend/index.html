@@ -299,6 +299,10 @@
   .screen { margin-top:1.25rem; }
   .screen > section:first-child, .screen > details:first-child { margin-top:0; }
   .screen-intro { margin:0 0 1rem; }
+  .editor-group { margin-top:1.5rem; }
+  .editor-group:first-of-type { margin-top:.75rem; }
+  .editor-group-title { margin-bottom:.35rem; }
+  .editor-group-description { margin-bottom:.75rem; }
   .account-summary { display:grid; grid-template-columns:1.4fr repeat(3, 1fr); gap:.65rem; }
   .summary-card { padding:.85rem .95rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
   .summary-card span { display:block; color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
@@ -1339,12 +1343,43 @@ function setupScreens() {
   const summarySection = $("account-summary-section");
   if (summarySection) accountScreen.append(summarySection);
 
+  const accountIntro = document.createElement("p");
+  accountIntro.className = "muted screen-intro";
+  accountIntro.textContent = "Keep your current pull state and owned characters and weapons up to date. The planner uses this information to determine what you can safely pursue.";
+  accountScreen.append(accountIntro);
+
+  const accountGroup = document.createElement("section");
+  accountGroup.className = "editor-group";
+  const accountTitle = document.createElement("h2");
+  accountTitle.className = "editor-group-title";
+  accountTitle.textContent = "Account setup";
+  const accountDescription = document.createElement("p");
+  accountDescription.className = "muted editor-group-description";
+  accountDescription.textContent = "Your wishes, pity, guarantees, and current roster.";
+  accountGroup.append(accountTitle, accountDescription);
+
+  const planningGroup = document.createElement("section");
+  planningGroup.className = "editor-group";
+  const planningTitle = document.createElement("h2");
+  planningTitle.className = "editor-group-title";
+  planningTitle.textContent = "Planning settings";
+  const planningDescription = document.createElement("p");
+  planningDescription.className = "muted editor-group-description";
+  planningDescription.textContent = "Tell the planner which banners and future resources to expect.";
+  planningGroup.append(planningTitle, planningDescription);
+
   const editors = Array.from(dashboard.querySelectorAll(":scope > details.account-editor"));
   for (const editor of editors) {
     const label = editor.querySelector("summary")?.textContent.trim().toLowerCase();
-    if (label === "goals") goalsScreen.append(editor);
-    else accountScreen.append(editor);
+    if (label === "goals") {
+      goalsScreen.append(editor);
+    } else if (label === "account state" || label === "owned characters and weapons") {
+      accountGroup.append(editor);
+    } else {
+      planningGroup.append(editor);
+    }
   }
+  accountScreen.append(accountGroup, planningGroup);
 
   const strategyNodes = Array.from(dashboard.children).filter(
     (node) => node !== summarySection && node.tagName !== "DETAILS"
