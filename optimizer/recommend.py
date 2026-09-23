@@ -125,6 +125,15 @@ CandidateLookup = Callable[[OutcomeOption, int, Banner], "CandidateStrategy | No
 
 
 @dataclass(frozen=True)
+class RecommendationAlternative:
+    """A feasible current-banner outcome considered but not selected."""
+
+    outcome: OutcomeOption
+    budget: int
+    outcome_probability: float
+
+
+@dataclass(frozen=True)
 class RejectedOutcome:
     """Why a more-preferred outcome was not recommended (§13 step 7).
 
@@ -212,7 +221,8 @@ class Recommendation:
     all_goals_probability: float
     protected: tuple[GoalStanding, ...]
     rejected: tuple[RejectedOutcome, ...]
-    skip_reason: str | None
+    alternatives: tuple[RecommendationAlternative, ...] = ()
+    skip_reason: str | None = None
     stops: StopConditions
     runs: int
     seed: int | None
@@ -611,6 +621,15 @@ def recommend(
     opportunities.sort(key=opportunity_key)
 
     winner_banner, _, winner_outcome, winner, winner_priority = opportunities[0]
+    alternatives = tuple(
+        RecommendationAlternative(
+            outcome=outcome,
+            budget=candidate.budget,
+            outcome_probability=candidate.outcome_probability,
+        )
+        for banner, _, outcome, candidate, _ in opportunities[1:]
+        if banner == winner_banner
+    )
 
     # A deeper same-character outcome is cumulative progress: reaching
     # C2 necessarily reaches C0. If the deeper outcome is feasible and
@@ -641,6 +660,7 @@ def recommend(
             all_goals_probability=winner.result.all_goals_probability,
             protected=winner.protected,
             rejected=tuple(rejected),
+            alternatives=alternatives,
             skip_reason=None,
             stops=for_pursue(winner_outcome.label, winner.budget),
             runs=runs,
@@ -663,6 +683,7 @@ def recommend(
         all_goals_probability=winner.result.all_goals_probability,
         protected=winner.protected,
         rejected=tuple(rejected),
+        alternatives=alternatives,
         skip_reason=None,
         stops=for_discretionary(
             winner_outcome.label,
