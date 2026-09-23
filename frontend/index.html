@@ -1772,13 +1772,9 @@ function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
 
   renderRecommendation(rec, strategy);
   $("decision-label").className = "decision-label";
-  $("decision-label").textContent = "Strategy · Updated";
-  $("metric-budget").textContent = "—";
-  $("metric-roadmap-probability").textContent = "—";
+  $("decision-label").textContent = "Updated";
   $("verdict-detail").textContent =
-    "Probabilities were updated by conditioning the retained simulations on the pull you just recorded. Run Planner for a fresh recommendation.";
-  $("provenance").textContent =
-    "Updated from retained simulation evidence; no new Monte Carlo histories were sampled.";
+    "Probabilities were updated from retained simulation evidence. Run Planner for a fresh recommendation when you want a full recalculation.";
   return true;
 }
 
@@ -1808,13 +1804,6 @@ async function refreshPlannerAfterPull(character, outcome, wishesUsed) {
     "/accounts/" + state.account.id + "/planner/cached-refresh?" + params.toString()
   );
   const updated = applyCachedPlannerRefresh(refresh, character, wishesUsed);
-  const safe = await api(
-    "/accounts/" + state.account.id + "/planner/safe-spend" +
-      query() +
-      (query() ? "&" : "?") +
-      "character=" + encodeURIComponent(character)
-  );
-  renderSafeSpend(safe);
   return updated;
 }
 
