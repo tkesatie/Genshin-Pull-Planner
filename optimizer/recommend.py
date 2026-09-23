@@ -662,6 +662,12 @@ def recommend(
          item.outcome.constellation)
         for item in alternative_items
     }
+    winner_target_key = (
+        winner_outcome.target.kind.value if winner_outcome.target is not None
+        else TargetKind.CHARACTER.value,
+        winner_outcome.character,
+        winner_outcome.constellation,
+    )
     for banner in banners:
         for goal in context.roadmap.goals_in_priority_order():
             goal_key = (goal.target.kind.value, goal.target.name, goal.level)
@@ -671,9 +677,7 @@ def recommend(
                 or goal_key in known_alternative_keys
                 or (
                     banner == winner_banner
-                    and goal.target.kind is winner_outcome.target.kind if winner_outcome.target is not None else goal.target.kind is TargetKind.CHARACTER
-                    and goal.target.name == winner_outcome.character
-                    and goal.level == winner_outcome.constellation
+                    and goal_key == winner_target_key
                 )
             ):
                 continue
