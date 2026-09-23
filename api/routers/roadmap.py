@@ -19,7 +19,7 @@ the planner sees.
 
 from dataclasses import replace
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Path, status
 
 from api.dependencies import get_record, get_repository
 from api.repository import AccountRecord, AccountRepository
@@ -28,6 +28,8 @@ from api.schemas.accounts import (
     BannerListView,
     GoalListModel,
     GoalListView,
+    GoalStatusListView,
+    GoalStatusView,
     PreferenceListModel,
     PreferenceListView,
 )
@@ -38,7 +40,8 @@ from api.schemas.domain import (
     IncomeForecastView,
     PreferenceView,
 )
-from domain import sort_by_rank
+from domain import GoalState, sort_by_rank
+from planner.goals import evaluate_goals
 
 router = APIRouter(tags=["roadmap"])
 
@@ -81,6 +84,52 @@ def replace_goals(
             for goal in updated.roadmap().goals_in_priority_order()
         ]
     )
+
+
+@router.get(
+    "/accounts/{account_id}/goals/status",
+    response_model=GoalStatusListView,
+    summary="Read unified goal status",
+    description="Returns completion, blocking state, remaining copies/refinements, and next opportunity for every goal.",
+)
+def read_goal_status(record: AccountRecord = Depends(get_record)) -> GoalStatusListView:
+    return GoalStatusListView(
+        goals=[
+            GoalStatusView(
+                goal=GoalModel.from_domain(evaluation.goal),
+                status=evaluation.state.value,
+                copies_needed=evaluation.copies_needed,
+                blocked_by=(
+                    None
+                    if evaluation.blocked_by is None
+                    else GoalModel.from_domain(evaluation.blocked_by)
+                ),
+                next_banner=(
+                    None
+                    if evaluation.next_banner is None
+                    else BannerModel.from_domain(evaluation.next_banner)
+                ),
+            )
+            for evaluation in evaluate_goals(record.context())
+        ]
+    )
+
+
+@router.delete(
+    "/accounts/{account_id}/goals/{priority}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete one goal by priority",
+)
+def delete_goal(
+    priority: int = Path(..., ge=1),
+    record: AccountRecord = Depends(get_record),
+    repository: AccountRepository = Depends(get_repository),
+) -> None:
+    goals = tuple(goal for goal in record.goals if goal.priority != priority)
+    if len(goals) == len(record.goals):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"no goal with priority {priority}")
+    repository.save(replace(record, goals=goals))
 
 
 @router.get(
