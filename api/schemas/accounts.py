@@ -164,6 +164,22 @@ class GoalListModel(StrictModel):
     goals: list[GoalModel]
 
 
+class GoalStatusView(BaseModel):
+    """Derived status for one unified goal."""
+
+    goal: GoalModel
+    status: str
+    copies_needed: int
+    blocked_by: GoalModel | None = None
+    next_banner: BannerModel | None = None
+
+
+class GoalStatusListView(BaseModel):
+    """All goals with planner-facing completion/blocking status."""
+
+    goals: list[GoalStatusView]
+
+
 class BannerListModel(StrictModel):
     """Replacement banner schedule (§7)."""
 
