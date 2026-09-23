@@ -566,14 +566,7 @@
                 <strong id="hero-weapon-status">—</strong>
               </div>
             </div>
-            <div class="hero-state-stack" id="hero-recommendation-resource" hidden>
-              <div class="hero-state-row">
-                <strong id="hero-pity">—</strong>
-                <span id="hero-pity-label">Pity</span>
-                <strong id="hero-guarantee">—</strong>
-                <span id="hero-guarantee-label">State</span>
-              </div>
-            </div>
+
           </div>
         </div>
       </div>
@@ -1027,9 +1020,6 @@ function stepsForFullRoadmap(strategy) {
 }
 
 function renderRecommendation(rec, strategy) {
-  $("hero-account-resources").hidden = true;
-  $("hero-recommendation-resource").hidden = false;
-
   const recommendationTarget = rec.target_name || targetName(rec.outcome) || targetName(rec.banner);
   const level = targetLevel(rec.outcome);
   const levelLabel = rec.target_kind === "weapon" ? `R${level}` : `C${level}`;
@@ -1037,15 +1027,6 @@ function renderRecommendation(rec, strategy) {
 
   $("hero-banner-name").textContent = bannerName(rec.banner);
   $("banner-meta").textContent = "Current banner";
-  const isWeapon = rec.target_kind === "weapon" || rec.banner?.target_kind === "weapon";
-  const accountState = state.account.account;
-  const weaponState = accountState.weapon_state || {};
-  $("hero-pity").textContent = isWeapon ? (weaponState.pity ?? 0) : accountState.current_pity;
-  $("hero-pity-label").textContent = "Pity";
-  $("hero-guarantee").textContent = isWeapon
-    ? (weaponState.guarantee ? "Guaranteed" : "Rate-up")
-    : (accountState.character_guarantee ? "Guaranteed" : "50/50");
-  $("hero-guarantee-label").textContent = isWeapon ? "Guarantee" : "50/50";
   $("decision-label").className = `decision-label ${rec.action}`;
   $("decision-label").textContent = rec.action === "pursue" ? "Pursue" : rec.action === "discretionary" ? "Discretionary" : "Skip";
 
