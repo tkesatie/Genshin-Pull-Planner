@@ -13,6 +13,7 @@ from optimizer import (
     OutcomeOption,
     Recommendation,
     RejectedOutcome,
+    UnsafeCurrentGoal,
     StopConditions,
     PullStrategy,
     StrategyStep,
@@ -286,6 +287,22 @@ class RecommendationAlternativeView(BaseModel):
     outcome_probability: float
 
 
+class UnsafeCurrentGoalView(BaseModel):
+    goal: PlannerGoalView
+    banner: BannerModel
+    budget: int
+    outcome_probability: float
+
+    @classmethod
+    def from_domain(cls, unsafe: UnsafeCurrentGoal):
+        return cls(
+            goal=PlannerGoalView.from_domain(unsafe.goal),
+            banner=BannerModel.from_domain(unsafe.banner),
+            budget=unsafe.budget,
+            outcome_probability=unsafe.outcome_probability,
+        )
+
+
 class RejectedOutcomeView(BaseModel):
     outcome: OutcomeView
     best_budget: int
@@ -351,6 +368,7 @@ class RecommendationView(BaseModel):
     protected: list[GoalStandingView]
     rejected: list[RejectedOutcomeView]
     alternatives: list[RecommendationAlternativeView] = Field(default_factory=list)
+    unsafe_current: list[UnsafeCurrentGoalView] = Field(default_factory=list)
     skip_reason: str | None
     discretionary_reason: str | None = None
     stops: StopConditionsView
@@ -389,6 +407,10 @@ class RecommendationView(BaseModel):
                     outcome_probability=alternative.outcome_probability,
                 )
                 for alternative in recommendation.alternatives
+            ],
+            unsafe_current=[
+                UnsafeCurrentGoalView.from_domain(unsafe)
+                for unsafe in recommendation.unsafe_current
             ],
             skip_reason=recommendation.skip_reason,
             discretionary_reason=recommendation.discretionary_reason,
