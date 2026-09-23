@@ -1167,6 +1167,9 @@ function renderNextGoals(view, rec) {
   const alternativeByGoal = new Map(
     (rec.alternatives || []).map((alternative) => [goalKey(alternative.outcome), alternative])
   );
+  const currentBannerKeys = new Set(
+    (view.available_banners || []).map((banner) => bannerKey(banner))
+  );
   const sorted = view.goals.slice().sort((a,b) => a.goal.priority - b.goal.priority);
   const nextActionable = sorted.find(item => item.state !== "satisfied" && item.actionable && goalKey(item.goal) !== currentKey && goalKey(item.goal) !== protectedKey);
 
@@ -1190,7 +1193,7 @@ function renderNextGoals(view, rec) {
     meta.textContent = item.next_banner ? bannerName(item.next_banner) : item.state === "satisfied" ? "Complete" : "No scheduled banner";
 
     const alternative = alternativeByGoal.get(key);
-    const onCurrentBanner = item.next_banner && rec.banner && bannerKey(item.next_banner) === bannerKey(rec.banner);
+    const onCurrentBanner = item.next_banner && currentBannerKeys.has(bannerKey(item.next_banner));
     if (alternative && onCurrentBanner && alternative.outcome_probability < rec.minimum_outcome_probability) {
       const risk = document.createElement("span");
       risk.className = "goal-risk";
