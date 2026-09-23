@@ -3,10 +3,11 @@
 Sampled numbers always travel with their provenance (runs, seed).
 """
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import BaseModel, Field, model_serializer
 
 from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.simulation import SpendPlanModel
+from domain import TargetKind
 from optimizer import (
     GoalStanding,
     OutcomeOption,
@@ -19,56 +20,30 @@ from optimizer import (
 from planner import GoalEvaluation, ProtectedGoalOutcome
 
 
-class PlannerGoalView(BaseModel):
-    """Backward-compatible planner goal shape.
+class PlannerGoalView(GoalModel):
+    """Planner-facing goal shape: unified GoalModel that serializes back to
+    the historical planner JSON contract.
 
-    Character goals retain the historical character/constellation/priority
-    JSON shape; weapon goals use weapon/refinement/priority. The dedicated
-    roadmap goal API exposes the fully unified GoalModel instead.
+    Validation is exactly GoalModel (a single goal representation reused
+    here via inheritance), while output restores the legacy character/weapon
+    shape asserted by the existing planner tests: character goals emit
+    {character, constellation, priority} and weapon goals emit
+    {weapon, refinement, priority}. Handling it at this response boundary
+    preserves the API contract without a second goal type flowing through
+    nested response models.
     """
-
-    model_config = ConfigDict(extra="forbid")
-
-    target_kind: str
-    target_name: str
-    level: int
-    priority: int
-    character: str | None = None
-    constellation: int | None = None
-    weapon: str | None = None
-    refinement: int | None = None
-
-    @classmethod
-    def from_domain(cls, goal):
-        if goal.target.kind.value == "character":
-            return cls(
-                target_kind="character",
-                target_name=goal.target.name,
-                level=goal.level,
-                priority=goal.priority,
-                character=goal.target.name,
-                constellation=goal.level,
-            )
-        return cls(
-            target_kind="weapon",
-            target_name=goal.target.name,
-            level=goal.level,
-            priority=goal.priority,
-            weapon=goal.target.name,
-            refinement=goal.level,
-        )
 
     @model_serializer(mode="plain")
     def serialize(self):
-        if self.target_kind == "character":
+        if self.target_kind is TargetKind.WEAPON:
             return {
-                "character": self.character,
-                "constellation": self.constellation,
+                "weapon": self.weapon,
+                "refinement": self.refinement,
                 "priority": self.priority,
             }
         return {
-            "weapon": self.weapon,
-            "refinement": self.refinement,
+            "character": self.character,
+            "constellation": self.constellation,
             "priority": self.priority,
         }
 
@@ -79,7 +54,7 @@ class GoalEvaluationView(BaseModel):
     goal: PlannerGoalView
     copies_needed: int
     state: str = Field(..., description='"satisfied", "active" or "blocked".')
-    blocked_by: GoalModel | None
+    blocked_by: PlannerGoalView | None
     next_banner: BannerModel | None
     relevant: bool
     actionable: bool
@@ -90,7 +65,7 @@ class GoalEvaluationView(BaseModel):
             goal=PlannerGoalView.from_domain(evaluation.goal),
             copies_needed=evaluation.copies_needed,
             state=evaluation.state.value,
-            blocked_by=None if evaluation.blocked_by is None else GoalModel.from_domain(evaluation.blocked_by),
+            blocked_by=None if evaluation.blocked_by is None else PlannerGoalView.from_domain(evaluation.blocked_by),
             next_banner=None if evaluation.next_banner is None else BannerModel.from_domain(evaluation.next_banner),
             relevant=relevant,
             actionable=actionable,
@@ -133,7 +108,7 @@ class CachedPlannerRefreshView(BaseModel):
 
 
 class ProtectedGoalOutcomeView(BaseModel):
-    goal: GoalModel
+    goal: PlannerGoalView
     banner: BannerModel
     budget_at_banner: int
     required_wishes: int
@@ -274,7 +249,7 @@ class PullStrategyView(BaseModel):
 
 
 class GoalStandingView(BaseModel):
-    goal: GoalModel
+    goal: PlannerGoalView
     banner: BannerModel
     probability: float
     meets_threshold: bool

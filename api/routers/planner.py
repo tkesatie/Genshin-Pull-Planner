@@ -27,6 +27,7 @@ from api.schemas.planner import (
     CachedGoalProbabilityView,
 )
 from optimizer.protection import constraining_goals
+from optimizer.outcomes import goal_label
 from optimizer import (
     DEFAULT_RUNS,
     MINIMUM_OUTCOME_PROBABILITY,
@@ -215,23 +216,25 @@ def planner_spend_table(
     )
 
 
-def _spend_table_outcomes(context, preferences, banner) -> tuple[OutcomeOption, ...]:
-    current_character = banner.character
+def _spend_table_outcomes(context, preferences, banner):
+    # Target-agnostic: match milestones by unified target identity, never by
+    # Banner.character (weapon banners have no character accessor).
+    target_name = banner.target.name
     preference_ranks = {
         preference.constellation: preference.rank
         for preference in preferences
-        if preference.character == current_character
+        if preference.character == target_name
     }
 
     by_constellation: dict[int, OutcomeOption] = {}
     for evaluation in relevant_goal_evaluations(context, banner):
         if evaluation.copies_needed <= 0:
             continue
-        constellation = evaluation.goal.constellation
+        constellation = evaluation.goal.level
         by_constellation.setdefault(
             constellation,
             OutcomeOption(
-                character=current_character,
+                character=target_name,
                 constellation=constellation,
                 rank=preference_ranks.get(constellation, evaluation.goal.priority),
             ),
@@ -250,10 +253,10 @@ def _select_banner(banners, character):
             raise HTTPException(
                 status_code=422,
                 detail="multiple banners are active; select a character explicitly: "
-                + ", ".join(banner.character for banner in banners),
+                + ", ".join(banner.target.name for banner in banners),
             )
         return banners[0]
-    matches = [banner for banner in banners if banner.character == character]
+    matches = [banner for banner in banners if banner.target.name == character]
     if not matches:
         raise HTTPException(
             status_code=422,
@@ -414,13 +417,13 @@ def planner_cached_refresh(
 
     available = available_banners(context)
     current_banner = next(
-        (banner for banner in available if banner.character == character),
+        (banner for banner in available if banner.target.name == character),
         None,
     )
 
     for goal, evidence in tuple(conditioned.items()):
         refresh_recorder.record_goal_evidence(
-            f"{goal.character} C{goal.constellation}",
+            goal_label(goal),
             evidence.runs,
             evidence.result.plan is not None,
         )
@@ -580,7 +583,7 @@ def planner_cached_refresh(
                     item
                     for item in evidence.result.plan.entries
                     if item.banner == current_banner
-                    and item.target_constellation == goal.constellation
+                    and item.target_constellation == goal.level
                 ),
                 None,
             )

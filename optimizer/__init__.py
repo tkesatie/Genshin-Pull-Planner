@@ -146,7 +146,7 @@ from optimizer.evaluation import (
     evaluate_skip_baseline,
     evaluate_skip_baseline_full,
 )
-from optimizer.outcomes import OutcomeOption, available_outcomes
+from optimizer.outcomes import OutcomeOption, available_outcomes, goal_label
 from optimizer.protection import (
     ProtectedGroup,
     constraining_goals,

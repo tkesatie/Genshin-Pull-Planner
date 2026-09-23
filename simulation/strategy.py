@@ -89,7 +89,7 @@ class SpendPlan:
             seen.add(entry.banner)
         if duplicates:
             listed = ", ".join(
-                f"{banner.character} {banner.version}p{banner.phase}"
+                f"{banner.target.name} {banner.version}p{banner.phase}"
                 for banner in sorted(duplicates, key=lambda item: item.order_key)
             )
             raise ValueError(f"duplicate plan entries for banner(s): [{listed}]")
@@ -123,7 +123,7 @@ class SpendPlan:
         known = set(context.roadmap.banners)
         for entry in self.entries:
             banner = entry.banner
-            label = f"{banner.character} {banner.version}p{banner.phase}"
+            label = f"{banner.target.name} {banner.version}p{banner.phase}"
             if banner not in known:
                 raise ValueError(
                     f"plan entry for {label} is not a roadmap banner; the "
@@ -132,7 +132,7 @@ class SpendPlan:
             if banner.order_key < current.order_key:
                 raise ValueError(
                     f"plan entry for {label} is chronologically before the "
-                    f"current banner ({current.character} "
+                    f"current banner ({current.target.name} "
                     f"{current.version}p{current.phase}); plans apply from "
                     "the current banner forward (§7)"
                 )
