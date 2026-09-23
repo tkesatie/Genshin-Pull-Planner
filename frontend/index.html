@@ -1670,10 +1670,6 @@ async function clearIncome() {
 
 
 
-function goalKey(goal) {
-  return goal.character + "|" + goal.constellation;
-}
-
 function applyCachedPlannerRefresh(refresh, character, wishesUsed) {
   if (!state.planner || !refresh.evidence.length) return false;
 
