@@ -134,6 +134,16 @@ class RecommendationAlternative:
 
 
 @dataclass(frozen=True)
+class UnsafeCurrentGoal:
+    """An unsatisfied current-banner roadmap goal below the recommendation threshold."""
+
+    goal: Goal
+    banner: Banner
+    budget: int
+    outcome_probability: float
+
+
+@dataclass(frozen=True)
 class RejectedOutcome:
     """Why a more-preferred outcome was not recommended (§13 step 7).
 
