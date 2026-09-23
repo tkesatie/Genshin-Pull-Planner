@@ -621,56 +621,6 @@ def recommend(
     opportunities.sort(key=opportunity_key)
 
     winner_banner, _, winner_outcome, winner, winner_priority = opportunities[0]
-    alternative_items = [
-        RecommendationAlternative(
-            outcome=outcome,
-            budget=candidate.budget,
-            outcome_probability=candidate.outcome_probability,
-        )
-        for banner, _, outcome, candidate, _ in opportunities[1:]
-        if banner == winner_banner
-    ]
-
-    # A blocked roadmap goal is intentionally absent from available_outcomes(),
-    # but the Strategy roadmap still needs to distinguish "later" from
-    # "currently unsafe". Evaluate such current-banner goals diagnostically at
-    # the selected spend limit. This never affects recommendation selection.
-    known_alternative_keys = {
-        (item.outcome.character, item.outcome.constellation)
-        for item in alternative_items
-    }
-    for goal in context.roadmap.goals_in_priority_order():
-        if (
-            goal.target != winner_banner.target
-            or copies_needed_for(context.account, goal) <= 0
-            or goal.level == winner_outcome.constellation
-            or (goal.character, goal.level) in known_alternative_keys
-        ):
-            continue
-        diagnostic_outcome = OutcomeOption(
-            character=goal.character,
-            constellation=goal.level,
-            rank=goal.priority,
-            target=goal.target if goal.target.kind is TargetKind.WEAPON else None,
-        )
-        diagnostic = _evaluate_cap(
-            context,
-            diagnostic_outcome,
-            winner.budget,
-            winner_banner,
-            runs,
-            seed,
-            simulation_sink,
-            candidate_lookup,
-        )
-        alternative_items.append(
-            RecommendationAlternative(
-                outcome=diagnostic_outcome,
-                budget=winner.budget,
-                outcome_probability=diagnostic.outcome_probability,
-            )
-        )
-    alternatives = tuple(alternative_items)
 
     # A deeper same-character outcome is cumulative progress: reaching
     # C2 necessarily reaches C0. If the deeper outcome is feasible and
@@ -687,6 +637,67 @@ def recommend(
             and candidate.outcome_probability >= minimum_outcome_probability
         ):
             winner_banner, winner_outcome, winner = banner, outcome, candidate
+
+    # Keep roadmap goals that are feasible in principle but absent from
+    # available_outcomes() visible to the Strategy roadmap. This is a
+    # presentation-only diagnostic: it does not participate in selection or
+    # protection. Evaluate each unsatisfied goal on its own current banner,
+    # including simultaneous banners that are not the selected winner.
+    alternative_items = [
+        RecommendationAlternative(
+            outcome=outcome,
+            budget=candidate.budget,
+            outcome_probability=candidate.outcome_probability,
+        )
+        for banner, _, outcome, candidate, _ in opportunities
+        if banner in banners
+        and not (
+            banner == winner_banner
+            and outcome == winner_outcome
+        )
+    ]
+    known_alternative_keys = {
+        (item.outcome.character, item.outcome.constellation)
+        for item in alternative_items
+    }
+    for banner in banners:
+        for goal in context.roadmap.goals_in_priority_order():
+            if (
+                goal.target != banner.target
+                or copies_needed_for(context.account, goal) <= 0
+                or (goal.character, goal.level) in known_alternative_keys
+                or (
+                    banner == winner_banner
+                    and goal.character == winner_outcome.character
+                    and goal.level == winner_outcome.constellation
+                )
+            ):
+                continue
+            diagnostic_outcome = OutcomeOption(
+                character=goal.character,
+                constellation=goal.level,
+                rank=goal.priority,
+                target=goal.target if goal.target.kind is TargetKind.WEAPON else None,
+            )
+            diagnostic = _evaluate_cap(
+                context,
+                diagnostic_outcome,
+                winner.budget,
+                banner,
+                runs,
+                seed,
+                None,
+                candidate_lookup,
+            )
+            alternative_items.append(
+                RecommendationAlternative(
+                    outcome=diagnostic_outcome,
+                    budget=winner.budget,
+                    outcome_probability=diagnostic.outcome_probability,
+                )
+            )
+            known_alternative_keys.add((goal.character, goal.level))
+    alternatives = tuple(alternative_items)
 
     # The presentation check (step 4) settles only how the winner is
     # reported - never which outcome or cap won (module docstring).
