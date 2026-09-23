@@ -146,6 +146,16 @@
   .limit-note { display:block; color:var(--text); font-size:.82rem; margin-top:.2rem; }
   .why-reason { padding:.8rem .9rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
   .why-reason + .why-reason { margin-top:.55rem; }
+  .why-explanation { margin-top:1rem; padding-top:1rem; border-top:1px solid var(--border); }
+  .why-explanation h3 { margin:0 0 .65rem; color:var(--text); font-size:.95rem; }
+  .explanation-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.6rem; }
+  .explanation-card { padding:.75rem .85rem; background:rgba(255,255,255,.018); border:1px solid var(--border); border-radius:7px; }
+  .explanation-card strong { display:block; color:var(--text); font-size:.82rem; }
+  .explanation-card span { display:block; margin-top:.2rem; color:var(--muted); font-size:.78rem; }
+  .assumption-list { margin:.2rem 0 0; padding-left:1.1rem; }
+  .assumption-list li { margin-bottom:.5rem; }
+  .detail-note { color:var(--muted); font-size:.76rem; margin-top:.6rem; }
+  @media (max-width: 720px) { .explanation-grid { grid-template-columns:1fr; } }
   .goal-roadmap { display:grid; gap:.55rem; }
   .goal-row { display:grid; grid-template-columns:2.2rem 1fr auto; gap:.8rem; align-items:center; padding:.8rem .85rem; border:1px solid var(--border); border-radius:7px; background:var(--surface-2); }
   .goal-row.current { border-color:var(--gold); }
@@ -554,7 +564,20 @@
 
     <section id="why-section">
       <h2>Why?</h2>
-      <div class="panel"><div id="why"></div></div>
+      <div class="panel">
+        <div id="why"></div>
+        <div id="why-explanation" class="why-explanation" hidden>
+          <h3>How the recommendation is calculated</h3>
+          <div class="explanation-grid">
+            <div class="explanation-card"><strong>Current opportunity</strong><span id="explain-current">—</span></div>
+            <div class="explanation-card"><strong>Spending limit</strong><span id="explain-spending">—</span></div>
+            <div class="explanation-card"><strong>Protected reserve</strong><span id="explain-reserve">—</span></div>
+            <div class="explanation-card"><strong>Confidence</strong><span id="explain-confidence">—</span></div>
+            <div class="explanation-card"><strong>Future income</strong><span id="explain-income">—</span></div>
+            <div class="explanation-card"><strong>Decision threshold</strong><span id="explain-threshold">—</span></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section id="next-goals-section">
@@ -581,6 +604,13 @@
     <details id="advanced-details" class="advanced-details" hidden>
       <summary>Advanced planner details</summary>
       <div class="advanced-content">
+        <section id="mechanics-section" hidden>
+          <h2>Mechanics and assumptions</h2>
+          <div class="panel">
+            <ul class="rules assumption-list" id="mechanics-list"></ul>
+            <p class="detail-note" id="mechanics-note"></p>
+          </div>
+        </section>
         <section id="protected-section" hidden>
           <h2>Protected future goals</h2>
           <p class="muted" id="protected-caption"></p>
@@ -924,6 +954,11 @@ function resetVerdict() {
   $("recommendation-limit").innerHTML = "";
   $("verdict-detail").textContent = "The recommendation is based on your goals, available banners, account state, and protection threshold.";
   $("why").innerHTML = "";
+  $("why-explanation").hidden = true;
+  for (const id of ["explain-current","explain-spending","explain-reserve","explain-confidence","explain-income","explain-threshold"]) $(id).textContent = "—";
+  $("mechanics-list").innerHTML = "";
+  $("mechanics-note").textContent = "";
+  $("mechanics-section").hidden = true;
   $("next-goals").innerHTML = "";
   $("plan-confidence").textContent = "—";
   $("plan-protected").textContent = "—";
@@ -1036,12 +1071,38 @@ function renderRecommendation(rec, strategy) {
     why.append(item);
   }
   $("why-section").hidden = why.children.length === 0;
+  renderRecommendationExplanation(rec, strategy);
 
   renderNextGoals(state.planner?.goals, rec);
   $("plan-confidence").textContent = pct(rec.confidence);
   $("plan-protected").textContent = wishWord(rec.protected_reserve);
   $("plan-income").textContent = strategy ? `+${wishWord(strategy.future_income)}` : "—";
   renderAdvancedRecommendation(rec);
+}
+
+function renderRecommendationExplanation(rec, strategy) {
+  const current = rec.banner
+    ? bannerName(rec.banner) + " is the current " + (rec.target_kind === "weapon" ? "weapon" : "character") + " opportunity."
+    : "The planner is evaluating the current opportunity.";
+  const spend = Number.isFinite(rec.spend_down_to)
+    ? "The planner can spend down to " + wishWord(rec.spend_down_to) + " without dropping below the protected reserve."
+    : "The planner uses the protected reserve to determine how much can be spent now.";
+  const reserve = rec.protected_goal
+    ? wishWord(rec.protected_reserve) + " is held back for " + goalName(rec.protected_goal) + " at " + pct(rec.confidence) + " confidence."
+    : "No future goal currently requires a protected reserve, so the available pool is not being held back for protection.";
+  const confidence = "Your planning confidence is " + pct(rec.confidence) + ". A protected goal must meet that threshold under the planner's model.";
+  const income = strategy && Number.isFinite(strategy.future_income) && strategy.future_income > 0
+    ? "The plan counts " + wishWord(strategy.future_income) + " of configured future income toward the protected plan."
+    : "No configured future income is currently contributing to the protected plan.";
+  const threshold = "A current outcome must also meet the planner's minimum outcome threshold of " + pct(rec.minimum_outcome_probability) + " to qualify as an ordinary recommendation.";
+
+  $("explain-current").textContent = current;
+  $("explain-spending").textContent = spend;
+  $("explain-reserve").textContent = reserve;
+  $("explain-confidence").textContent = confidence;
+  $("explain-income").textContent = income;
+  $("explain-threshold").textContent = threshold;
+  $("why-explanation").hidden = false;
 }
 
 function renderAdvancedRecommendation(rec) {
@@ -1061,7 +1122,31 @@ function renderAdvancedRecommendation(rec) {
     stops.append(item);
   }
   $("stops-section").hidden = !(rec.stops?.rules || []).length;
-  $("advanced-details").hidden = !((rec.protected || []).length || (rec.stops?.rules || []).length);
+
+  const mechanics = $("mechanics-list");
+  mechanics.innerHTML = "";
+  const isWeapon = rec.target_kind === "weapon" || rec.banner?.target_kind === "weapon";
+  const assumptions = isWeapon
+    ? [
+        "Weapon wishes use the weapon-banner pity, rate-up, and Fate Point mechanics implemented by the planner.",
+        "The recommendation and protected reserve share the same account wish pool; character and weapon goals compete for that pool.",
+        "The protected reserve is conservative: future goals are not given free pity, guarantee, or Fate Point advantages that have not already been earned.",
+        "Configured future income is credited according to the roadmap timing before protected goals are reached."
+      ]
+    : [
+        "Character wishes use the planner's pity, 50/50, guarantee, and Capturing Radiance mechanics.",
+        "The recommendation is evaluated against the account's current pity and guarantee state.",
+        "The protected reserve is conservative: future goals start from a fresh pity/guarantee state rather than assuming favorable carryover.",
+        "Configured future income is credited according to the roadmap timing before protected goals are reached."
+      ];
+  for (const rule of assumptions) {
+    const item = document.createElement("li");
+    item.textContent = rule;
+    mechanics.append(item);
+  }
+  $("mechanics-note").textContent = "The recommendation uses " + rec.runs.toLocaleString() + " simulation runs" + (rec.seed === null || rec.seed === undefined ? " with a random seed" : " with a fixed seed for reproducibility") + ". These details are provided for transparency, not as a second recommendation.";
+  $("mechanics-section").hidden = false;
+  $("advanced-details").hidden = !((rec.protected || []).length || (rec.stops?.rules || []).length || assumptions.length);
 }
 
 function renderNextGoals(view, rec) {
