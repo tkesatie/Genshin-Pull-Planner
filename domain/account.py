@@ -106,8 +106,12 @@ class WeaponWishState:
     def __post_init__(self) -> None:
         if self.pity < 0:
             raise ValueError(f"pity must be non-negative, got {self.pity}")
-        if self.fate_points < 0:
-            raise ValueError(f"fate_points must be non-negative, got {self.fate_points}")
+        if self.pity >= 80:
+            raise ValueError(f"weapon pity must be less than hard pity (80), got {self.pity}")
+        if not 0 <= self.fate_points <= 1:
+            raise ValueError(
+                f"fate_points must be between 0 and 1, got {self.fate_points}"
+            )
 
     def after_five_star(
         self,
