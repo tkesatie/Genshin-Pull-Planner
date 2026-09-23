@@ -226,88 +226,95 @@ def _protected_requirement(
     if not protected_goals:
         return None
 
-    required = min(protected_goals, key=lambda goal: goal.priority)
-    evaluation = next(
-        item for item in evaluate_goals(context) if item.goal == required
-    )
-    banner = evaluation.next_banner
-    if banner is None:
-        return None
+    # Protection is an account-level reserve, not a reserve for only the
+    # highest-priority protected goal. Every protected goal consumes part of
+    # the same future wish pool, so the requirement must include every goal
+    # that constrains this decision. This is especially important now that
+    # character and weapon goals can coexist in the same roadmap.
+    #
+    # Each goal keeps the existing conservative Phase 3 semantics: its
+    # reserve is calculated from a fresh pity/guarantee state and the full
+    # number of copies it still needs. The sequential combination happens
+    # here by summing those independent reserves.
+    total = 0
+    evaluations = evaluate_goals(context)
 
-    if required.target.kind is TargetKind.WEAPON:
-        # A weapon goal's reserve comes from the exact weapon probability
-        # engine (§10 weapon): the character Monte Carlo cannot execute a
-        # weapon banner, so the simulated search below would be
-        # meaningless. The fresh-state reserve is the same quantity that
-        # search looks for (pity 0, no guarantee, no Fate Points) and is
-        # drawn from the SAME account wish pool, so character and weapon
-        # goals never receive two independent reserves.
-        return weapon_goal_reserve(context, evaluation.copies_needed)
+    for required in protected_goals:
+        evaluation = next(
+            item for item in evaluations if item.goal == required
+        )
+        if evaluation.next_banner is None:
+            continue
 
-    future_context = replace(
-        context,
-        account=replace(
-            context.account,
-            wishes=0,
-            current_pity=0,
-            character_guarantee=False,
-            capturing_radiance_counter=0,
-        ),
-        income=None,
-    )
+        if required.target.kind is TargetKind.WEAPON:
+            total += weapon_goal_reserve(context, evaluation.copies_needed)
+            continue
 
-    cache: dict[int, float] = {}
+        future_context = replace(
+            context,
+            account=replace(
+                context.account,
+                wishes=0,
+                current_pity=0,
+                character_guarantee=False,
+                capturing_radiance_counter=0,
+            ),
+            income=None,
+        )
 
-    def probability(wishes: int) -> float:
-        if wishes not in cache:
-            plan = SpendPlan(
-                entries=(
-                    PlannedSpend(
-                        banner=banner,
-                        target_constellation=required.level,
-                        budget=wishes,
-                    ),
+        banner = evaluation.next_banner
+        cache: dict[int, float] = {}
+
+        def probability(wishes: int) -> float:
+            if wishes not in cache:
+                plan = SpendPlan(
+                    entries=(
+                        PlannedSpend(
+                            banner=banner,
+                            target_constellation=required.level,
+                            budget=wishes,
+                        ),
+                    )
                 )
-            )
-            simulation_context = replace(
-                future_context,
-                account=replace(future_context.account, wishes=wishes),
-            )
-            result = simulate(
-                character_view(simulation_context),
-                plan,
-                runs=runs,
-                seed=seed,
-                joint_goals=(required,),
-            )
-            cache[wishes] = result.joint_goal_probability.probability
-        return cache[wishes]
+                simulation_context = replace(
+                    future_context,
+                    account=replace(future_context.account, wishes=wishes),
+                )
+                result = simulate(
+                    character_view(simulation_context),
+                    plan,
+                    runs=runs,
+                    seed=seed,
+                    joint_goals=(required,),
+                )
+                cache[wishes] = result.joint_goal_probability.probability
+            return cache[wishes]
 
-    # A character target has a finite worst-case guarantee: each missing
-    # copy can require at most two hard-pity cycles (one non-featured 5-star
-    # followed by the guaranteed featured 5-star). Use that as a hard search
-    # bound so a low-confidence/low-run simulation can never make the
-    # exponential search grow without limit.
-    maximum = (
-        evaluation.copies_needed
-        * context.mechanics.hard_pity
-        * 2
-    )
-    if probability(maximum) < context.confidence:
-        return None
+        # A character target has a finite worst-case guarantee: each missing
+        # copy can require at most two hard-pity cycles (one non-featured
+        # 5-star followed by the guaranteed featured 5-star).
+        maximum = (
+            evaluation.copies_needed
+            * context.mechanics.hard_pity
+            * 2
+        )
+        if probability(maximum) < context.confidence:
+            return None
 
-    high = 1
-    while high < maximum and probability(high) < context.confidence:
-        high = min(high * 2, maximum)
+        high = 1
+        while high < maximum and probability(high) < context.confidence:
+            high = min(high * 2, maximum)
 
-    low = 0
-    while low < high:
-        mid = (low + high) // 2
-        if probability(mid) >= context.confidence:
-            high = mid
-        else:
-            low = mid + 1
-    return low
+        low = 0
+        while low < high:
+            mid = (low + high) // 2
+            if probability(mid) >= context.confidence:
+                high = mid
+            else:
+                low = mid + 1
+        total += low
+
+    return total
 
 
 def _safe_spend(
@@ -358,14 +365,21 @@ def _safe_spend(
     if requirement is None:
         spend = context.account.wishes
     else:
-        protected = min(protected_goals, key=lambda item: item.priority)
-        evaluation = next(
-            item for item in evaluate_goals(context) if item.goal == protected
-        )
-        assert evaluation.next_banner is not None
-        future_income = context.income_available_before(
-            evaluation.next_banner.version,
-            evaluation.next_banner.phase,
+        # Income available by the latest protected banner can contribute
+        # to the combined reserve. Using only the highest-priority goal's
+        # income would incorrectly ignore income that arrives before a later
+        # protected goal.
+        future_income = max(
+            (
+                context.income_available_before(
+                    item.next_banner.version,
+                    item.next_banner.phase,
+                )
+                for item in evaluate_goals(context)
+                if item.goal in protected_goals
+                and item.next_banner is not None
+            ),
+            default=0,
         )
         spend = min(
             context.account.wishes,
@@ -447,14 +461,17 @@ def _weapon_progression_step(
         context, protected_goals, runs=runs, seed=seed
     )
     if requirement is not None:
-        protected = min(protected_goals, key=lambda item: item.priority)
-        protected_evaluation = next(
-            item for item in evaluate_goals(context) if item.goal == protected
-        )
-        assert protected_evaluation.next_banner is not None
-        reserve_income = context.income_available_before(
-            protected_evaluation.next_banner.version,
-            protected_evaluation.next_banner.phase,
+        reserve_income = max(
+            (
+                context.income_available_before(
+                    item.next_banner.version,
+                    item.next_banner.phase,
+                )
+                for item in evaluate_goals(context)
+                if item.goal in protected_goals
+                and item.next_banner is not None
+            ),
+            default=0,
         )
         spend = min(
             context.account.wishes,
