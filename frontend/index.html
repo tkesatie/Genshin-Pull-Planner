@@ -176,6 +176,8 @@
   .goal-status.protected { color:var(--gold); font-weight:700; }
   .goal-status.next { color:var(--text); }
   .goal-status.complete { color:var(--green); }
+  .goal-status.risky { color:var(--red); font-weight:700; }
+  .goal-risk { display:block; margin-top:.18rem; color:var(--red); font-size:.7rem; }
   .plan-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
   .plan-metric { padding:.25rem 1.2rem; border-right:1px solid var(--border); }
   .plan-metric:first-child { padding-left:0; }
@@ -1157,9 +1159,12 @@ function renderNextGoals(view, rec) {
   }
 
   const currentKey = rec.target_name && rec.target_kind
-    ? `${rec.target_name}|${targetLevel(rec.outcome)}`
+    ? rec.target_name + "|" + targetLevel(rec.outcome)
     : rec.outcome ? goalKey(rec.outcome) : null;
   const protectedKey = rec.protected_goal ? goalKey(rec.protected_goal) : null;
+  const rejectedByGoal = new Map(
+    (rec.rejected || []).map((rejected) => [goalKey(rejected.outcome), rejected])
+  );
   const sorted = view.goals.slice().sort((a,b) => a.goal.priority - b.goal.priority);
   const nextActionable = sorted.find(item => item.state !== "satisfied" && item.actionable && goalKey(item.goal) !== currentKey && goalKey(item.goal) !== protectedKey);
 
@@ -1181,6 +1186,16 @@ function renderNextGoals(view, rec) {
     const meta = document.createElement("div");
     meta.className = "goal-meta";
     meta.textContent = item.next_banner ? bannerName(item.next_banner) : item.state === "satisfied" ? "Complete" : "No scheduled banner";
+
+    const rejected = rejectedByGoal.get(key);
+    const onCurrentBanner = item.next_banner && rec.banner && bannerKey(item.next_banner) === bannerKey(rec.banner);
+    if (rejected && onCurrentBanner && rejected.outcome_probability < rec.minimum_outcome_probability) {
+      const risk = document.createElement("span");
+      risk.className = "goal-risk";
+      risk.textContent = "Chance: " + pct(rejected.outcome_probability) + " at the evaluated spend limit";
+      meta.append(risk);
+    }
+
     body.append(title, meta);
 
     const status = document.createElement("div");
@@ -1188,8 +1203,12 @@ function renderNextGoals(view, rec) {
     if (item.state === "satisfied") { statusText = "COMPLETE"; statusClass = "complete"; }
     else if (key === currentKey) { statusText = "CURRENT"; statusClass = "current"; }
     else if (key === protectedKey) { statusText = "PROTECTED"; statusClass = "protected"; }
+    else if (rejected && onCurrentBanner && rejected.outcome_probability < rec.minimum_outcome_probability) {
+      statusText = "NOT SAFE NOW";
+      statusClass = "risky";
+    }
     else if (nextActionable && key === goalKey(nextActionable.goal)) { statusText = "NEXT"; statusClass = "next"; }
-    status.className = `goal-status ${statusClass}`;
+    status.className = "goal-status " + statusClass;
     status.textContent = statusText;
     row.append(number, body, status);
     host.append(row);
