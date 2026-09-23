@@ -114,6 +114,11 @@ def replace_account(
             settings=payload.settings.to_domain(),
         )
     )
+    # A manual account edit is not a recorded observation that can be
+    # conditioned onto retained simulation evidence. Invalidate disposable
+    # planner evidence so it cannot be reused against unrelated state.
+    from api.planner_cache import planner_evidence_cache
+    planner_evidence_cache.clear_account(record.id)
     return AccountView.from_record(updated)
 
 
