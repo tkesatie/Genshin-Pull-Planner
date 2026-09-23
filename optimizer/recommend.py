@@ -221,8 +221,8 @@ class Recommendation:
     all_goals_probability: float
     protected: tuple[GoalStanding, ...]
     rejected: tuple[RejectedOutcome, ...]
-    alternatives: tuple[RecommendationAlternative, ...] = ()
-    skip_reason: str | None = None
+    alternatives: tuple[RecommendationAlternative, ...]
+    skip_reason: str | None
     stops: StopConditions
     runs: int
     seed: int | None
