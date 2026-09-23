@@ -13,6 +13,8 @@ Labels such as "C2R1" are derived for display and never accepted as input
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from datetime import datetime
+
 from domain import (
     Account,
     Banner,
@@ -180,6 +182,21 @@ class BannerModel(StrictModel):
     target_name: str | None = None
     version: str
     phase: int = Field(1, ge=1)
+    start: datetime | None = Field(
+        None,
+        description=(
+            "When the banner goes live, inclusive. Timezone-aware ISO 8601 "
+            "only: the planner compares instants, so a naive wall-clock "
+            "value is rejected rather than assumed to be UTC or local time."
+        ),
+    )
+    end: datetime | None = Field(
+        None,
+        description=(
+            "When the banner stops being live, exclusive: at this instant "
+            "the next banner has taken over. Timezone-aware ISO 8601 only."
+        ),
+    )
     character: str | None = None
     weapon: str | None = None
 
@@ -214,7 +231,13 @@ class BannerModel(StrictModel):
             if self.target_kind is TargetKind.CHARACTER
             else WeaponTarget(self.target_name)
         )
-        return Banner(target=target, version=self.version, phase=self.phase)
+        return Banner(
+            target=target,
+            version=self.version,
+            phase=self.phase,
+            start=self.start,
+            end=self.end,
+        )
 
     @classmethod
     def from_domain(cls, banner: Banner) -> "BannerModel":
@@ -224,6 +247,8 @@ class BannerModel(StrictModel):
                 target_name=banner.target.name,
                 version=banner.version,
                 phase=banner.phase,
+                start=banner.start,
+                end=banner.end,
                 character=banner.target.name,
             )
         return cls(
@@ -231,6 +256,8 @@ class BannerModel(StrictModel):
             target_name=banner.target.name,
             version=banner.version,
             phase=banner.phase,
+            start=banner.start,
+            end=banner.end,
             weapon=banner.target.name,
         )
 

@@ -73,8 +73,19 @@ class GoalEvaluationView(BaseModel):
 
 
 class GoalEvaluationsView(BaseModel):
+    """Current opportunities, per-goal state, and the schedule ahead.
+
+    `current_banner` stays the legacy singular view (null when the slot holds
+    several simultaneous featured banners); `available_banners` is every
+    opportunity at the current position and `upcoming_banners` every roadmap
+    banner after it, chronologically. A client therefore sees what it can
+    pull now, what is next per goal (`goals[].next_banner`), and where each of
+    those falls in the schedule, without re-implementing banner selection.
+    """
+
     current_banner: BannerModel | None
     available_banners: list[BannerModel]
+    upcoming_banners: list[BannerModel] = Field(default_factory=list)
     goals: list[GoalEvaluationView]
 
 

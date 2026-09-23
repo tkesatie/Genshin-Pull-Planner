@@ -12,7 +12,10 @@ scenario, mechanics, the income forecast itself, the roadmap's goals and
 banners, and the current version/phase. It deliberately EXCLUDES the
 account's own pity/guarantee/wishes/ownership, because those are expected
 to move on every recorded pull - that movement is exactly what
-condition_account/condition_candidate are for.
+condition_account/condition_candidate are for. Banner dates are excluded
+for the same reason that account state is: they are real-time metadata and
+change nothing about what is simulated, so they must not invalidate evidence
+that is still valid.
 
 Every read and every conditioning call takes the caller's current context and
 requires the same fingerprint. A mismatch is treated like a cache miss.

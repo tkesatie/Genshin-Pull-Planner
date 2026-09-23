@@ -39,7 +39,7 @@ tests/test_reserve_accounting.py for the regression test that pins this.
 from dataclasses import dataclass
 
 from domain import Banner, Goal, TargetKind, WEAPON_EVENT_BANNER
-from planner.banners import current_banner
+from planner.banners import position_anchor
 from planner.context import PlannerContext
 from planner.goals import GoalEvaluation, evaluate_goals
 from probability import (
@@ -125,7 +125,9 @@ def protected_goal_outcomes(
     exist".
 
     Raises:
-        ValueError: if `spent` is negative or exceeds account wishes.
+        ValueError: if `spent` is negative or exceeds account wishes, or if
+            the current position has no roadmap banner (via
+            `planner.banners.position_anchor`).
     """
     if spent < 0:
         raise ValueError(f"spent must be non-negative, got {spent}")
@@ -135,7 +137,11 @@ def protected_goal_outcomes(
             f"({context.account.wishes})"
         )
 
-    current = banner if banner is not None else current_banner(context)
+    # Only the current POSITION matters here (a goal whose banner is not
+    # strictly later is current-banner business), so a slot holding several
+    # simultaneous banners is not ambiguous: position_anchor supplies the
+    # position and nothing else.
+    current = banner if banner is not None else position_anchor(context)
     schedulable: list[tuple[Banner, GoalEvaluation]] = []
     for evaluation in evaluate_goals(context):
         if evaluation.copies_needed == 0:

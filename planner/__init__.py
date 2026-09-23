@@ -1,11 +1,21 @@
 """Planner input and analysis helpers.
 
 The planner may encounter multiple simultaneous banners at the current
-version/phase. Use available_banners when making decisions; the strict
-current_banner helper remains for legacy single-banner analysis.
+version/phase. Use available_banners when making decisions, upcoming_banners
+and next_banner_for for later opportunities, and banners_active_at when a real
+timestamp is available; the strict current_banner helper remains for legacy
+single-banner analysis.
 """
 
-from planner.banners import available_banners, current_banner
+from planner.banners import (
+    available_banners,
+    banners_active_at,
+    current_banner,
+    current_position,
+    next_banner_for,
+    position_anchor,
+    upcoming_banners,
+)
 from planner.context import PlannerContext
 from planner.goals import (
     GoalEvaluation,
@@ -33,15 +43,20 @@ __all__ = [
     "SpendRow",
     "actionable_goals",
     "available_banners",
+    "banners_active_at",
     "character_view",
     "current_banner",
+    "current_position",
     "evaluate_goal",
     "evaluate_goals",
+    "next_banner_for",
+    "position_anchor",
     "protected_goal_outcomes",
     "relevant_goal_evaluations",
     "safe_spend",
     "single_copy_active_goal",
     "spend_table",
+    "upcoming_banners",
     "weapon_goal_confidence",
     "weapon_goal_reserve",
 ]

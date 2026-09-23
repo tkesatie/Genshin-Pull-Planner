@@ -90,10 +90,22 @@ A Goal is a **roadmap priority/progression milestone**. Priority 1 is protected 
 ### Banners
 
 ~~~json
-{"character": "Navia", "version": "7.0", "phase": 1}
+{
+  "target_kind": "character",
+  "target_name": "Navia",
+  "character": "Navia",
+  "version": "7.0",
+  "phase": 1,
+  "start": "2026-01-01T11:00:00+08:00",
+  "end": "2026-01-21T17:59:59+08:00"
+}
 ~~~
 
-The banner schedule is a user assumption. Banners are ordered chronologically by version/phase.
+A weapon banner is the same shape with `"target_kind": "weapon"`, `"target_name"`/`"weapon"` set, and `"character": null`.
+
+The banner schedule is a user assumption. Banners are ordered chronologically by version/phase, compared numerically ("7.9" precedes "7.10") and then by phase. One banner carries exactly one featured target: several simultaneous opportunities - two character banners in one phase, or a character banner next to a weapon banner - are separate entries in the same version/phase.
+
+`start`/`end` are optional and describe when the banner is live. When supplied they must be timezone-aware ISO 8601 (a naive timestamp is rejected rather than assumed UTC or local time), and the interval is half-open: `start` is inclusive, `end` is exclusive, so a hand-off instant belongs to exactly one banner. Dates are display/real-time metadata; (version, phase) remains what the planner simulates.
 
 ### Preferences
 
@@ -165,6 +177,9 @@ GET /accounts/{id}/planner/goals
     {"character": "Navia", "version": "7.0", "phase": 1},
     {"character": "Arlecchino", "version": "7.0", "phase": 1}
   ],
+  "upcoming_banners": [
+    {"character": "Tsaritsa", "version": "7.1", "phase": 1}
+  ],
   "goals": [
     {
       "goal": {"character": "Navia", "constellation": 0, "priority": 1},
@@ -206,6 +221,8 @@ States:
 - relevant: goal character matches one of the currently available banners.
 - actionable: relevant + active.
 - when multiple banners share the current version/phase, current_banner is null and available_banners lists every simultaneous opportunity.
+- upcoming_banners: every scheduled banner strictly after the current version/phase, chronologically. The current slot's alternatives are current opportunities, not upcoming ones.
+- next_banner: the goal target's next opportunity, at or after the current position (null when nothing is scheduled for it).
 
 A blocked goal remains part of the roadmap.
 

@@ -8,6 +8,7 @@ serialization and durable storage.
 import json
 import sqlite3
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from domain import (
@@ -36,6 +37,19 @@ def _estimate_to_dict(value: IncomeEstimate) -> dict:
 
 def _estimate_from_dict(value: dict) -> IncomeEstimate:
     return IncomeEstimate(value["low"], value["expected"], value["high"])
+
+
+def _moment_from_dict(value: str | None) -> datetime | None:
+    """Parse a stored banner moment, keeping its offset (see `Banner`).
+
+    An aware ISO 8601 string parses back to the same instant and offset, so a
+    stored banner compares equal to the one that was saved. `Banner` rejects a
+    naive value, so a hand-edited record that lost its offset is reported
+    rather than silently reinterpreted.
+    """
+    if value is None:
+        return None
+    return datetime.fromisoformat(value)
 
 
 def _record_to_dict(record: AccountRecord) -> dict:
@@ -86,6 +100,10 @@ def _record_to_dict(record: AccountRecord) -> dict:
                 "target_name": b.target.name,
                 "version": b.version,
                 "phase": b.phase,
+                # Dates are stored as timezone-aware ISO 8601 strings, so a
+                # round trip keeps the exact instant and offset.
+                "start": None if b.start is None else b.start.isoformat(),
+                "end": None if b.end is None else b.end.isoformat(),
             }
             for b in record.banners
         ],
@@ -191,6 +209,8 @@ def _record_from_dict(value: dict) -> AccountRecord:
                 ),
                 version=b["version"],
                 phase=b["phase"],
+                start=_moment_from_dict(b.get("start")),
+                end=_moment_from_dict(b.get("end")),
             )
             for b in value["banners"]
         ),

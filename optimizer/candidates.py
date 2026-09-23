@@ -17,13 +17,32 @@ Construction only: anything involving simulation lives in
 optimizer.evaluation.
 """
 
-from domain import TargetKind
+from domain import Banner, TargetKind
 from planner import PlannerContext
-from planner.banners import current_banner
+from planner.banners import available_banners, position_anchor
 from simulation import PlannedSpend, SpendPlan
 
 from optimizer.outcomes import OutcomeOption
 from optimizer.protection import protected_groups
+
+
+def _banner_for_outcome(context: PlannerContext, outcome: OutcomeOption) -> Banner:
+    """The current opportunity a candidate outcome is pursued on.
+
+    In a slot holding several simultaneous featured banners, the outcome's
+    own target says which one is being pursued - that is identification, not
+    a silent choice between alternatives (Phase 6). A target that has no
+    banner in the slot falls back to `position_anchor`, which refuses an
+    empty slot exactly as the previous strict lookup did.
+    """
+    target = outcome.target
+    if target is not None:
+        matches = [
+            banner for banner in available_banners(context) if banner.target == target
+        ]
+        if len(matches) == 1:
+            return matches[0]
+    return position_anchor(context)
 
 
 def candidate_plan(
@@ -51,7 +70,9 @@ def candidate_plan(
             f"budget must satisfy 0 <= budget <= account wishes "
             f"({context.account.wishes}), got {budget}"
         )
-    selected_banner = banner if banner is not None else current_banner(context)
+    selected_banner = (
+        banner if banner is not None else _banner_for_outcome(context, outcome)
+    )
     entries = [
         PlannedSpend(
             banner=selected_banner,

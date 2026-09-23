@@ -6,10 +6,10 @@ to every protected future goal (§1: spending more now is an explicit
 tradeoff against future probability).
 
 Phase 3 restriction (§18 "initially restrict this to simpler single-copy
-scenarios"): the table requires exactly one ACTIVE goal matching the
-current banner character, and that goal must require exactly one copy.
-Multi-copy targets (§10.4) are Phase 4 and are rejected here rather than
-approximated.
+scenarios"): the table requires exactly one ACTIVE goal matching the current
+banner's target - character or weapon - and that goal must require exactly
+one copy. Multi-copy targets (§10.4) are Phase 4 and are rejected here rather
+than approximated.
 """
 
 from dataclasses import dataclass
@@ -47,9 +47,11 @@ def single_copy_active_goal(context: PlannerContext) -> GoalEvaluation:
 
     Raises:
         ValueError: if zero active goals match the current banner
-            character, if more than one does (degenerate duplicate
-            goals; the planner will not silently choose), or if the goal
-            requires more than one copy (Phase 4 multi-copy territory).
+            opportunities, if more than one does (degenerate duplicate
+            goals, or a simultaneous character and weapon banner each with
+            an active goal; the planner will not silently choose), or if
+            the goal requires more than one copy (Phase 4 multi-copy
+            territory).
     """
     active = actionable_goals(context)
     if not active:
@@ -59,8 +61,7 @@ def single_copy_active_goal(context: PlannerContext) -> GoalEvaluation:
         )
     if len(active) > 1:
         listed = ", ".join(
-            f"{evaluation.goal.character} C{evaluation.goal.constellation} "
-            f"(priority {evaluation.goal.priority})"
+            f"{evaluation.goal.label} (priority {evaluation.goal.priority})"
             for evaluation in active
         )
         raise ValueError(
@@ -70,8 +71,7 @@ def single_copy_active_goal(context: PlannerContext) -> GoalEvaluation:
     evaluation = active[0]
     if evaluation.copies_needed > 1:
         raise ValueError(
-            f"goal {evaluation.goal.character} "
-            f"C{evaluation.goal.constellation} requires "
+            f"goal {evaluation.goal.label} requires "
             f"{evaluation.copies_needed} copies; the Phase 3 spend table "
             "supports single-copy goals only (§18, §10.4)"
         )

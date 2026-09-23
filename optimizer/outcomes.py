@@ -142,10 +142,13 @@ class OutcomeOption:
 
 
 def goal_label(goal: Goal) -> str:
-    """Display label for a roadmap goal: "Vesna C2" or "Wolf Fang R1"."""
-    if goal.target.kind is TargetKind.WEAPON:
-        return f"{goal.target.name} R{goal.level}"
-    return f"{goal.target.name} C{goal.level}"
+    """Display label for a roadmap goal: "Vesna C2" or "Wolf Fang R1".
+
+    The label itself is domain knowledge (`Goal.label`), so the optimizer and
+    the planner format a goal identically without either reaching for the
+    character-only accessors.
+    """
+    return goal.label
 
 
 def _later_progression_constellations(

@@ -77,6 +77,19 @@ class Goal:
             raise AttributeError("character goals do not have a refinement")
         return self.level
 
+    @property
+    def label(self) -> str:
+        """Display label for the goal: "Vesna C2" or "Wolf Fang R1".
+
+        Target-agnostic: it names whichever level the goal uses, so
+        formatting code that must describe an arbitrary goal (error
+        messages, evidence summaries) never reaches for the
+        character-only accessors.
+        """
+        if self.target.kind is TargetKind.WEAPON:
+            return f"{self.target.name} R{self.level}"
+        return f"{self.target.name} C{self.level}"
+
 
 @dataclass(frozen=True)
 class GoalStatus:

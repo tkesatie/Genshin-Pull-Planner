@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from domain import Banner, Goal, TargetKind
 from planner import PlannerContext, actionable_goals, evaluate_goals
-from planner.banners import current_banner
+from planner.banners import position_anchor
 
 from optimizer.outcomes import OutcomeOption
 
@@ -72,7 +72,7 @@ def protected_groups(context: PlannerContext, banner: Banner | None = None, *, i
     excluded while remaining visible through `evaluate_goals` - "not
     protectable" is not "does not exist" (§8).
     """
-    current = banner if banner is not None else current_banner(context)
+    current = banner if banner is not None else position_anchor(context)
     buckets: dict[Banner, list[Goal]] = {}
     for evaluation in evaluate_goals(context):
         if evaluation.copies_needed == 0:
@@ -129,8 +129,8 @@ def current_goal_priority(context: PlannerContext) -> int | None:
     anchor `optimizer.recommend` actually gates on.
 
     Raises:
-        ValueError: via `current_banner`, when the context has no roadmap
-            banner at its (version, phase).
+        ValueError: via `planner.banners.position_anchor`, when the context
+            has no roadmap banner at its (version, phase).
     """
     priorities = [
         evaluation.goal.priority for evaluation in actionable_goals(context)

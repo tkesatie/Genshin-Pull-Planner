@@ -44,6 +44,7 @@ from planner import (
     protected_goal_outcomes,
     relevant_goal_evaluations,
     safe_spend,
+    upcoming_banners,
 )
 from simulation import DEFAULT_SEED, simulate
 
@@ -94,6 +95,9 @@ def planner_goals(
     return GoalEvaluationsView(
         current_banner=(BannerModel.from_domain(banners[0]) if len(banners) == 1 else None),
         available_banners=[BannerModel.from_domain(banner) for banner in banners],
+        upcoming_banners=[
+            BannerModel.from_domain(banner) for banner in upcoming_banners(context)
+        ],
         goals=[
             GoalEvaluationView.from_domain(
                 evaluation,
@@ -246,13 +250,20 @@ def _spend_table_outcomes(context, preferences, banner):
 
 
 def _select_banner(banners, character):
+    """The single opportunity a single-banner endpoint operates on.
+
+    `character` is the legacy query-parameter name; it is matched against the
+    unified target name, so it selects a weapon banner exactly as it selects a
+    character banner. Several simultaneous opportunities are never resolved
+    silently: the caller names the target it means (Phase 6).
+    """
     if not banners:
         raise HTTPException(status_code=422, detail="no roadmap banner at the current version/phase")
     if character is None:
         if len(banners) > 1:
             raise HTTPException(
                 status_code=422,
-                detail="multiple banners are active; select a character explicitly: "
+                detail="multiple banners are active; name the target explicitly: "
                 + ", ".join(banner.target.name for banner in banners),
             )
         return banners[0]
@@ -260,7 +271,7 @@ def _select_banner(banners, character):
     if not matches:
         raise HTTPException(
             status_code=422,
-            detail=f"character {character!r} is not an available banner at the current version/phase",
+            detail=f"target {character!r} is not an available banner at the current version/phase",
         )
     return matches[0]
 

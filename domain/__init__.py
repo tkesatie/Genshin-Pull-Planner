@@ -21,7 +21,7 @@ from domain.mechanics import CHARACTER_EVENT_BANNER, WEAPON_EVENT_BANNER, WishMe
 from domain.preference import Preference, sort_by_rank
 from domain.roadmap import Roadmap
 from domain.targets import CharacterTarget, GoalTarget, TargetKind, WeaponTarget
-from domain.versions import parse_version
+from domain.versions import parse_version, position_key
 
 __all__ = [
     "NOT_OWNED", "SCENARIOS", "CHARACTER_EVENT_BANNER", "WEAPON_EVENT_BANNER",
@@ -30,6 +30,6 @@ __all__ = [
     "VersionIncome", "WishMechanics", "CharacterWishState", "WeaponWishState",
     "GoalTarget", "CharacterTarget", "WeaponTarget", "TargetKind",
     "copies_needed_for", "goal_status", "goal_statuses",
-    "next_capturing_radiance_counter", "parse_version", "sort_by_rank",
-    "sorted_chronologically",
+    "next_capturing_radiance_counter", "parse_version", "position_key",
+    "sort_by_rank", "sorted_chronologically",
 ]

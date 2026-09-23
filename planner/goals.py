@@ -28,7 +28,11 @@ from enum import Enum
 
 from domain import Banner, Goal, copies_needed_for
 from domain.targets import GoalTarget
-from planner.banners import available_banners, current_banner
+from planner.banners import (
+    available_banners,
+    next_banner_for,
+    position_anchor,
+)
 from planner.context import PlannerContext
 
 
@@ -74,20 +78,13 @@ def _next_banner(
     Target-based (character or weapon): a weapon goal's next opportunity
     is its weapon banner, matched by unified target identity - never by
     the character accessor, which weapon goals do not have.
+
+    The slot anchor is `position_anchor`, which works in a slot holding
+    several simultaneous banners (it contributes only the position) and
+    still refuses an empty slot.
     """
-    current = banner
-    if current is None:
-        matches = available_banners(context)
-        if not matches:
-            current = current_banner(context)
-        else:
-            current = matches[0]
-    upcoming = [
-        banner
-        for banner in context.roadmap.banners_for_target(target)
-        if banner.order_key >= current.order_key
-    ]
-    return upcoming[0] if upcoming else None
+    anchor = banner if banner is not None else position_anchor(context)
+    return next_banner_for(context, target, after=anchor)
 
 
 def _evaluate_one(
