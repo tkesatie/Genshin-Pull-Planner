@@ -91,6 +91,11 @@ def copies_needed_for(account: Account, goal: Goal) -> int:
         owned = account.owned_characters.owned_constellation(goal.target.name)
     else:
         owned = account.owned_characters.owned_refinement(goal.target.name)
+        # An unowned weapon (-1) requires one copy to become R1.
+        # Once owned, refinement levels are R0..R5 and each additional
+        # refinement requires one more copy.
+        if owned < 0:
+            return goal.level
     return max(goal.level - owned, 0)
 
 
