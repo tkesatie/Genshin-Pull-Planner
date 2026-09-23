@@ -303,6 +303,22 @@
   .editor-group:first-of-type { margin-top:.75rem; }
   .editor-group-title { margin-bottom:.35rem; }
   .editor-group-description { margin-bottom:.75rem; }
+  .banner-context { display:grid; gap:.9rem; }
+  .banner-context-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.8rem; }
+  .banner-context-card { padding:.9rem 1rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
+  .banner-context-card.current { border-color:var(--gold); }
+  .banner-context-card h3 { margin:0; color:var(--text); font-size:1rem; }
+  .banner-context-meta { color:var(--muted); font-size:.76rem; margin-top:.15rem; }
+  .banner-featured { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.65rem; }
+  .banner-featured .chip { margin:0; }
+  .banner-goals { margin-top:.65rem; padding-top:.6rem; border-top:1px solid var(--border); }
+  .banner-goals-label { color:var(--muted); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; }
+  .banner-upcoming { display:grid; gap:.5rem; margin-top:.75rem; }
+  .banner-upcoming-row { display:grid; grid-template-columns:5rem 1fr auto; gap:.7rem; align-items:center; padding:.65rem .75rem; border:1px solid var(--border); border-radius:7px; background:var(--surface-2); }
+  .banner-upcoming-when { color:var(--gold-bright); font-size:.75rem; font-weight:650; }
+  .banner-upcoming-name { color:var(--text); font-weight:650; }
+  .banner-upcoming-meta { color:var(--muted); font-size:.72rem; }
+  @media (max-width: 720px) { .banner-context-grid { grid-template-columns:1fr; } .banner-upcoming-row { grid-template-columns:1fr; gap:.2rem; } }
   .account-summary { display:grid; grid-template-columns:1.4fr repeat(3, 1fr); gap:.65rem; }
   .summary-card { padding:.85rem .95rem; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; }
   .summary-card span { display:block; color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
@@ -439,7 +455,7 @@
         <p class="muted">Your expected banner schedule — a user assumption, ordered chronologically by version then phase. Add either a character or weapon banner.</p>
         <div class="table-panel">
           <table class="edit-table">
-            <thead><tr><th>Type</th><th>Target</th><th>Version</th><th>Phase</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Target</th><th>Version</th><th>Phase</th><th>Start</th><th>End</th><th></th></tr></thead>
             <tbody id="banners-rows"></tbody>
           </table>
         </div>
@@ -552,6 +568,13 @@
         <div class="plan-metric"><span class="metric-label">Confidence</span><span class="metric-value" id="plan-confidence">—</span></div>
         <div class="plan-metric"><span class="metric-label">Protected</span><span class="metric-value" id="plan-protected">—</span></div>
         <div class="plan-metric"><span class="metric-label">Future income</span><span class="metric-value" id="plan-income">—</span></div>
+      </div>
+    </section>
+
+    <section id="banner-context-section">
+      <h2>Banners</h2>
+      <div class="panel banner-context" id="banner-context">
+        <p class="muted">Your current and upcoming banner opportunities appear here.</p>
       </div>
     </section>
 
@@ -769,6 +792,7 @@ async function selectAccount(id) {
   renderOwnedCharacters();
   renderGoalsRows(state.account.goals);
   renderBannersRows(state.account.banners);
+  renderBannerContext(state.account.banners, state.planner?.goals || []);
   renderPreferencesRows(state.account.preferences);
   renderIncomeRows(state.account.income);
   await loadGoals();
@@ -1789,6 +1813,12 @@ async function saveGoals() {
 
 /* Banners */
 
+function bannerDateInput(value) {
+  const input = textInput(value ? String(value) : "", "2026-10-20T12:00:00-06:00");
+  input.title = "Use a timezone-aware ISO 8601 date/time.";
+  return input;
+}
+
 function addBannerRow(banner) {
   const row = document.createElement("tr");
   const type = document.createElement("select");
@@ -1799,9 +1829,126 @@ function addBannerRow(banner) {
     editCell(textInput(banner?.target_name ?? banner?.character ?? banner?.weapon ?? "", "Character or weapon")),
     editCell(textInput(banner?.version ?? "", "7.1")),
     editCell(numberInput(banner?.phase ?? 1, { min: 1 })),
+    editCell(bannerDateInput(banner?.start)),
+    editCell(bannerDateInput(banner?.end)),
     editDeleteCell(row)
   );
   $("banners-rows").append(row);
+}
+
+function formatBannerDate(value) {
+  if (!value) return "No date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function bannerKey(banner) {
+  if (!banner) return "";
+  return (banner.target_kind || (banner.weapon != null ? "weapon" : "character")) + "|" +
+    (banner.target_name || banner.character || banner.weapon) + "|" +
+    banner.version + "|" + banner.phase;
+}
+
+function renderBannerContext(banners, goals) {
+  const host = $("banner-context");
+  if (!host) return;
+  host.innerHTML = "";
+  const all = Array.isArray(banners) ? banners : [];
+  const version = state.account?.settings?.current_version;
+  const phase = Number(state.account?.settings?.current_phase || 1);
+  const position = (b) => {
+    const match = String(b.version || "").match(/^(\d+)(?:\.(\d+))?/);
+    const v = match ? Number(match[1]) * 100 + Number(match[2] || 0) : 0;
+    return [v, Number(b.phase || 1)];
+  };
+  const current = all.filter((b) => b.version === version && Number(b.phase) === phase);
+  const [cv, cp] = position({ version, phase });
+  const upcoming = all.filter((b) => {
+    const [v, p] = position(b);
+    return v > cv || (v === cv && p > cp);
+  }).slice(0, 8);
+
+  if (!current.length && !upcoming.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No banners are configured for the current or upcoming roadmap.";
+    host.append(empty);
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "banner-context-grid";
+  const relevantGoals = Array.isArray(goals) ? goals : [];
+
+  for (const banner of current) {
+    const card = document.createElement("div");
+    card.className = "banner-context-card current";
+    const kind = banner.target_kind === "weapon" ? "Weapon" : "Character";
+    const title = document.createElement("h3");
+    title.textContent = banner.target_name || banner.character || banner.weapon;
+    const meta = document.createElement("div");
+    meta.className = "banner-context-meta";
+    meta.textContent = "Current " + kind + " banner · Version " + banner.version + " · Phase " + banner.phase + " · Ends " + formatBannerDate(banner.end);
+    const featured = document.createElement("div");
+    featured.className = "banner-featured";
+    const chip = document.createElement("span");
+    chip.className = "chip active";
+    chip.textContent = kind === "Weapon" ? "Featured weapon" : "Featured character";
+    featured.append(chip);
+    const matching = relevantGoals.filter((g) => g.next_banner && bannerKey(g.next_banner) === bannerKey(banner));
+    card.append(title, meta, featured);
+    if (matching.length) {
+      const goalsBox = document.createElement("div");
+      goalsBox.className = "banner-goals";
+      const label = document.createElement("div");
+      label.className = "banner-goals-label";
+      label.textContent = "Goals on this banner";
+      goalsBox.append(label);
+      for (const g of matching) {
+        const goalChip = document.createElement("span");
+        goalChip.className = "chip " + (g.state || "");
+        goalChip.textContent = goalName(g.goal) + ", priority " + g.goal.priority;
+        if (g.blocked_by) goalChip.title = "Behind " + goalName(g.blocked_by);
+        goalsBox.append(goalChip);
+      }
+      card.append(goalsBox);
+    }
+    grid.append(card);
+  }
+  host.append(grid);
+
+  if (upcoming.length) {
+    const heading = document.createElement("h3");
+    heading.textContent = "Upcoming";
+    heading.style.margin = "1rem 0 .45rem";
+    heading.style.color = "var(--text)";
+    host.append(heading);
+    const list = document.createElement("div");
+    list.className = "banner-upcoming";
+    for (const banner of upcoming) {
+      const row = document.createElement("div");
+      row.className = "banner-upcoming-row";
+      const when = document.createElement("div");
+      when.className = "banner-upcoming-when";
+      when.textContent = "v" + banner.version + " · P" + banner.phase;
+      const name = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "banner-upcoming-name";
+      title.textContent = banner.target_name || banner.character || banner.weapon;
+      const meta = document.createElement("div");
+      meta.className = "banner-upcoming-meta";
+      meta.textContent = (banner.target_kind === "weapon" ? "Weapon" : "Character") + " · Starts " + formatBannerDate(banner.start) + " · Ends " + formatBannerDate(banner.end);
+      name.append(title, meta);
+      const matching = relevantGoals.filter((g) => g.next_banner && bannerKey(g.next_banner) === bannerKey(banner));
+      const goalText = document.createElement("div");
+      goalText.className = "banner-upcoming-meta";
+      goalText.textContent = matching.length + " goal" + (matching.length === 1 ? "" : "s");
+      row.append(when, name, goalText);
+      list.append(row);
+    }
+    host.append(list);
+  }
 }
 
 function renderBannersRows(banners) {
@@ -1822,6 +1969,8 @@ async function saveBanners() {
         target_name: row.children[1].querySelector("input").value.trim(),
         version: row.children[2].querySelector("input").value.trim(),
         phase: Number(row.children[3].querySelector("input").value) || 1,
+        start: row.children[4].querySelector("input").value.trim() || null,
+        end: row.children[5].querySelector("input").value.trim() || null,
       })),
     };
     const result = await api(`/accounts/${state.account.id}/banners`, {
@@ -1831,6 +1980,7 @@ async function saveBanners() {
     });
     state.account.banners = result.banners;
     renderBannersRows(state.account.banners);
+    renderBannerContext(state.account.banners, state.planner?.goals || []);
     $("banners-note").textContent = "Saved. Re-run the planner to see the effect.";
     state.planner = null;
     resetVerdict();
