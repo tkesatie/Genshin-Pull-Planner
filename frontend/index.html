@@ -547,11 +547,6 @@
             <div class="resource"><strong id="hero-pity">—</strong><span id="hero-pity-label">Pity</span></div>
             <div class="resource"><strong id="hero-guarantee">—</strong><span id="hero-guarantee-label">50/50</span></div>
           </div>
-          <div class="plan-account-state" id="hero-account-state">
-            <span class="plan-account-state-label">Account pull state</span>
-            <span id="hero-character-state">Character: —</span>
-            <span id="hero-weapon-state">Weapon: —</span>
-          </div>
         </div>
       </div>
     </section>
@@ -803,25 +798,7 @@ async function selectAccount(id) {
   clearError();
   state.account = await api(`/accounts/${id}`);
   $("confidence").value = state.account.settings.confidence;
-  $("hero-wishes").textContent = state.account.account.wishes;
   refreshHeroAccountState();
-  const currentBannerIsWeapon = state.account.banners?.some(
-    (banner) =>
-      banner.version === state.account.settings.current_version &&
-      banner.phase === state.account.settings.current_phase &&
-      (banner.target_kind === "weapon" || banner.weapon)
-  );
-  const weaponState = state.account.account.weapon_state || {};
-  $("hero-pity").textContent = currentBannerIsWeapon
-    ? (weaponState.pity ?? 0)
-    : state.account.account.current_pity;
-  $("hero-guarantee").textContent = currentBannerIsWeapon
-    ? (weaponState.guarantee ? "Guaranteed" : "Rate-up")
-    : (state.account.account.character_guarantee ? "Guaranteed" : "50/50");
-  $("hero-pity-label").textContent = "Pity";
-  $("hero-guarantee-label").textContent = currentBannerIsWeapon ? "Guarantee" : "50/50";
-  $("hero-banner-name").textContent = "Current plan";
-  $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
   refreshHeroAccountState();
   refreshAccountSummary();
@@ -952,6 +929,7 @@ async function loadPlanner(source = "unknown") {
 /* ---------- rendering ---------- */
 
 function resetVerdict() {
+  refreshHeroAccountState();
   $("strategy").innerHTML = "";
   const verdict = document.createElement("p");
   verdict.className = "verdict";
@@ -1547,11 +1525,17 @@ function refreshHeroAccountState() {
   if (!state.account) return;
   const account = state.account.account || {};
   const weapon = account.weapon_state || {};
-  $("hero-character-state").textContent =
-    "Character: " + (account.current_pity ?? 0) + " pity · " + (account.character_guarantee ? "Guaranteed" : "50/50");
-  $("hero-weapon-state").textContent =
-    "Weapon: " + (weapon.pity ?? 0) + " pity · " + (weapon.guarantee ? "Guaranteed" : "Rate-up") +
+  $("hero-wishes").textContent = account.wishes ?? 0;
+  $("hero-pity").textContent = account.current_pity ?? 0;
+  $("hero-pity-label").textContent =
+    "Character pity · " + (account.character_guarantee ? "Guaranteed" : "50/50");
+  $("hero-guarantee").textContent = weapon.pity ?? 0;
+  $("hero-guarantee-label").textContent =
+    "Weapon pity · " + (weapon.guarantee ? "Guaranteed" : "Rate-up") +
     " · Fate " + (weapon.fate_points ?? 0);
+  $("hero-banner-name").textContent = "Account state";
+  $("banner-meta").textContent =
+    state.account.settings.current_version + " · Phase " + state.account.settings.current_phase;
 }
 
 /* ---------- account editing ---------- */
@@ -2395,11 +2379,7 @@ async function recordPullOutcome(character, outcome) {
       fillAccountForm();
       renderOwnedCharacters();
       $("confidence").value = state.account.settings.confidence;
-      $("hero-wishes").textContent = state.account.account.wishes;
-      $("hero-pity").textContent = state.account.account.current_pity;
-      $("banner-meta").textContent =
-        state.account.settings.current_version + " · Phase " +
-        state.account.settings.current_phase;
+      refreshHeroAccountState();
       await loadGoals();
     } catch (error) {
       console.error("Pull outcome UI refresh failed", error);
