@@ -20,6 +20,8 @@ from api.schemas.accounts import (
     BannerListView,
     GoalListModel,
     GoalListView,
+    GoalStatusListView,
+    GoalStatusView,
     PlannerSettingsModel,
     PreferenceListModel,
     PreferenceListView,
@@ -38,6 +40,7 @@ from api.schemas.domain import (
     StrictModel,
     VersionIncomeModel,
     VersionIncomeView,
+    WeaponWishStateModel,
 )
 from api.schemas.planner import (
     GoalEvaluationsView,
@@ -78,6 +81,8 @@ __all__ = [
     "GoalEvaluationsView",
     "GoalListModel",
     "GoalListView",
+    "GoalStatusListView",
+    "GoalStatusView",
     "GoalModel",
     "GoalProbabilityView",
     "GoalStandingView",
@@ -107,5 +112,6 @@ __all__ = [
     "StrictModel",
     "VersionIncomeModel",
     "VersionIncomeView",
+    "WeaponWishStateModel",
     "WishesNeededView",
 ]
