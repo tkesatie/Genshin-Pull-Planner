@@ -1130,24 +1130,19 @@ function renderRoadmap(view) {
   const unscheduled = [];
   for (const goal of view.goals) {
     if (!goal.next_banner) { unscheduled.push(goal); continue; }
-    const key = `${goal.next_banner.character}|${goal.next_banner.version}|${goal.next_banner.phase}`;
+    const key = `${goal.next_banner.target_kind || (goal.next_banner.weapon ? "weapon" : "character")}|${targetName(goal.next_banner)}|${goal.next_banner.version}|${goal.next_banner.phase}`;
     if (!byBanner.has(key)) byBanner.set(key, { banner: goal.next_banner, goals: [] });
     byBanner.get(key).goals.push(goal);
   }
+
   for (const { banner, goals } of byBanner.values()) {
     const stop = document.createElement("div");
     stop.className = "stop";
-    const isNow =
-      (view.current_banner &&
-        banner.character === view.current_banner.character &&
-        banner.version === view.current_banner.version &&
-        banner.phase === view.current_banner.phase) ||
-      (view.current_banner === null &&
-        (view.available_banners || []).some((current) =>
-          banner.character === current.character &&
-          banner.version === current.version &&
-          banner.phase === current.phase
-        ));
+    const isNow = (view.available_banners || []).some((current) =>
+      targetName(banner) === targetName(current) &&
+      banner.version === current.version &&
+      banner.phase === current.phase
+    );
     if (isNow) stop.classList.add("now");
 
     const when = document.createElement("div");
@@ -1156,8 +1151,8 @@ function renderRoadmap(view) {
 
     const what = document.createElement("div");
     const title = document.createElement("div");
-    title.textContent = banner.character;
-    title.style.color = "var(--chalk)";
+    title.textContent = targetName(banner);
+    title.style.color = "var(--text)";
     what.append(title);
     for (const goal of goals) {
       const chip = document.createElement("span");
@@ -1169,19 +1164,26 @@ function renderRoadmap(view) {
       if (goal.actionable) chip.style.fontWeight = "600";
       what.append(chip);
     }
+
     stop.append(when, what);
     host.append(stop);
   }
-  if (unscheduled.length > 0) {    const note = document.createElement("p");
-    note.className = "muted";
-    note.textContent =
-      "No banner scheduled yet: " + unscheduled.map((g) => goalName(g.goal)).join(", ") + ".";
-    host.append(note);
+
+  for (const goal of unscheduled) {
+    const stop = document.createElement("div");
+    stop.className = "stop";
+    const when = document.createElement("div");
+    when.className = "stop-when";
+    when.textContent = "Unscheduled";
+    const what = document.createElement("div");
+    const chip = document.createElement("span");
+    chip.className = `chip ${goal.state}`;
+    chip.textContent = `${goalName(goal.goal)}, priority ${goal.goal.priority}`;
+    what.append(chip);
+    stop.append(when, what);
+    host.append(stop);
   }
 }
-
-/* ---------- account creation ---------- */
-
 function showAccountCreatePanel({ cancellable }) {
   $("account-create-panel").hidden = false;
   $("ca-cancel").hidden = !cancellable;
