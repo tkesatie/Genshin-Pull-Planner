@@ -480,6 +480,7 @@
     <section id="verdict-section">
       <h2>Current recommendation</h2>
       <div class="recommendation-panel panel">
+        <div class="decision-status" id="planner-status" hidden>Reloading strategy…</div>
         <div id="decision-label" class="decision-label">Strategy</div>
         <div id="strategy"><p class="verdict" id="verdict">Run the planner to build your current recommendation.</p></div>
         <div class="recommendation-limit" id="recommendation-limit"></div>
@@ -757,6 +758,8 @@ async function loadPlanner(source = "unknown") {
   state.plannerRunSource = source;
   $("run").disabled = true;
   $("run").textContent = "Simulating";
+  $("planner-status").hidden = false;
+  $("planner-status").textContent = source === "pull" ? "Updating strategy…" : "Reloading strategy…";
   console.log(`Planner run #${plannerRunId} started — source: ${source}`);
   const id = state.account.id;
   const wishes = state.account.account.wishes;
@@ -776,9 +779,9 @@ async function loadPlanner(source = "unknown") {
     );
     const strategyPromise = api(`/accounts/${id}/planner/strategy${query()}`);
 
-    // Recommendation and strategy are independent backend calculations, so
-    // start them together. Safe-spend still depends on the selected banner
-    // from the recommendation, so it runs after that result is known.
+    // Recommendation and strategy are independent backend calculations,
+    // so start them together. The recommendation already contains the
+    // user-facing spend limit and protected reserve.
     const [recommendation, strategy] = await Promise.all([
       recommendationPromise,
       strategyPromise,
@@ -817,7 +820,7 @@ async function loadPlanner(source = "unknown") {
       "Planner timing\n" +
       "-------------\n" +
       `Planner calculation: ${calculationSeconds === null ? "n/a" : calculationSeconds.toFixed(2) + "s"}\n` +
-      `API response:        ${apiResponseSeconds.toFixed(2)}s\n` +
+      `API response:        ${apiResponseSeconds === null ? "n/a" : apiResponseSeconds.toFixed(2) + "s"}\n` +
       `Frontend load:       ${frontendLoadSeconds.toFixed(2)}s\n` +
       `Total:               ${frontendLoadSeconds.toFixed(2)}s`
     );
@@ -833,6 +836,7 @@ async function loadPlanner(source = "unknown") {
     state.plannerLoading = false;
     $("run").disabled = false;
     $("run").textContent = "Run the planner";
+    $("planner-status").hidden = true;
   }
 }
 
