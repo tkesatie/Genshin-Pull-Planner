@@ -657,24 +657,28 @@ def recommend(
         )
     ]
     known_alternative_keys = {
-        (item.outcome.character, item.outcome.constellation)
+        (item.outcome.target.kind.value if item.outcome.target is not None else TargetKind.CHARACTER.value,
+         item.outcome.character,
+         item.outcome.constellation)
         for item in alternative_items
     }
     for banner in banners:
         for goal in context.roadmap.goals_in_priority_order():
+            goal_key = (goal.target.kind.value, goal.target.name, goal.level)
             if (
                 goal.target != banner.target
                 or copies_needed_for(context.account, goal) <= 0
-                or (goal.character, goal.level) in known_alternative_keys
+                or goal_key in known_alternative_keys
                 or (
                     banner == winner_banner
-                    and goal.character == winner_outcome.character
+                    and goal.target.kind is winner_outcome.target.kind if winner_outcome.target is not None else goal.target.kind is TargetKind.CHARACTER
+                    and goal.target.name == winner_outcome.character
                     and goal.level == winner_outcome.constellation
                 )
             ):
                 continue
             diagnostic_outcome = OutcomeOption(
-                character=goal.character,
+                character=goal.target.name,
                 constellation=goal.level,
                 rank=goal.priority,
                 target=goal.target if goal.target.kind is TargetKind.WEAPON else None,
@@ -696,7 +700,7 @@ def recommend(
                     outcome_probability=diagnostic.outcome_probability,
                 )
             )
-            known_alternative_keys.add((goal.character, goal.level))
+            known_alternative_keys.add(goal_key)
     alternatives = tuple(alternative_items)
 
     # The presentation check (step 4) settles only how the winner is
