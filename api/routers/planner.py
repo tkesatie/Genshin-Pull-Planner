@@ -383,12 +383,6 @@ def planner_strategy(
             seed=seed,
             simulation_sink=cache_simulation,
         )
-    except Exception as exc:
-        # TEMPORARY LOCAL DIAGNOSTIC: surface the actual exception in the
-        # development response because the browser otherwise only shows 500.
-        detail = traceback.format_exc()
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=detail) from exc
     return PullStrategyView.from_domain(
         strategy,
         confidence=context.confidence,
