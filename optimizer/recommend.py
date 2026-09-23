@@ -639,11 +639,10 @@ def recommend(
         (item.outcome.character, item.outcome.constellation)
         for item in alternative_items
     }
-    for evaluation in context.roadmap.goals_in_priority_order():
-        goal = evaluation.goal
+    for goal in context.roadmap.goals_in_priority_order():
         if (
             goal.target != winner_banner.target
-            or evaluation.copies_needed <= 0
+            or copies_needed_for(context.account, goal) <= 0
             or goal.level == winner_outcome.constellation
             or (goal.character, goal.level) in known_alternative_keys
         ):
