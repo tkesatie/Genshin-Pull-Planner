@@ -1491,7 +1491,7 @@ function textInput(value, placeholder = "") {
 
 function nextGoalPriority() {
   const priorities = Array.from($("goals-rows").querySelectorAll("tr")).map(
-    (row) => Number(row.children[2].querySelector("input").value) || 0
+    (row) => Number(row.children[3].querySelector("input").value) || 0
   );
   return priorities.length ? Math.max(...priorities) + 1 : 1;
 }
