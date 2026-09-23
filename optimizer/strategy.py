@@ -686,7 +686,7 @@ def build_strategy(
                 reserve_banner.version,
                 reserve_banner.phase,
             )
-            if reserve_goal is not None
+            if reserve_banner is not None
             else 0
         ),
     )

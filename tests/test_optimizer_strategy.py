@@ -2,7 +2,16 @@
 
 from types import SimpleNamespace
 
-from domain import Account, Banner, Goal, IncomeEstimate, IncomeForecast, Roadmap, VersionIncome
+from domain import (
+    Account,
+    Banner,
+    Goal,
+    IncomeEstimate,
+    IncomeForecast,
+    Roadmap,
+    VersionIncome,
+    WeaponTarget,
+)
 from optimizer import strategy as strategy_module
 from planner import PlannerContext
 from simulation import PlannedSpend, SpendPlan
@@ -151,3 +160,40 @@ def test_frontier_is_monotonic_and_does_not_scan_every_spend(monkeypatch):
     )
     assert vesna_step.safe_spend == 275
     assert calls <= 20
+
+
+def test_reserve_goal_without_a_strictly_later_banner_does_not_crash():
+    """`reserve_banner` can legitimately stay None while `reserve_goal` is
+    set: a protected goal's next banner can share the current banner's
+    order_key (a simultaneous alternative banner, protected_groups'
+    include_same_slot=True default) without being strictly later than it.
+    `future_income` must therefore be gated on `reserve_banner`, not
+    `reserve_goal` - otherwise this raises AttributeError on
+    `reserve_banner.version` (regression: Phase 7.5 unified weapon/character
+    strategy crashed /planner/strategy for exactly this shape).
+    """
+    vesna = Banner("Vesna", "7.1", 1)
+    astra = Banner(target=WeaponTarget("Astra"), version="7.1", phase=1)
+    context = PlannerContext(
+        account=Account(wishes=400),
+        roadmap=Roadmap(
+            goals=[
+                Goal("Vesna", 0, 1),
+                Goal(target=WeaponTarget("Astra"), level=0, priority=2),
+                Goal("Vesna", 2, 3),
+            ],
+            banners=[vesna, astra],
+        ),
+        current_version="7.1",
+        current_phase=1,
+        confidence=0.90,
+    )
+
+    # Must not raise AttributeError: 'NoneType' object has no attribute
+    # 'version'.
+    result = strategy_module.build_strategy(context, runs=50, seed=1)
+
+    assert result.reserve_goal == Goal(
+        target=WeaponTarget("Astra"), level=0, priority=2
+    )
+    assert result.future_income == 0
