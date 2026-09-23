@@ -51,17 +51,11 @@ def _income_signature(income) -> tuple | None:
 
 def context_fingerprint(context: PlannerContext) -> tuple:
     roadmap = context.roadmap
-    account = context.account
+    # Account state is deliberately excluded. Recorded pulls are handled by
+    # conditioning retained evidence against the new account state. Durable
+    # account edits use explicit cache invalidation instead of changing this
+    # fingerprint, so a normal pull can reuse the evidence it just observed.
     return (
-        account.current_pity,
-        account.character_guarantee,
-        account.wishes,
-        account.capturing_radiance_counter,
-        tuple(sorted(account.owned_characters.characters.items())),
-        tuple(sorted(account.owned_characters.weapons.items())),
-        account.weapon_state.pity,
-        account.weapon_state.guarantee,
-        account.weapon_state.fate_points,
         context.current_version,
         context.current_phase,
         context.confidence,
