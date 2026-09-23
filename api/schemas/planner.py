@@ -278,7 +278,15 @@ class RecommendationView(BaseModel):
     banner: BannerModel
     action: str = Field(..., description='"pursue", "discretionary" or "skip".')
     outcome: OutcomeView | None
+    target_kind: str = Field(
+        ..., description='"character", "weapon" or "none".'
+    )
+    target_name: str | None
     budget: int
+    spend_limit: int
+    spend_down_to: int
+    protected_reserve: int
+    protected_goal: GoalModel | None
     plan: SpendPlanModel | None
     outcome_probability: float
     all_goals_probability: float = Field(
@@ -293,6 +301,7 @@ class RecommendationView(BaseModel):
     )
     confidence: float
     minimum_outcome_probability: float
+    reasons: list[str]
     protected: list[GoalStandingView]
     rejected: list[RejectedOutcomeView]
     skip_reason: str | None
@@ -307,12 +316,23 @@ class RecommendationView(BaseModel):
             banner=BannerModel.from_domain(recommendation.banner),
             action=recommendation.action,
             outcome=None if recommendation.outcome is None else OutcomeView.from_domain(recommendation.outcome),
+            target_kind=recommendation.target_kind,
+            target_name=recommendation.target_name,
             budget=recommendation.budget,
+            spend_limit=recommendation.spend_limit,
+            spend_down_to=recommendation.spend_down_to,
+            protected_reserve=recommendation.protected_reserve,
+            protected_goal=(
+                None
+                if recommendation.protected_goal is None
+                else GoalModel.from_domain(recommendation.protected_goal)
+            ),
             plan=None if recommendation.plan is None else SpendPlanModel.from_domain(recommendation.plan),
             outcome_probability=recommendation.outcome_probability,
             all_goals_probability=recommendation.all_goals_probability,
             confidence=confidence,
             minimum_outcome_probability=minimum_outcome_probability,
+            reasons=list(recommendation.reasons),
             protected=[GoalStandingView.from_domain(standing) for standing in recommendation.protected],
             rejected=[RejectedOutcomeView.from_domain(rejected) for rejected in recommendation.rejected],
             skip_reason=recommendation.skip_reason,
