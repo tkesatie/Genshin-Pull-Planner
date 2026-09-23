@@ -752,6 +752,7 @@ async function selectAccount(id) {
   $("hero-banner-name").textContent = "Current plan";
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
+  refreshAccountSummary();
   resetVerdict();
   renderOwnedCharacters();
   renderGoalsRows(state.account.goals);
