@@ -1,6 +1,7 @@
 """Planner endpoints."""
 
 from dataclasses import replace
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -375,12 +376,18 @@ def planner_strategy(
             context=context,
         )
 
-    strategy = build_strategy(
-        context,
-        runs=runs,
-        seed=seed,
-        simulation_sink=cache_simulation,
-    )
+    try:
+        strategy = build_strategy(
+            context,
+            runs=runs,
+            seed=seed,
+            simulation_sink=cache_simulation,
+        )
+    except Exception:
+        # TEMPORARY LOCAL DIAGNOSTIC: the browser only exposes a generic 500,
+        # so print the actual planner exception to the uvicorn terminal.
+        traceback.print_exc()
+        raise
     return PullStrategyView.from_domain(
         strategy,
         confidence=context.confidence,
