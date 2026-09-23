@@ -116,7 +116,7 @@ def test_future_character_and_weapon_goals_share_one_protected_pool():
     context = PlannerContext(
         account=Account(
             wishes=500,
-            owned_characters=Ownership({"Vesna": 0}),
+            owned_characters=Ownership({"Vesna": -1}),
         ),
         roadmap=Roadmap(
             goals=[
