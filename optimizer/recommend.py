@@ -621,7 +621,7 @@ def recommend(
     opportunities.sort(key=opportunity_key)
 
     winner_banner, _, winner_outcome, winner, winner_priority = opportunities[0]
-    alternatives = tuple(
+    alternative_items = [
         RecommendationAlternative(
             outcome=outcome,
             budget=candidate.budget,
@@ -629,7 +629,49 @@ def recommend(
         )
         for banner, _, outcome, candidate, _ in opportunities[1:]
         if banner == winner_banner
-    )
+    ]
+
+    # A blocked roadmap goal is intentionally absent from available_outcomes(),
+    # but the Strategy roadmap still needs to distinguish "later" from
+    # "currently unsafe". Evaluate such current-banner goals diagnostically at
+    # the selected spend limit. This never affects recommendation selection.
+    known_alternative_keys = {
+        (item.outcome.character, item.outcome.constellation)
+        for item in alternative_items
+    }
+    for evaluation in context.roadmap.goals_in_priority_order():
+        goal = evaluation.goal
+        if (
+            goal.target != winner_banner.target
+            or evaluation.copies_needed <= 0
+            or goal.level == winner_outcome.constellation
+            or (goal.character, goal.level) in known_alternative_keys
+        ):
+            continue
+        diagnostic_outcome = OutcomeOption(
+            character=goal.character,
+            constellation=goal.level,
+            rank=goal.priority,
+            target=goal.target if goal.target.kind.value == "weapon" else None,
+        )
+        diagnostic = _evaluate_cap(
+            context,
+            diagnostic_outcome,
+            winner.budget,
+            winner_banner,
+            runs,
+            seed,
+            simulation_sink,
+            candidate_lookup,
+        )
+        alternative_items.append(
+            RecommendationAlternative(
+                outcome=diagnostic_outcome,
+                budget=winner.budget,
+                outcome_probability=diagnostic.outcome_probability,
+            )
+        )
+    alternatives = tuple(alternative_items)
 
     # A deeper same-character outcome is cumulative progress: reaching
     # C2 necessarily reaches C0. If the deeper outcome is feasible and
