@@ -232,6 +232,7 @@ class Recommendation:
     protected: tuple[GoalStanding, ...]
     rejected: tuple[RejectedOutcome, ...]
     alternatives: tuple[RecommendationAlternative, ...]
+    unsafe_current: tuple[UnsafeCurrentGoal, ...] = ()
     skip_reason: str | None
     stops: StopConditions
     runs: int
@@ -648,47 +649,30 @@ def recommend(
         ):
             winner_banner, winner_outcome, winner = banner, outcome, candidate
 
-    # Keep roadmap goals that are feasible in principle but absent from
-    # available_outcomes() visible to the Strategy roadmap. This is a
-    # presentation-only diagnostic: it does not participate in selection or
-    # protection. Evaluate each unsatisfied goal on its own current banner,
-    # including simultaneous banners that are not the selected winner.
-    alternative_items = [
+    # Keep feasible current-banner outcomes that were considered but not selected.
+    alternatives = tuple(
         RecommendationAlternative(
             outcome=outcome,
             budget=candidate.budget,
             outcome_probability=candidate.outcome_probability,
         )
         for banner, _, outcome, candidate, _ in opportunities
-        if banner in banners
-        and not (
-            banner == winner_banner
-            and outcome == winner_outcome
-        )
-    ]
-    known_alternative_keys = {
-        (item.outcome.target.kind.value if item.outcome.target is not None else TargetKind.CHARACTER.value,
-         item.outcome.character,
-         item.outcome.constellation)
-        for item in alternative_items
-    }
-    winner_target_key = (
-        winner_outcome.target.kind.value if winner_outcome.target is not None
-        else TargetKind.CHARACTER.value,
-        winner_outcome.character,
-        winner_outcome.constellation,
+        if not (banner == winner_banner and outcome == winner_outcome)
     )
+
+    # Presentation-only diagnostic: roadmap goals on any currently available
+    # banner that are not safe enough to recommend at the selected spend.
+    # This does not participate in selection or protection.
+    unsafe_items: list[UnsafeCurrentGoal] = []
+    known_unsafe_keys: set[tuple[str, str, int]] = set()
     for banner in banners:
         for goal in context.roadmap.goals_in_priority_order():
             goal_key = (goal.target.kind.value, goal.target.name, goal.level)
             if (
                 goal.target != banner.target
                 or copies_needed_for(context.account, goal) <= 0
-                or goal_key in known_alternative_keys
-                or (
-                    banner == winner_banner
-                    and goal_key == winner_target_key
-                )
+                or goal_key in known_unsafe_keys
+                or (banner == winner_banner and goal_key == winner_target_key)
             ):
                 continue
             diagnostic_outcome = OutcomeOption(
@@ -707,15 +691,17 @@ def recommend(
                 None,
                 candidate_lookup,
             )
-            alternative_items.append(
-                RecommendationAlternative(
-                    outcome=diagnostic_outcome,
-                    budget=winner.budget,
-                    outcome_probability=diagnostic.outcome_probability,
+            if diagnostic.outcome_probability < minimum_outcome_probability:
+                unsafe_items.append(
+                    UnsafeCurrentGoal(
+                        goal=goal,
+                        banner=banner,
+                        budget=winner.budget,
+                        outcome_probability=diagnostic.outcome_probability,
+                    )
                 )
-            )
-            known_alternative_keys.add(goal_key)
-    alternatives = tuple(alternative_items)
+            known_unsafe_keys.add(goal_key)
+    unsafe_current = tuple(unsafe_items)
 
     # The presentation check (step 4) settles only how the winner is
     # reported - never which outcome or cap won (module docstring).
