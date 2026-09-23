@@ -90,7 +90,7 @@ class GoalEvaluationView(BaseModel):
             goal=PlannerGoalView.from_domain(evaluation.goal),
             copies_needed=evaluation.copies_needed,
             state=evaluation.state.value,
-            blocked_by=None if evaluation.blocked_by is None else GoalModel.from_domain(evaluation.blocked_by),
+            blocked_by=None if evaluation.blocked_by is None else PlannerGoalView.from_domain(evaluation.blocked_by),
             next_banner=None if evaluation.next_banner is None else BannerModel.from_domain(evaluation.next_banner),
             relevant=relevant,
             actionable=actionable,
@@ -106,12 +106,12 @@ class GoalEvaluationsView(BaseModel):
 
 
 class CachedGoalProbabilityView(BaseModel):
-    goal: GoalModel
+    goal: PlannerGoalView
     probability: float
 
 
 class CachedGoalEvidenceView(BaseModel):
-    goal: GoalModel
+    goal: PlannerGoalView
     probability: float
     goal_probabilities: list[CachedGoalProbabilityView]
     joint_probability: float | None
@@ -133,7 +133,7 @@ class CachedPlannerRefreshView(BaseModel):
 
 
 class ProtectedGoalOutcomeView(BaseModel):
-    goal: GoalModel
+    goal: PlannerGoalView
     banner: BannerModel
     budget_at_banner: int
     required_wishes: int
@@ -215,7 +215,7 @@ class SpendTableView(BaseModel):
 
 class StrategyStepView(BaseModel):
     action: str
-    goal: GoalModel
+    goal: PlannerGoalView
     banner: BannerModel
     reserve_wishes: int | None = None
     safe_spend: int | None = None
@@ -245,7 +245,7 @@ class StrategyStepView(BaseModel):
 
 class PullStrategyView(BaseModel):
     steps: list[StrategyStepView]
-    reserve_goal: GoalModel | None
+    reserve_goal: PlannerGoalView | None
     reserve_wishes: int | None
     reserve_probability: float | None
     confidence: float
@@ -274,7 +274,7 @@ class PullStrategyView(BaseModel):
 
 
 class GoalStandingView(BaseModel):
-    goal: GoalModel
+    goal: PlannerGoalView
     banner: BannerModel
     probability: float
     meets_threshold: bool
@@ -340,7 +340,7 @@ class RecommendationView(BaseModel):
     spend_limit: int
     spend_down_to: int
     protected_reserve: int
-    protected_goal: GoalModel | None
+    protected_goal: PlannerGoalView | None
     plan: SpendPlanModel | None
     outcome_probability: float
     all_goals_probability: float = Field(
