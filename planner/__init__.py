@@ -15,7 +15,13 @@ from planner.goals import (
     evaluate_goals,
     relevant_goal_evaluations,
 )
-from planner.protection import ProtectedGoalOutcome, protected_goal_outcomes
+from planner.projection import character_view
+from planner.protection import (
+    ProtectedGoalOutcome,
+    protected_goal_outcomes,
+    weapon_goal_confidence,
+    weapon_goal_reserve,
+)
 from planner.safe_spend import safe_spend
 from planner.spend_table import SpendRow, single_copy_active_goal, spend_table
 
@@ -27,6 +33,7 @@ __all__ = [
     "SpendRow",
     "actionable_goals",
     "available_banners",
+    "character_view",
     "current_banner",
     "evaluate_goal",
     "evaluate_goals",
@@ -35,4 +42,6 @@ __all__ = [
     "safe_spend",
     "single_copy_active_goal",
     "spend_table",
+    "weapon_goal_confidence",
+    "weapon_goal_reserve",
 ]

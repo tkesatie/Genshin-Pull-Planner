@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from domain import Banner, Goal, copies_needed_for
+from domain.targets import GoalTarget
 from planner.banners import available_banners, current_banner
 from planner.context import PlannerContext
 
@@ -52,10 +53,10 @@ class GoalEvaluation:
         state: SATISFIED / ACTIVE / BLOCKED (see module docstring).
         blocked_by: the unsatisfied lower-constellation goal with the
             largest constellation blocking this one; None unless BLOCKED.
-        next_banner: first banner for this character at-or-after the
-            current banner; None when the character has no upcoming
-            banner in the roadmap. Such a goal stays visible here - it
-            is merely not schedulable, never silently dropped (§8).
+        next_banner: first banner for this target at-or-after the
+            current banner; None when the target has no upcoming banner
+            in the roadmap. Such a goal stays visible here - it is
+            merely not schedulable, never silently dropped (§8).
     """
 
     goal: Goal
@@ -66,9 +67,14 @@ class GoalEvaluation:
 
 
 def _next_banner(
-    context: PlannerContext, character: str, banner: Banner | None = None
+    context: PlannerContext, target: GoalTarget, banner: Banner | None = None
 ) -> Banner | None:
-    """First banner for character at-or-after the selected current slot."""
+    """First banner for the target at-or-after the selected current slot.
+
+    Target-based (character or weapon): a weapon goal's next opportunity
+    is its weapon banner, matched by unified target identity - never by
+    the character accessor, which weapon goals do not have.
+    """
     current = banner
     if current is None:
         matches = available_banners(context)
@@ -78,7 +84,7 @@ def _next_banner(
             current = matches[0]
     upcoming = [
         banner
-        for banner in context.roadmap.banners_for(character)
+        for banner in context.roadmap.banners_for_target(target)
         if banner.order_key >= current.order_key
     ]
     return upcoming[0] if upcoming else None
@@ -91,12 +97,12 @@ def _evaluate_one(
     blockers = [
         other
         for other in all_goals
-        if other.character == goal.character
-        and other.constellation < goal.constellation
+        if other.target == goal.target
+        and other.level < goal.level
         and copies_needed_for(context.account, other) > 0
     ]
     blocked_by = (
-        max(blockers, key=lambda blocker: blocker.constellation)
+        max(blockers, key=lambda blocker: blocker.level)
         if blockers
         else None
     )
@@ -111,7 +117,7 @@ def _evaluate_one(
         copies_needed=copies_needed,
         state=state,
         blocked_by=blocked_by,
-        next_banner=_next_banner(context, goal.character),
+        next_banner=_next_banner(context, goal.target),
     )
 
 
@@ -140,16 +146,16 @@ def relevant_goal_evaluations(
         if len(matches) == 1:
             banner = matches[0]
         else:
+            targets = {item.target for item in matches}
             return [
                 evaluation
                 for evaluation in evaluate_goals(context)
-                if evaluation.goal.character in {item.character for item in matches}
+                if evaluation.goal.target in targets
             ]
-    character = banner.character
     return [
         evaluation
         for evaluation in evaluate_goals(context)
-        if evaluation.goal.character == character
+        if evaluation.goal.target == banner.target
     ]
 
 

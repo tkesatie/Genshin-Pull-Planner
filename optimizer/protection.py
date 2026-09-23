@@ -30,7 +30,7 @@ Phase 3 contract is priority-independent by design.
 
 from dataclasses import dataclass
 
-from domain import Banner, Goal
+from domain import Banner, Goal, TargetKind
 from planner import PlannerContext, actionable_goals, evaluate_goals
 from planner.banners import current_banner
 
@@ -97,7 +97,10 @@ def protected_groups(context: PlannerContext, banner: Banner | None = None, *, i
             ProtectedGroup(
                 banner=banner,
                 goals=goals,
-                target_constellation=max(goal.constellation for goal in goals),
+                # goal.level unifies constellation (character) and
+                # refinement (weapon); for character goals this is the
+                # same value `goal.constellation` always returned.
+                target_constellation=max(goal.level for goal in goals),
                 uncapped_budget=(
                     context.account.wishes
                     + context.income_available_before(banner.version, banner.phase)
@@ -155,14 +158,26 @@ def priority_for_outcome(context: PlannerContext, outcome: OutcomeOption) -> int
     not priority 1, so that Vodynista (priority 2) can gate the reach to
     C2 without gating the reach to C0.
 
-    When the outcome's exact (character, constellation) matches a roadmap
-    Goal, that goal's own priority is the anchor. Preferences and
+    When the outcome's exact (target, level) matches a roadmap Goal, that
+    goal's own priority is the anchor. Weapon outcomes match their weapon
+    goals the same way (unified target identity, Phase 4) - a weapon
+    refinement outcome is anchored by its own roadmap goal, not by
+    whatever character happens to share the slot. Preferences and
     priorities are still separate concepts (§2, §15): a preference chain
     with no roadmap counterpart at all falls back to
     `current_goal_priority`, unchanged from before this existed.
     """
+    kind = (
+        outcome.target.kind
+        if outcome.target is not None
+        else TargetKind.CHARACTER
+    )
     for goal in context.roadmap.goals:
-        if goal.character == outcome.character and goal.constellation == outcome.constellation:
+        if (
+            goal.target.kind is kind
+            and goal.target.name == outcome.character
+            and goal.level == outcome.constellation
+        ):
             return goal.priority
     return current_goal_priority(context)
 

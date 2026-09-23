@@ -14,8 +14,9 @@ def available_banners(context: PlannerContext) -> tuple[Banner, ...]:
     """Return every roadmap banner available at the context's position.
 
     Multiple featured-character banners can share the same (version, phase)
-    slot. The planner must preserve all of them so higher layers can decide
-    where the user's resources should go.
+    slot, and a version/phase can hold a character banner alongside a
+    weapon banner (Phase 4). The planner must preserve all of them so
+    higher layers can decide where the user's resources should go.
     """
     matches = [
         banner
@@ -23,8 +24,10 @@ def available_banners(context: PlannerContext) -> tuple[Banner, ...]:
         if banner.version == context.current_version
         and banner.phase == context.current_phase
     ]
+    # Target-based tie-break: weapon banners have no `.character`
+    # accessor, so the unified ordering must go through target identity.
     return tuple(
-        sorted(matches, key=lambda banner: (banner.order_key, banner.character))
+        sorted(matches, key=lambda banner: (banner.order_key, banner.target.name))
     )
 
 
@@ -38,7 +41,7 @@ def current_banner(context: PlannerContext) -> Banner:
     matches = available_banners(context)
     if not matches:
         scheduled = ", ".join(
-            f"{banner.character} {banner.version}p{banner.phase}"
+            f"{banner.target.name} {banner.version}p{banner.phase}"
             for banner in context.roadmap.banners_in_chronological_order()
         )
         raise ValueError(
@@ -47,7 +50,7 @@ def current_banner(context: PlannerContext) -> Banner:
         )
     if len(matches) > 1:
         listed = ", ".join(
-            f"{banner.character} {banner.version}p{banner.phase}"
+            f"{banner.target.name} {banner.version}p{banner.phase}"
             for banner in matches
         )
         raise ValueError(

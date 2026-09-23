@@ -76,7 +76,8 @@ Rules:
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from domain import Preference, sort_by_rank
+from domain import Banner, Goal, Preference, TargetKind, WeaponTarget, sort_by_rank
+from domain.targets import GoalTarget
 from planner import (
     PlannerContext,
     GoalState,
@@ -91,19 +92,30 @@ class OutcomeOption:
     """One outcome the optimizer may pursue on the current banner (§13, §15).
 
     Attributes:
-        character: the current banner's featured character.
+        character: the current banner's featured character - or, for a
+            weapon outcome, the featured weapon's name (unified targets
+            are identified by name in both cases; `target` carries the
+            kind).
         constellation: the desired *resulting* constellation - never a copy
             count (§4.2, §12); the simulator derives copies from the
-            account state (§10.4).
+            account state (§10.4). For a weapon outcome this is the
+            desired resulting refinement (R1 -> 1), unified with
+            constellation numbering through `Goal.level`.
         rank: preference rank; 1 is most preferred (§15).
         weapon_refinement: the wanted refinement ("R1" -> 1), or None when
-            the preference asks for none. Display-only (§17, §19).
+            the preference asks for none. Display-only for character
+            outcomes (§17, §19); weapon outcomes carry their refinement
+            through `constellation`/`target` instead.
         later_progression: True when the roadmap schedules this objective
             for a strictly later banner (its goal is BLOCKED behind an
             unsatisfied lower milestone, §9). The outcome stays in the
             menu, sorted behind the nearer objectives; only
             optimizer.recommend's later-progression eligibility rule may
             promote it to the lead.
+        target: the unified target (§4 Phase 2) for weapon outcomes; None
+            for character outcomes, which were identified by
+            `character` before weapon outcomes existed. The optimizer
+            treats both kinds as members of the same ordered goal set.
     """
 
     character: str
@@ -111,14 +123,29 @@ class OutcomeOption:
     rank: int
     weapon_refinement: int | None = None
     later_progression: bool = False
+    target: "GoalTarget | None" = None
 
     @property
     def label(self) -> str:
-        """Derived display label such as "C0", "C2" or "C2R1" (§15)."""
+        """Derived display label such as "C0", "C2", "C2R1" or "R1" (§15)."""
+        if self.target is not None and self.target.kind is TargetKind.WEAPON:
+            return f"R{self.constellation}"
         label = f"C{self.constellation}"
         if self.weapon_refinement is not None:
             label += f"R{self.weapon_refinement}"
         return label
+
+    @property
+    def target_name(self) -> str:
+        """The pursued target's display name (character or weapon)."""
+        return self.character
+
+
+def goal_label(goal: Goal) -> str:
+    """Display label for a roadmap goal: "Vesna C2" or "Wolf Fang R1"."""
+    if goal.target.kind is TargetKind.WEAPON:
+        return f"{goal.target.name} R{goal.level}"
+    return f"{goal.target.name} C{goal.level}"
 
 
 def _later_progression_constellations(
@@ -128,23 +155,109 @@ def _later_progression_constellations(
 
     A roadmap goal that is BLOCKED (§9) names a progression objective that
     cannot be treated as independent while its lower milestone is
-    incomplete. When the goal's character also has a banner strictly after
+    incomplete. When the goal's target also has a banner strictly after
     the current one, that goal's pursuit belongs to the later banner - the
     current banner belongs to the active milestone, and the planner is
     re-run after every account update (§2). Without a strictly later
     banner the current banner is the goal's only remaining opportunity and
-    nothing is demoted.
+    nothing is demoted. Targets are matched by unified target identity
+    (character or weapon), never by the character accessor.
     """
     current = banner if banner is not None else current_banner(context)
     if not any(
         banner.order_key > current.order_key
-        for banner in context.roadmap.banners_for(current.character)
+        for banner in context.roadmap.banners_for_target(current.target)
     ):
         return frozenset()
     return frozenset(
-        evaluation.goal.constellation
+        evaluation.goal.level
         for evaluation in relevant_goal_evaluations(context)
         if evaluation.state is GoalState.BLOCKED
+        and evaluation.goal.target == current.target
+    )
+
+
+def _weapon_outcomes(
+    context: PlannerContext,
+    preferences: Iterable[Preference],
+    banner: Banner,
+) -> tuple[OutcomeOption, ...]:
+    """Outcomes for a weapon banner (Phase 4 unification).
+
+    Mirror of the character resolution order: the weapon's preference
+    chain (a weapon preference names the weapon in `character` and its
+    refinement in `weapon_refinement`) first, then the single ACTIVE
+    roadmap goal for the weapon as the user-defined fallback. Refinement
+    levels for one weapon are strictly nested (reaching R2 necessarily
+    reaches R1), so outcomes are ordered by descending level within each
+    scheduling class, exactly like character constellations.
+    """
+    weapon = banner.target.name
+    owned = context.account.owned_characters.owned_refinement(weapon)
+
+    chain = sort_by_rank(
+        [preference for preference in preferences if preference.character == weapon]
+    )
+    if chain:
+        # Collapse duplicate levels to their best rank (§15). A weapon
+        # preference's wanted level is its refinement when one is asked
+        # for ("R1" -> 1), otherwise its constellation (a plain base-copy
+        # request).
+        best_by_level: dict[int, Preference] = {}
+        for preference in chain:
+            level = (
+                preference.weapon_refinement
+                if preference.weapon_refinement > 0
+                else preference.constellation
+            )
+            best_by_level.setdefault(level, preference)
+        later_progression = _later_progression_constellations(context, banner)
+        eligible = tuple(
+            OutcomeOption(
+                character=weapon,
+                constellation=level,
+                rank=preference.rank,
+                later_progression=level in later_progression,
+                target=WeaponTarget(weapon),
+            )
+            for level, preference in best_by_level.items()
+            if level > owned
+        )
+        return tuple(
+            sorted(
+                eligible,
+                key=lambda option: (option.later_progression, -option.constellation),
+            )
+        )
+
+    # No preference chain for this weapon: fall back to the roadmap goal
+    # (§5) - user-defined data, never invented (§2).
+    active = [
+        evaluation
+        for evaluation in actionable_goals(context, banner)
+        if evaluation.goal.target == banner.target
+    ]
+    if len(active) > 1:
+        listed = ", ".join(
+            f"{evaluation.goal.weapon} R{evaluation.goal.level} "
+            f"(priority {evaluation.goal.priority})"
+            for evaluation in active
+        )
+        raise ValueError(
+            "ambiguous roadmap: multiple active goals match the current "
+            f"weapon banner ({listed}); the optimizer will not silently choose"
+        )
+    if not active:
+        return ()
+    goal = active[0].goal
+    # ACTIVE means copies_needed > 0, i.e. goal.level > owned refinement (§9).
+    return (
+        OutcomeOption(
+            character=weapon,
+            constellation=goal.level,
+            rank=1,
+            target=WeaponTarget(weapon),
+        ),
     )
 
 
@@ -163,6 +276,10 @@ def available_outcomes(
             character has several ACTIVE roadmap goals - degenerate
             duplicate goals; the optimizer will not silently choose (the
             same refusal as planner.spend_table).
+
+    Weapon banners dispatch to `_weapon_outcomes` (Phase 4): both banner
+    kinds are members of the same ordered opportunity set, resolved with
+    their own target type's ownership and levels.
     """
     if banner is None:
         matches = available_banners(context)
@@ -172,6 +289,8 @@ def available_outcomes(
                 "banners are available at the current version/phase"
             )
         banner = matches[0]
+    if banner.target.kind is TargetKind.WEAPON:
+        return _weapon_outcomes(context, preferences, banner)
     character = banner.character
     owned = context.account.owned_constellation(character)
 

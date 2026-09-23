@@ -95,7 +95,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Callable
 
-from domain import Banner, Preference
+from domain import Banner, Goal, Preference
 from planner import PlannerContext
 from planner.banners import available_banners
 from planner.banners import current_banner
@@ -217,6 +217,129 @@ class Recommendation:
     runs: int
     seed: int | None
     discretionary_reason: str | None = None
+    account_wishes: int = 0
+
+    @property
+    def target_kind(self) -> str:
+        """The pursued target's kind: "character", "weapon" or "none".
+
+        Lets the UI label the recommendation without inspecting planner
+        internals (Phase 4 response contract).
+        """
+        if self.outcome is None:
+            return "none"
+        if self.outcome.target is not None:
+            return str(self.outcome.target.kind.value)
+        return "character"
+
+    @property
+    def target_name(self) -> str | None:
+        """The pursued target's display name, or None when skipping."""
+        return None if self.outcome is None else self.outcome.character
+
+    @property
+    def spend_limit(self) -> int:
+        """The spend amount: the current-banner spend cap in wishes.
+
+        The existing `budget` under its contract name (Phase 4 response
+        contract: "spend_limit").
+        """
+        return self.budget
+
+    @property
+    def spend_down_to(self) -> int:
+        """The wish balance to keep after the spend: wishes - spend_limit.
+
+        Spending beyond this would eat into the protected reserve. Under a
+        skip nothing is spent and the whole pool is kept.
+        """
+        return max(0, self.account_wishes - self.budget)
+
+    @property
+    def _constraining_standings(self) -> tuple[GoalStanding, ...]:
+        return tuple(s for s in self.protected if s.constraining)
+
+    @property
+    def protected_goal(self) -> Goal | None:
+        """The highest-priority protected goal this decision must not break.
+
+        Character or weapon (Phase 4): whatever roadmap goal actually
+        constrains the current spend. None when nothing constrains it.
+        """
+        constraining = self._constraining_standings
+        if not constraining:
+            return None
+        return min(constraining, key=lambda s: s.goal.priority).goal
+
+    @property
+    def protected_reserve(self) -> int:
+        """The account-level protected reserve in wishes.
+
+        One reserve across both goal types - never separate character and
+        weapon pools (Phase 4). With a single constraining protected goal
+        this is exactly the balance its protection requires
+        (spend_down_to); with several constraining goals the sequential
+        reserve may need more than one goal's worth, and the authoritative
+        bound remains the spend limit itself (optimizer.protection's
+        uncapped-budget semantics: each future group may use the pool
+        credited to its banner, but the current spend may not take more
+        than `spend_limit`).
+        """
+        if not self._constraining_standings:
+            return 0
+        return self.spend_down_to
+
+    @property
+    def confidence(self) -> float | None:
+        """The recommendation's confidence in the current objective.
+
+        The outcome's probability at the reported spend limit; None under a
+        skip (there is no pursued outcome to attach a confidence to).
+        """
+        if self.action == "skip":
+            return None
+        return self.outcome_probability
+
+    @property
+    def reasons(self) -> tuple[str, ...]:
+        """Human-readable reasoning, from the existing decision evidence.
+
+        Composed from the recommendation's own fields and stop rules - no
+        separate explanation system (Phase 4 contract).
+        """
+        from optimizer.outcomes import goal_label
+
+        reasons: list[str] = []
+        if self.action == "skip":
+            reasons.append(self.skip_reason or "Do not spend on this banner now.")
+        else:
+            assert self.outcome is not None
+            kind = "weapon" if self.target_kind == "weapon" else "character"
+            reasons.append(
+                f"{self.outcome.label} on {self.outcome.character} is the "
+                f"current highest-priority actionable goal on the current "
+                f"{kind} banner."
+            )
+            reasons.append(
+                f"Spend up to {self.budget} wish(es); keep at least "
+                f"{self.spend_down_to} (the protected reserve) afterwards."
+            )
+        for standing in self._constraining_standings:
+            label = goal_label(standing.goal)
+            if standing.meets_threshold:
+                reasons.append(
+                    f"{label} remains protected: a {standing.probability:.0%} "
+                    "chance of completion after this spend."
+                )
+            else:
+                reasons.append(
+                    f"{label} is below threshold after this spend "
+                    f"({standing.probability:.0%}); the spend limit is what "
+                    "keeps every protected goal at its required confidence."
+                )
+        if self.action == "discretionary" and self.discretionary_reason:
+            reasons.append(self.discretionary_reason)
+        return tuple(reasons)
 
 
 
@@ -253,6 +376,7 @@ def _skip(
         runs=runs,
         seed=seed,
         discretionary_reason=None,
+        account_wishes=context.account.wishes,
     )
 
 
@@ -522,6 +646,7 @@ def recommend(
             runs=runs,
             seed=seed,
             discretionary_reason=None,
+            account_wishes=context.account.wishes,
         )
     reason = _discretionary_reason(
         winner_outcome.label,
@@ -548,4 +673,5 @@ def recommend(
         runs=runs,
         seed=seed,
         discretionary_reason=reason,
+        account_wishes=context.account.wishes,
     )

@@ -1,0 +1,433 @@
+{
+  "E1": {
+    "action": "pursue",
+    "target_kind": "weapon",
+    "target_name": "Favonius Sword",
+    "budget": 500,
+    "spend_down_to": 0,
+    "protected_reserve": 0,
+    "protected_goal": null,
+    "confidence": 1.0,
+    "outcome_probability": 1.0,
+    "all_goals_probability": 0.0,
+    "account_wishes": 500,
+    "banner": {
+      "target": "WeaponTarget(kind=<TargetKind.WEAPON: 'weapon'>, name='Favonius Sword')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Favonius Sword",
+    "protected": [
+      {
+        "label": "character Venti 0",
+        "priority": 2,
+        "probability": 0.0,
+        "meets_threshold": false,
+        "constraining": false
+      }
+    ],
+    "reasons": [
+      "R1 on Favonius Sword is the current highest-priority actionable goal on the current weapon banner.",
+      "Spend up to 500 wish(es); keep at least 0 (the protected reserve) afterwards."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": null,
+    "spend_limit": 500
+  },
+  "E2": {
+    "action": "discretionary",
+    "target_kind": "character",
+    "target_name": "Venti",
+    "budget": 200,
+    "spend_down_to": 0,
+    "protected_reserve": 0,
+    "protected_goal": null,
+    "confidence": 0.139,
+    "outcome_probability": 0.139,
+    "all_goals_probability": 0.0,
+    "account_wishes": 200,
+    "banner": {
+      "target": "CharacterTarget(kind=<TargetKind.CHARACTER: 'character'>, name='Venti')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Venti",
+    "protected": [
+      {
+        "label": "weapon Favonius Sword 1",
+        "priority": 2,
+        "probability": 0.0,
+        "meets_threshold": false,
+        "constraining": false
+      }
+    ],
+    "reasons": [
+      "C2 on Venti is the current highest-priority actionable goal on the current character banner.",
+      "Spend up to 200 wish(es); keep at least 0 (the protected reserve) afterwards.",
+      "C2 is available but not recommended: the largest spend that still protects every higher-priority goal gives only a 14% chance of achieving it, below the 25% minimum for an ordinary recommendation. You may still spend up to the reported budget if you want to take the gamble, but success is unlikely."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": "C2 is available but not recommended: the largest spend that still protects every higher-priority goal gives only a 14% chance of achieving it, below the 25% minimum for an ordinary recommendation. You may still spend up to the reported budget if you want to take the gamble, but success is unlikely.",
+    "spend_limit": 200
+  },
+  "P1": {
+    "action": "pursue",
+    "target_kind": "weapon",
+    "target_name": "Wolf Fang",
+    "budget": 300,
+    "spend_down_to": 0,
+    "protected_reserve": 0,
+    "protected_goal": null,
+    "confidence": 0.9999999999,
+    "outcome_probability": 0.9999999999,
+    "all_goals_probability": 0.0,
+    "account_wishes": 300,
+    "banner": {
+      "target": "WeaponTarget(kind=<TargetKind.WEAPON: 'weapon'>, name='Wolf Fang')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Wolf Fang",
+    "protected": [
+      {
+        "label": "character Vesna 0",
+        "priority": 2,
+        "probability": 0.0,
+        "meets_threshold": false,
+        "constraining": false
+      },
+      {
+        "label": "weapon Fav Sword 1",
+        "priority": 3,
+        "probability": 0.0,
+        "meets_threshold": false,
+        "constraining": false
+      }
+    ],
+    "reasons": [
+      "R1 on Wolf Fang is the current highest-priority actionable goal on the current weapon banner.",
+      "Spend up to 300 wish(es); keep at least 0 (the protected reserve) afterwards."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": null,
+    "spend_limit": 300
+  },
+  "P9b_fresh": {
+    "action": "pursue",
+    "target_kind": "character",
+    "target_name": "Vesna",
+    "budget": 300,
+    "spend_down_to": 0,
+    "protected_reserve": 0,
+    "protected_goal": "character Tsaritsa 0",
+    "confidence": 1.0,
+    "outcome_probability": 1.0,
+    "all_goals_probability": 0.945,
+    "account_wishes": 300,
+    "banner": {
+      "target": "CharacterTarget(kind=<TargetKind.CHARACTER: 'character'>, name='Vesna')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Vesna",
+    "protected": [
+      {
+        "label": "character Tsaritsa 0",
+        "priority": 1,
+        "probability": 0.945,
+        "meets_threshold": true,
+        "constraining": true
+      }
+    ],
+    "reasons": [
+      "C0 on Vesna is the current highest-priority actionable goal on the current character banner.",
+      "Spend up to 300 wish(es); keep at least 0 (the protected reserve) afterwards.",
+      "Tsaritsa C0 remains protected: a 94% chance of completion after this spend."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": null,
+    "spend_limit": 300
+  },
+  "P9b_loaded": {
+    "action": "pursue",
+    "target_kind": "character",
+    "target_name": "Vesna",
+    "budget": 300,
+    "spend_down_to": 0,
+    "protected_reserve": 0,
+    "protected_goal": "character Tsaritsa 0",
+    "confidence": 1.0,
+    "outcome_probability": 1.0,
+    "all_goals_probability": 1.0,
+    "account_wishes": 300,
+    "banner": {
+      "target": "CharacterTarget(kind=<TargetKind.CHARACTER: 'character'>, name='Vesna')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Vesna",
+    "protected": [
+      {
+        "label": "character Tsaritsa 0",
+        "priority": 1,
+        "probability": 1.0,
+        "meets_threshold": true,
+        "constraining": true
+      }
+    ],
+    "reasons": [
+      "C0 on Vesna is the current highest-priority actionable goal on the current character banner.",
+      "Spend up to 300 wish(es); keep at least 0 (the protected reserve) afterwards.",
+      "Tsaritsa C0 remains protected: a 100% chance of completion after this spend."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": null,
+    "spend_limit": 300
+  },
+  "M1": {
+    "action": "pursue",
+    "target_kind": "weapon",
+    "target_name": "Wolf Fang",
+    "budget": 300,
+    "banner_str": "Wolf Fang"
+  },
+  "M2": {
+    "action": "pursue",
+    "target_kind": "character",
+    "target_name": "Vesna",
+    "budget": 300,
+    "protected_goal": null
+  },
+  "S1_fresh": 0.0137642058,
+  "S1_loaded": 0.1649750273,
+  "S2_fresh": 0.0875,
+  "S2_loaded": 1.0,
+  "Q1": {
+    "action": "pursue",
+    "target_kind": "weapon",
+    "target_name": "Wolf Fang",
+    "budget": 145,
+    "spend_down_to": 155,
+    "protected_reserve": 155,
+    "protected_goal": "character Tsaritsa 0",
+    "confidence": 0.3101271374,
+    "outcome_probability": 0.3101271374,
+    "all_goals_probability": 0.2798201608,
+    "account_wishes": 300,
+    "banner": {
+      "target": "WeaponTarget(kind=<TargetKind.WEAPON: 'weapon'>, name='Wolf Fang')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Wolf Fang",
+    "protected": [
+      {
+        "label": "character Tsaritsa 0",
+        "priority": 1,
+        "probability": 0.902275638,
+        "meets_threshold": true,
+        "constraining": true
+      }
+    ],
+    "reasons": [
+      "R1 on Wolf Fang is the current highest-priority actionable goal on the current weapon banner.",
+      "Spend up to 145 wish(es); keep at least 155 (the protected reserve) afterwards.",
+      "Tsaritsa C0 remains protected: a 90% chance of completion after this spend."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": null,
+    "spend_limit": 145
+  },
+  "Q2": {
+    "action": "discretionary",
+    "target_kind": "character",
+    "target_name": "Vesna",
+    "budget": 49,
+    "spend_down_to": 251,
+    "protected_reserve": 251,
+    "protected_goal": "weapon Fav Sword 1",
+    "confidence": 0.1375,
+    "outcome_probability": 0.1375,
+    "all_goals_probability": 0.1240485433,
+    "account_wishes": 300,
+    "banner": {
+      "target": "CharacterTarget(kind=<TargetKind.CHARACTER: 'character'>, name='Vesna')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Vesna",
+    "protected": [
+      {
+        "label": "weapon Fav Sword 1",
+        "priority": 1,
+        "probability": 0.9021712239,
+        "meets_threshold": true,
+        "constraining": true
+      }
+    ],
+    "reasons": [
+      "C0 on Vesna is the current highest-priority actionable goal on the current character banner.",
+      "Spend up to 49 wish(es); keep at least 251 (the protected reserve) afterwards.",
+      "Fav Sword R1 remains protected: a 90% chance of completion after this spend.",
+      "C0 is available but not recommended: the largest spend that still protects every higher-priority goal gives only a 14% chance of achieving it, below the 25% minimum for an ordinary recommendation. You may still spend up to the reported budget if you want to take the gamble, but success is unlikely."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": "C0 is available but not recommended: the largest spend that still protects every higher-priority goal gives only a 14% chance of achieving it, below the 25% minimum for an ordinary recommendation. You may still spend up to the reported budget if you want to take the gamble, but success is unlikely.",
+    "spend_limit": 49
+  },
+  "Q3": {
+    "action": "pursue",
+    "target_kind": "weapon",
+    "target_name": "Wolf Fang",
+    "reasons": [
+      "R1 on Wolf Fang is the current highest-priority actionable goal on the current weapon banner.",
+      "Spend up to 300 wish(es); keep at least 0 (the protected reserve) afterwards."
+    ]
+  },
+  "Q4": {
+    "action": "pursue",
+    "target_kind": "character",
+    "target_name": "Vesna",
+    "reasons": [
+      "C0 on Vesna is the current highest-priority actionable goal on the current character banner.",
+      "Spend up to 300 wish(es); keep at least 0 (the protected reserve) afterwards."
+    ]
+  },
+  "Q5": {
+    "action": "skip",
+    "skip_reason": "no active goal or preferred outcome to pursue",
+    "reasons": [
+      "no active goal or preferred outcome to pursue"
+    ]
+  },
+  "Q6": {
+    "action": "skip",
+    "skip_reason": "no active goal or preferred outcome to pursue"
+  },
+  "Q7": {
+    "action": "skip",
+    "skip_reason": "no active goal or preferred outcome to pursue"
+  },
+  "Q8_cr0": 0.5975,
+  "Q8_cr2": 0.6525,
+  "Q9_plain": 0.0058873549,
+  "Q9_guaranteed": 0.0074633513,
+  "Q10": {
+    "action": "pursue",
+    "spend_limit": 145,
+    "spend_down": 155,
+    "prot_res": 155,
+    "kind": "weapon",
+    "conf_is_not_none": true,
+    "reasons_len": 3
+  },
+  "X1": {
+    "action": "discretionary",
+    "target_kind": "character",
+    "target_name": "Vesna",
+    "budget": 9,
+    "spend_down_to": 291,
+    "protected_reserve": 291,
+    "protected_goal": "character Tsaritsa 0",
+    "confidence": 0.03,
+    "outcome_probability": 0.03,
+    "all_goals_probability": 0.0272584889,
+    "account_wishes": 300,
+    "banner": {
+      "target": "CharacterTarget(kind=<TargetKind.CHARACTER: 'character'>, name='Vesna')",
+      "version": "7.0",
+      "phase": 1
+    },
+    "banner_str": "Vesna",
+    "protected": [
+      {
+        "label": "character Tsaritsa 0",
+        "priority": 1,
+        "probability": 1.0,
+        "meets_threshold": true,
+        "constraining": true
+      },
+      {
+        "label": "weapon Fav Sword 2",
+        "priority": 2,
+        "probability": 0.9086162968,
+        "meets_threshold": true,
+        "constraining": true
+      }
+    ],
+    "reasons": [
+      "C0 on Vesna is the current highest-priority actionable goal on the current character banner.",
+      "Spend up to 9 wish(es); keep at least 291 (the protected reserve) afterwards.",
+      "Tsaritsa C0 remains protected: a 100% chance of completion after this spend.",
+      "Fav Sword R2 remains protected: a 91% chance of completion after this spend.",
+      "C0 is available but not recommended: the largest spend that still protects every higher-priority goal gives only a 3% chance of achieving it, below the 25% minimum for an ordinary recommendation. You may still spend up to the reported budget if you want to take the gamble, but success is unlikely."
+    ],
+    "skip_reason": null,
+    "discretionary_reason": "C0 is available but not recommended: the largest spend that still protects every higher-priority goal gives only a 3% chance of achieving it, below the 25% minimum for an ordinary recommendation. You may still spend up to the reported budget if you want to take the gamble, but success is unlikely.",
+    "spend_limit": 9
+  },
+  "X1_FP_plain": 0.0058873549,
+  "X1_FP_fp1": 0.0137673368,
+  "X1_standpoints": {
+    "spent_49": {
+      "outcomes": [
+        {
+          "name": "Fav Sword",
+          "budget_at_banner": 251,
+          "confidence": 0.9022,
+          "required_wishes": 251,
+          "meets_threshold": true
+        }
+      ],
+      "analytic_probability": 0.9021712239,
+      "analytic_meets_threshold": true
+    },
+    "spent_50": {
+      "outcomes": [
+        {
+          "name": "Fav Sword",
+          "budget_at_banner": 250,
+          "confidence": 0.8998,
+          "required_wishes": 251,
+          "meets_threshold": false
+        }
+      ],
+      "analytic_probability": 0.8998362807,
+      "analytic_meets_threshold": false
+    },
+    "spent_140": {
+      "outcomes": [
+        {
+          "name": "Fav Sword",
+          "budget_at_banner": 160,
+          "confidence": 0.4,
+          "required_wishes": 251,
+          "meets_threshold": false
+        }
+      ],
+      "analytic_probability": 0.3999501077,
+      "analytic_meets_threshold": false
+    },
+    "spent_250": {
+      "outcomes": [
+        {
+          "name": "Fav Sword",
+          "budget_at_banner": 50,
+          "confidence": 0.0094,
+          "required_wishes": 251,
+          "meets_threshold": false
+        }
+      ],
+      "analytic_probability": 0.0093974425,
+      "analytic_meets_threshold": false
+    },
+    "conf_at_136": 0.9086162968360877,
+    "conf_at_251": 1.0,
+    "weapon_reserve_copies_1": 136,
+    "char_reserve_1copy_90": 136,
+    "income_credit_7.1": 0
+  },
+  "reserves": {
+    "weapon_reserve_copies_1": 136
+  }
+}

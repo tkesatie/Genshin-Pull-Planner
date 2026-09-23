@@ -17,6 +17,7 @@ Construction only: anything involving simulation lives in
 optimizer.evaluation.
 """
 
+from domain import TargetKind
 from planner import PlannerContext
 from planner.banners import current_banner
 from simulation import PlannedSpend, SpendPlan
@@ -65,6 +66,12 @@ def candidate_plan(
             budget=group.uncapped_budget,
         )
         for group in protected_groups(context, banner=selected_banner)
+        # Weapon banners are never character-simulated (Phase 4): the
+        # character Monte Carlo models character pity/guarantee/ownership
+        # only. Protected weapon goals are evaluated against the shared
+        # wish pool through the exact weapon probability engine
+        # (optimizer.evaluation), not by plan entries here.
+        if group.banner.target.kind is TargetKind.CHARACTER
     )
     return SpendPlan(
         entries=tuple(entries),

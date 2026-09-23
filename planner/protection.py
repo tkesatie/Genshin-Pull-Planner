@@ -38,11 +38,46 @@ tests/test_reserve_accounting.py for the regression test that pins this.
 
 from dataclasses import dataclass
 
-from domain import Banner, Goal
+from domain import Banner, Goal, TargetKind, WEAPON_EVENT_BANNER
 from planner.banners import current_banner
 from planner.context import PlannerContext
 from planner.goals import GoalEvaluation, evaluate_goals
-from probability import multi_copy_cumulative_probability, multi_copy_wishes_for_confidence
+from probability import (
+    multi_copy_cumulative_probability,
+    multi_copy_wishes_for_confidence,
+    weapon_cumulative_probability,
+    weapon_wishes_for_confidence,
+)
+
+
+def weapon_goal_reserve(context: PlannerContext, copies: int) -> int:
+    """A weapon goal's full reserve: the wish count that reaches the
+    context's confidence threshold from a FRESH weapon-banner state.
+
+    The fresh state (pity 0, no guarantee, no Fate Points) is the
+    weapon-banner mirror of the character reserve's "pity 0, no
+    guarantee" starting point (planner.protection): obtaining the current
+    target ends that banner at zero pity, while future guarantee or
+    Fate-Point advantages should not be required to justify spending now.
+    The reserve uses the exact weapon probability engine
+    (probability.weapon) - never the character probability API.
+    """
+    return weapon_wishes_for_confidence(
+        context.confidence, 0, False, 0, WEAPON_EVENT_BANNER, copies=copies
+    )
+
+
+def weapon_goal_confidence(context: PlannerContext, copies: int, budget: int) -> float:
+    """P(copies designated copies within `budget` wishes) from the fresh
+    weapon state, via the exact weapon probability engine."""
+    if copies <= 0:
+        return 1.0
+    if budget <= 0:
+        return 0.0
+    curve = weapon_cumulative_probability(
+        budget, 0, False, 0, WEAPON_EVENT_BANNER, copies=copies
+    )
+    return float(curve[budget])
 
 
 @dataclass(frozen=True)
@@ -120,14 +155,24 @@ def protected_goal_outcomes(
         credited_through = max(credited_through, credit)
 
         copies = evaluation.copies_needed
-        required = multi_copy_wishes_for_confidence(
-            context.confidence, copies, 0, False, context.mechanics
-        )
-        confidence = float(
-            multi_copy_cumulative_probability(budget, copies, 0, False, context.mechanics)[
-                budget
-            ]
-        )
+        if evaluation.goal.target.kind is TargetKind.WEAPON:
+            # Weapon goals use the weapon banner's own probability
+            # mechanics (§10 weapon): the exact designated-copy DP from a
+            # fresh weapon state - never the character probability API.
+            # The reserve is computed over the SAME account wish pool:
+            # character and weapon goals compete for one budget here, so
+            # no separate weapon reserve can silently exceed the account.
+            required = weapon_goal_reserve(context, copies)
+            confidence = weapon_goal_confidence(context, copies, budget)
+        else:
+            required = multi_copy_wishes_for_confidence(
+                context.confidence, copies, 0, False, context.mechanics
+            )
+            confidence = float(
+                multi_copy_cumulative_probability(budget, copies, 0, False, context.mechanics)[
+                    budget
+                ]
+            )
         outcomes.append(
             ProtectedGoalOutcome(
                 goal=evaluation.goal,

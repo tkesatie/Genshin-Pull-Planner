@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from domain.banners import Banner, sorted_chronologically
 from domain.goals import Goal
+from domain.targets import GoalTarget
 
 
 @dataclass(frozen=True)
@@ -48,4 +49,18 @@ class Roadmap:
             banner
             for banner in self.banners_in_chronological_order()
             if banner.character == character
+        ]
+
+    def banners_for_target(self, target: GoalTarget) -> list[Banner]:
+        """All banners featuring the target (character or weapon), chronological.
+
+        The target-aware counterpart of `banners_for`: weapon banners have
+        no `.character` accessor, so unified (target-based) lookup must not
+        go through the character property. For character targets the two
+        methods return the same banners.
+        """
+        return [
+            banner
+            for banner in self.banners_in_chronological_order()
+            if banner.target == target
         ]
