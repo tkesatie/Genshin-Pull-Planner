@@ -1629,6 +1629,7 @@ function addGoalRow(goal, kindOverride = null) {
   type.value = kind;
   const target = textInput(goal?.target_name ?? goal?.character ?? goal?.weapon ?? "", "Character or weapon");
   const level = numberInput(goal?.level ?? goal?.constellation ?? goal?.refinement ?? (kind === "weapon" ? 1 : 0), { min: kind === "weapon" ? 1 : 0 });
+  level.min = kind === "weapon" ? "1" : "0";
   level.max = kind === "weapon" ? "5" : "6";
   level.addEventListener("input", () => {
     const max = Number(level.max);
