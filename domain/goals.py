@@ -95,7 +95,7 @@ def copies_needed_for(account: Account, goal: Goal) -> int:
         # Once owned, refinement levels are R0..R5 and each additional
         # refinement requires one more copy.
         if owned < 0:
-            return goal.level
+            return max(goal.level, 1)
     return max(goal.level - owned, 0)
 
 
