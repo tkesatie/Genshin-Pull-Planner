@@ -260,6 +260,11 @@
   .edit-table input { width: 100%; padding: .35rem .5rem; font-size: .85rem; }
   .edit-table td.col-delete { width: 2.4rem; text-align: center; padding: .4rem; }
   .edit-table td.col-delete button { padding: .25rem .55rem; font-size: .85rem; }
+  .goal-edit-status { color:var(--muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; }
+  .goal-edit-status.complete { color:var(--green); }
+  .goal-edit-status.blocked { color:var(--red); }
+  .goal-edit-status.active, .goal-edit-status.actionable { color:var(--gold-bright); font-weight:650; }
+  .editor-actions { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
   .empty { padding:3rem 0; }
   .empty .verdict { font-size:2rem; }
   .auth-panel { max-width: 28rem; margin: 5rem auto 0; }
@@ -407,15 +412,16 @@
     <details class="account-editor">
       <summary>Goals</summary>
       <div class="panel">
-        <p class="muted">Roadmap objectives, in priority order (priority 1 is protected first). Add either a character constellation goal or a weapon refinement goal.</p>
+        <p class="muted">Set the targets you want to pursue. Lower priority numbers are protected first; status reflects the planner's current view of each saved goal.</p>
         <div class="table-panel">
           <table class="edit-table">
-            <thead><tr><th>Type</th><th>Target</th><th>Level</th><th>Priority</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Target</th><th>Level</th><th>Priority</th><th>Status</th><th></th></tr></thead>
             <tbody id="goals-rows"></tbody>
           </table>
         </div>
-        <div class="account-form-actions">
-          <button id="goals-add" type="button">+ Add goal</button>
+        <div class="editor-actions">
+          <button id="goals-add-character" type="button">+ Add character</button>
+          <button id="goals-add-weapon" type="button">+ Add weapon</button>
           <button id="goals-save" class="primary" type="button">Save goals</button>
           <span id="goals-note" class="muted"></span>
         </div>
@@ -488,7 +494,8 @@
           </table>
         </div>
         <div class="account-form-actions">
-          <button id="owned-characters-add" type="button">+ Add item</button>
+          <button id="owned-characters-add-character" type="button">+ Add character</button>
+          <button id="owned-characters-add-weapon" type="button">+ Add weapon</button>
           <button id="owned-characters-save" class="primary" type="button">Save ownership</button>
           <span id="owned-characters-note" class="muted"></span>
         </div>
@@ -1594,11 +1601,20 @@ function nextGoalPriority() {
   return priorities.length ? Math.max(...priorities) + 1 : 1;
 }
 
-function addGoalRow(goal) {
+function goalStatus(goal) {
+  if (!goal) return "Not saved";
+  if (goal.state) return String(goal.state).replace(/_/g, " ");
+  if (goal.blocked_by) return "Blocked";
+  if (goal.actionable) return "Actionable";
+  if (goal.relevant === false) return "Not relevant";
+  return "Not evaluated";
+}
+
+function addGoalRow(goal, kindOverride = null) {
   const row = document.createElement("tr");
   const type = document.createElement("select");
   type.innerHTML = '<option value="character">Character</option><option value="weapon">Weapon</option>';
-  const kind = goal?.target_kind || (goal?.weapon != null ? "weapon" : "character");
+  const kind = kindOverride || goal?.target_kind || (goal?.weapon != null ? "weapon" : "character");
   type.value = kind;
   const target = textInput(goal?.target_name ?? goal?.character ?? goal?.weapon ?? "", "Character or weapon");
   const level = numberInput(goal?.level ?? goal?.constellation ?? goal?.refinement ?? 0, { min: 0 });
@@ -1608,11 +1624,20 @@ function addGoalRow(goal) {
     level.value = Math.min(Number(level.value) || 0, Number(level.max));
     target.placeholder = type.value === "weapon" ? "Weapon" : "Character";
   });
+  const status = document.createElement("td");
+  status.className = "goal-edit-status";
+  status.textContent = goalStatus(goal);
+  const statusClass = String(goal?.state || "").toLowerCase();
+  if (["complete", "completed", "satisfied"].includes(statusClass)) status.classList.add("complete");
+  if (["blocked", "unavailable"].includes(statusClass)) status.classList.add("blocked");
+  if (["active", "actionable", "current"].includes(statusClass)) status.classList.add("active");
+
   row.append(
     editCell(type),
     editCell(target),
     editCell(level),
     editCell(numberInput(goal?.priority ?? nextGoalPriority(), { min: 1 })),
+    status,
     editDeleteCell(row)
   );
   $("goals-rows").append(row);
@@ -2094,9 +2119,11 @@ $("auth-switch").addEventListener("click", () => {
 });
 $("logout").addEventListener("click", logout);
 $("save").addEventListener("click", saveAccount);
-$("owned-characters-add").addEventListener("click", () => addOwnedCharacterRow());
+$("owned-characters-add-character").addEventListener("click", () => addOwnedCharacterRow("character"));
+$("owned-characters-add-weapon").addEventListener("click", () => addOwnedCharacterRow("weapon"));
 $("owned-characters-save").addEventListener("click", saveOwnedCharacters);
-$("goals-add").addEventListener("click", () => addGoalRow());
+$("goals-add-character").addEventListener("click", () => addGoalRow(null, "character"));
+$("goals-add-weapon").addEventListener("click", () => addGoalRow(null, "weapon"));
 $("goals-save").addEventListener("click", saveGoals);
 $("banners-add").addEventListener("click", () => addBannerRow());
 $("banners-save").addEventListener("click", saveBanners);
