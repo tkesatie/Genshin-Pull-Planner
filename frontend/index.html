@@ -1392,10 +1392,18 @@ function addOwnedCharacterRow(kind = "character", name = "", level = 0) {
   type.addEventListener("change", () => {
     levelInput.max = type.value === "weapon" ? "5" : "6";
     levelInput.placeholder = type.value === "weapon" ? "R0–R5" : "C0–C6";
+    levelInput.setCustomValidity("");
   });
   const levelInput = numberInput(level ?? 0, { min: 0, step: 1 });
   levelInput.max = kind === "weapon" ? "5" : "6";
   levelInput.placeholder = kind === "weapon" ? "R0–R5" : "C0–C6";
+  levelInput.addEventListener("input", () => {
+    const max = Number(levelInput.max);
+    const value = Number(levelInput.value);
+    levelInput.setCustomValidity(Number.isInteger(value) && value > max
+      ? (type.value === "weapon" ? "Weapon refinement cannot exceed R5." : "Character constellation cannot exceed C6.")
+      : "");
+  });
   row.append(
     editCell(type),
     editCell(textInput(name ?? "", "Name")),
@@ -1435,7 +1443,8 @@ async function saveOwnedCharacters() {
       if (!name) throw new Error(`Every owned-${kind} row needs a name.`);
       const max = kind === "weapon" ? 5 : 6;
       if (!Number.isInteger(level) || level < 0 || level > max) {
-        throw new Error(`${kind === "weapon" ? "Weapon refinements" : "Character constellations"} must be whole numbers from 0 to ${max}.`);
+        row.children[2].querySelector("input").reportValidity();
+        throw new Error((kind === "weapon" ? "Weapon refinement" : "Character constellation") + " must be a whole number from 0 to " + max + ".");
       }
       const target = kind === "weapon" ? ownedWeapons : ownedCharacters;
       if (Object.prototype.hasOwnProperty.call(target, name)) {
@@ -1619,6 +1628,13 @@ function addGoalRow(goal, kindOverride = null) {
   const target = textInput(goal?.target_name ?? goal?.character ?? goal?.weapon ?? "", "Character or weapon");
   const level = numberInput(goal?.level ?? goal?.constellation ?? goal?.refinement ?? 0, { min: 0 });
   level.max = kind === "weapon" ? "5" : "6";
+  level.addEventListener("input", () => {
+    const max = Number(level.max);
+    const value = Number(level.value);
+    level.setCustomValidity(Number.isInteger(value) && value > max
+      ? (kind === "weapon" ? "Weapon refinement cannot exceed R5." : "Character constellation cannot exceed C6.")
+      : "");
+  });
   type.addEventListener("change", () => {
     level.max = type.value === "weapon" ? "5" : "6";
     level.value = Math.min(Number(level.value) || 0, Number(level.max));
@@ -1655,19 +1671,22 @@ async function saveGoals() {
   $("goals-note").textContent = "Saving…";
   try {
     const rows = Array.from($("goals-rows").querySelectorAll("tr"));
-    const payload = {
-      goals: rows.map((row) => {
-        const kind = row.children[0].querySelector("select").value;
-        const name = row.children[1].querySelector("input").value.trim();
-        const level = Number(row.children[2].querySelector("input").value) || 0;
-        const priority = Number(row.children[3].querySelector("input").value) || 0;
-        return {
-          target_kind: kind,
-          target_name: name,
-          level,
-          priority,
-        };
-      }),
+    const goals = rows.map((row) => {
+      const kind = row.children[0].querySelector("select").value;
+      const name = row.children[1].querySelector("input").value.trim();
+      const levelInput = row.children[2].querySelector("input");
+      const level = Number(levelInput.value);
+      const priority = Number(row.children[3].querySelector("input").value) || 0;
+      const max = kind === "weapon" ? 5 : 6;
+      if (!name) throw new Error("Every goal needs a character or weapon name.");
+      if (!Number.isInteger(level) || level < 0 || level > max) {
+        levelInput.reportValidity();
+        throw new Error((kind === "weapon" ? "Weapon refinement" : "Character constellation") + " must be a whole number from 0 to " + max + ".");
+      }
+      if (!Number.isInteger(priority) || priority < 1) throw new Error("Goal priority must be a positive whole number.");
+      return { target_kind: kind, target_name: name, level, priority };
+    });
+    const payload = { goals };      }),
     };
     const result = await api(`/accounts/${state.account.id}/goals`, {
       method: "PUT",
