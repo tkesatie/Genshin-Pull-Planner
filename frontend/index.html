@@ -138,7 +138,15 @@
   .decision-detail { max-width: 58rem; font-size:.92rem; color:#aab4c3; }
 
   .strategy-plan-head { display:flex; justify-content:space-between; align-items:flex-start; gap:2rem; position:relative; z-index:1; }
-  .plan-resources { display:flex; gap:1.4rem; text-align:right; }
+  .plan-resources { display:flex; align-items:center; gap:2.2rem; text-align:right; }
+  .resource-wishes { min-width:7rem; }
+  .hero-state-stack { display:grid; gap:.55rem; min-width:22rem; }
+  .hero-state-row { display:grid; grid-template-columns:6.5rem 2.5rem auto 6.5rem; align-items:baseline; column-gap:.45rem; text-align:right; }
+  .hero-state-kind { text-align:left; color:var(--text); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; }
+  .hero-state-row strong { color:var(--text); font-size:1.05rem; font-weight:650; }
+  .hero-state-row span { color:var(--muted); font-size:.68rem; }
+  .hero-state-row strong:last-child { text-align:left; }
+
   .recommendation-panel { padding:1.5rem 1.6rem; }
   .recommendation-limit { margin-top:1rem; padding:1rem 1.1rem; border:1px solid var(--border); border-radius:7px; background:rgba(217,170,82,.06); }
   .limit-label { display:block; color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.09em; }
@@ -543,9 +551,29 @@
             <div class="banner-meta" id="banner-meta">Loading account</div>
           </div>
           <div class="plan-resources">
-            <div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div>
-            <div class="resource"><strong id="hero-pity">—</strong><span id="hero-pity-label">Pity</span></div>
-            <div class="resource"><strong id="hero-guarantee">—</strong><span id="hero-guarantee-label">50/50</span></div>
+            <div class="resource resource-wishes"><strong id="hero-wishes">—</strong><span>Wishes</span></div>
+            <div class="hero-state-stack" id="hero-account-resources">
+              <div class="hero-state-row">
+                <span class="hero-state-kind">Character</span>
+                <strong id="hero-character-pity">—</strong>
+                <span>Pity</span>
+                <strong id="hero-character-status">—</strong>
+              </div>
+              <div class="hero-state-row">
+                <span class="hero-state-kind">Weapon</span>
+                <strong id="hero-weapon-pity">—</strong>
+                <span>Pity</span>
+                <strong id="hero-weapon-status">—</strong>
+              </div>
+            </div>
+            <div class="hero-state-stack" id="hero-recommendation-resource" hidden>
+              <div class="hero-state-row">
+                <strong id="hero-pity">—</strong>
+                <span id="hero-pity-label">Pity</span>
+                <strong id="hero-guarantee">—</strong>
+                <span id="hero-guarantee-label">State</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -999,6 +1027,9 @@ function stepsForFullRoadmap(strategy) {
 }
 
 function renderRecommendation(rec, strategy) {
+  $("hero-account-resources").hidden = true;
+  $("hero-recommendation-resource").hidden = false;
+
   const recommendationTarget = rec.target_name || targetName(rec.outcome) || targetName(rec.banner);
   const level = targetLevel(rec.outcome);
   const levelLabel = rec.target_kind === "weapon" ? `R${level}` : `C${level}`;
@@ -1525,16 +1556,15 @@ function refreshHeroAccountState() {
   if (!state.account) return;
   const account = state.account.account || {};
   const weapon = account.weapon_state || {};
+  $("hero-account-resources").hidden = false;
+  $("hero-recommendation-resource").hidden = true;
   $("hero-wishes").textContent = account.wishes ?? 0;
-  $("hero-pity").textContent = account.current_pity ?? 0;
-  $("hero-pity-label").textContent = "Character Pity";
-  $("hero-guarantee").textContent = account.character_guarantee ? "Guaranteed" : "50/50";
-  $("hero-guarantee-label").textContent = "Character State";
+  $("hero-character-pity").textContent = account.current_pity ?? 0;
+  $("hero-character-status").textContent = account.character_guarantee ? "Guaranteed" : "50/50";
+  $("hero-weapon-pity").textContent = weapon.pity ?? 0;
+  $("hero-weapon-status").textContent = weapon.guarantee ? "Guaranteed" : "Rate-up";
   $("hero-banner-name").textContent = "Account state";
-  $("banner-meta").textContent =
-    "Weapon: " + (weapon.pity ?? 0) + " pity · " +
-    (weapon.guarantee ? "Guaranteed" : "Rate-up") +
-    " · Fate " + (weapon.fate_points ?? 0);
+  $("banner-meta").textContent = "Character and weapon pull state";
 }
 
 /* ---------- account editing ---------- */
