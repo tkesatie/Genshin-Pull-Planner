@@ -58,8 +58,18 @@ def context_fingerprint(context: PlannerContext) -> tuple:
         context.income_scenario,
         _mechanics_signature(context.mechanics),
         _income_signature(context.income),
-        tuple(sorted((goal.character, goal.constellation, goal.priority) for goal in roadmap.goals)),
-        tuple(sorted((banner.character, banner.version, banner.phase) for banner in roadmap.banners)),
+        tuple(
+            sorted(
+                (goal.target.kind.value, goal.target.name, goal.level, goal.priority)
+                for goal in roadmap.goals
+            )
+        ),
+        tuple(
+            sorted(
+                (banner.target.kind.value, banner.target.name, banner.version, banner.phase)
+                for banner in roadmap.banners
+            )
+        ),
     )
 
 
