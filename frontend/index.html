@@ -1538,7 +1538,6 @@ function refreshHeroAccountState() {
   const account = state.account.account || {};
   const weapon = account.weapon_state || {};
   $("hero-account-resources").hidden = false;
-  $("hero-recommendation-resource").hidden = true;
   $("hero-wishes").textContent = account.wishes ?? 0;
   $("hero-character-pity").textContent = account.current_pity ?? 0;
   $("hero-character-status").textContent = account.character_guarantee ? "Guaranteed" : "50/50";
