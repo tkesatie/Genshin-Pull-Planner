@@ -1394,7 +1394,7 @@ function addOwnedCharacterRow(kind = "character", name = "", level = 0) {
     levelInput.placeholder = type.value === "weapon" ? "R0–R5" : "C0–C6";
     levelInput.setCustomValidity("");
   });
-  const levelInput = numberInput(level ?? 0, { min: 0, step: 1 });
+  const levelInput = numberInput(level ?? (kind === "weapon" ? 1 : 0), { min: kind === "weapon" ? 1 : 0, step: 1 });
   levelInput.max = kind === "weapon" ? "5" : "6";
   levelInput.placeholder = kind === "weapon" ? "R0–R5" : "C0–C6";
   levelInput.addEventListener("input", () => {
@@ -1442,9 +1442,11 @@ async function saveOwnedCharacters() {
       const level = Number(row.children[2].querySelector("input").value);
       if (!name) throw new Error(`Every owned-${kind} row needs a name.`);
       const max = kind === "weapon" ? 5 : 6;
-      if (!Number.isInteger(level) || level < 0 || level > max) {
+      const min = kind === "weapon" ? 1 : 0;
+      if (!Number.isInteger(level) || level < min || level > max) {
+        row.children[2].querySelector("input").setCustomValidity(kind === "weapon" ? "Weapon refinement must be a whole number from R1 to R5." : "Character constellation must be a whole number from C0 to C6.");
         row.children[2].querySelector("input").reportValidity();
-        throw new Error((kind === "weapon" ? "Weapon refinement" : "Character constellation") + " must be a whole number from 0 to " + max + ".");
+        throw new Error((kind === "weapon" ? "Weapon refinement" : "Character constellation") + " must be a whole number from " + min + " to " + max + ".");
       }
       const target = kind === "weapon" ? ownedWeapons : ownedCharacters;
       if (Object.prototype.hasOwnProperty.call(target, name)) {
@@ -1626,18 +1628,20 @@ function addGoalRow(goal, kindOverride = null) {
   const kind = kindOverride || goal?.target_kind || (goal?.weapon != null ? "weapon" : "character");
   type.value = kind;
   const target = textInput(goal?.target_name ?? goal?.character ?? goal?.weapon ?? "", "Character or weapon");
-  const level = numberInput(goal?.level ?? goal?.constellation ?? goal?.refinement ?? 0, { min: 0 });
+  const level = numberInput(goal?.level ?? goal?.constellation ?? goal?.refinement ?? (kind === "weapon" ? 1 : 0), { min: kind === "weapon" ? 1 : 0 });
   level.max = kind === "weapon" ? "5" : "6";
   level.addEventListener("input", () => {
     const max = Number(level.max);
+    const min = type.value === "weapon" ? 1 : 0;
     const value = Number(level.value);
-    level.setCustomValidity(Number.isInteger(value) && value > max
-      ? (kind === "weapon" ? "Weapon refinement cannot exceed R5." : "Character constellation cannot exceed C6.")
+    level.setCustomValidity(Number.isInteger(value) && (value < min || value > max)
+      ? (type.value === "weapon" ? "Weapon refinement must be a whole number from R1 to R5." : "Character constellation must be a whole number from C0 to C6.")
       : "");
   });
   type.addEventListener("change", () => {
+    level.min = type.value === "weapon" ? "1" : "0";
     level.max = type.value === "weapon" ? "5" : "6";
-    level.value = Math.min(Number(level.value) || 0, Number(level.max));
+    level.value = Math.max(Number(level.min), Math.min(Number(level.value) || Number(level.min), Number(level.max)));
     target.placeholder = type.value === "weapon" ? "Weapon" : "Character";
   });
   const status = document.createElement("td");
