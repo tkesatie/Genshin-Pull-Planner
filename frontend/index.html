@@ -697,8 +697,21 @@ async function selectAccount(id) {
   state.account = await api(`/accounts/${id}`);
   $("confidence").value = state.account.settings.confidence;
   $("hero-wishes").textContent = state.account.account.wishes;
-  $("hero-pity").textContent = state.account.account.current_pity;
-  $("hero-guarantee").textContent = state.account.account.character_guarantee ? "Guaranteed" : "50/50";
+  const currentBannerIsWeapon = state.account.banners?.some(
+    (banner) =>
+      banner.version === state.account.settings.current_version &&
+      banner.phase === state.account.settings.current_phase &&
+      (banner.target_kind === "weapon" || banner.weapon)
+  );
+  const weaponState = state.account.account.weapon_state || {};
+  $("hero-pity").textContent = currentBannerIsWeapon
+    ? (weaponState.pity ?? 0)
+    : state.account.account.current_pity;
+  $("hero-guarantee").textContent = currentBannerIsWeapon
+    ? (weaponState.guarantee ? "Guaranteed" : "Rate-up")
+    : (state.account.account.character_guarantee ? "Guaranteed" : "50/50");
+  $("hero-pity-label").textContent = "Pity";
+  $("hero-guarantee-label").textContent = currentBannerIsWeapon ? "Guarantee" : "50/50";
   $("hero-banner-name").textContent = "Current plan";
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
@@ -1321,6 +1334,12 @@ async function saveOwnedCharacters() {
           wishes: account.wishes,
           capturing_radiance_counter: account.capturing_radiance_counter,
           owned_characters: ownedCharacters,
+          owned_weapons: account.owned_weapons || {},
+          weapon_state: account.weapon_state || {
+            pity: 0,
+            guarantee: false,
+            fate_points: 0,
+          },
         },
         settings: {
           current_version: state.account.settings.current_version,
