@@ -547,6 +547,11 @@
             <div class="resource"><strong id="hero-pity">—</strong><span id="hero-pity-label">Pity</span></div>
             <div class="resource"><strong id="hero-guarantee">—</strong><span id="hero-guarantee-label">50/50</span></div>
           </div>
+          <div class="plan-account-state" id="hero-account-state">
+            <span class="plan-account-state-label">Account pull state</span>
+            <span id="hero-character-state">Character: —</span>
+            <span id="hero-weapon-state">Weapon: —</span>
+          </div>
         </div>
       </div>
     </section>
@@ -799,6 +804,7 @@ async function selectAccount(id) {
   state.account = await api(`/accounts/${id}`);
   $("confidence").value = state.account.settings.confidence;
   $("hero-wishes").textContent = state.account.account.wishes;
+  refreshHeroAccountState();
   const currentBannerIsWeapon = state.account.banners?.some(
     (banner) =>
       banner.version === state.account.settings.current_version &&
@@ -817,6 +823,7 @@ async function selectAccount(id) {
   $("hero-banner-name").textContent = "Current plan";
   $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
   fillAccountForm();
+  refreshHeroAccountState();
   refreshAccountSummary();
   resetVerdict();
   renderOwnedCharacters();
@@ -1535,6 +1542,18 @@ function refreshAccountSummary() {
   $("summary-weapon-state").textContent = weapon.guarantee ? "Guaranteed" : "Rate-up";
   $("summary-weapon-pity").textContent = "Pity " + (weapon.pity ?? 0) + " · Fate " + (weapon.fate_points ?? 0);
 }
+
+function refreshHeroAccountState() {
+  if (!state.account) return;
+  const account = state.account.account || {};
+  const weapon = account.weapon_state || {};
+  $("hero-character-state").textContent =
+    "Character: " + (account.current_pity ?? 0) + " pity · " + (account.character_guarantee ? "Guaranteed" : "50/50");
+  $("hero-weapon-state").textContent =
+    "Weapon: " + (weapon.pity ?? 0) + " pity · " + (weapon.guarantee ? "Guaranteed" : "Rate-up") +
+    " · Fate " + (weapon.fate_points ?? 0);
+}
+
 /* ---------- account editing ---------- */
 
 function addOwnedCharacterRow(kind = "character", name = "", level = 0) {
