@@ -232,13 +232,13 @@ class Recommendation:
     protected: tuple[GoalStanding, ...]
     rejected: tuple[RejectedOutcome, ...]
     alternatives: tuple[RecommendationAlternative, ...]
-    unsafe_current: tuple[UnsafeCurrentGoal, ...] = ()
     skip_reason: str | None
     stops: StopConditions
     runs: int
     seed: int | None
     discretionary_reason: str | None = None
     account_wishes: int = 0
+    unsafe_current: tuple[UnsafeCurrentGoal, ...] = ()
 
     @property
     def target_kind(self) -> str:
