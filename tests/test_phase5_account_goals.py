@@ -121,6 +121,15 @@ def test_unified_goals_accept_character_and_weapon_targets_and_status(api_client
     assert completed_status[0]["copies_needed"] == 0
 
 
+def test_unowned_weapon_r1_requires_one_copy():
+    from domain import Account, Goal, Ownership, WeaponTarget, copies_needed_for
+
+    account = Account(owned_characters=Ownership(weapons={"Signature Weapon": -1}))
+    assert copies_needed_for(
+        account, Goal(target=WeaponTarget("Signature Weapon"), level=1, priority=1)
+    ) == 1
+
+
 def test_goal_priority_edit_and_deletion_are_persisted(api_client, doc_account_id):
     response = api_client.put(
         f"/accounts/{doc_account_id}/goals",
