@@ -3,7 +3,7 @@
 Sampled numbers always travel with their provenance (runs, seed).
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from api.schemas.domain import BannerModel, GoalModel
 from api.schemas.simulation import SpendPlanModel
@@ -19,10 +19,64 @@ from optimizer import (
 from planner import GoalEvaluation, ProtectedGoalOutcome
 
 
+class PlannerGoalView(BaseModel):
+    """Backward-compatible planner goal shape.
+
+    Character goals retain the historical character/constellation/priority
+    JSON shape; weapon goals use weapon/refinement/priority. The dedicated
+    roadmap goal API exposes the fully unified GoalModel instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_kind: str
+    target_name: str
+    level: int
+    priority: int
+    character: str | None = None
+    constellation: int | None = None
+    weapon: str | None = None
+    refinement: int | None = None
+
+    @classmethod
+    def from_domain(cls, goal):
+        if goal.target.kind.value == "character":
+            return cls(
+                target_kind="character",
+                target_name=goal.target.name,
+                level=goal.level,
+                priority=goal.priority,
+                character=goal.target.name,
+                constellation=goal.level,
+            )
+        return cls(
+            target_kind="weapon",
+            target_name=goal.target.name,
+            level=goal.level,
+            priority=goal.priority,
+            weapon=goal.target.name,
+            refinement=goal.level,
+        )
+
+    @model_serializer(mode="plain")
+    def serialize(self):
+        if self.target_kind == "character":
+            return {
+                "character": self.character,
+                "constellation": self.constellation,
+                "priority": self.priority,
+            }
+        return {
+            "weapon": self.weapon,
+            "refinement": self.refinement,
+            "priority": self.priority,
+        }
+
+
 class GoalEvaluationView(BaseModel):
     """One goal's planner state."""
 
-    goal: GoalModel
+    goal: PlannerGoalView
     copies_needed: int
     state: str = Field(..., description='"satisfied", "active" or "blocked".')
     blocked_by: GoalModel | None
@@ -33,7 +87,7 @@ class GoalEvaluationView(BaseModel):
     @classmethod
     def from_domain(cls, evaluation: GoalEvaluation, *, relevant: bool, actionable: bool):
         return cls(
-            goal=GoalModel.from_domain(evaluation.goal),
+            goal=PlannerGoalView.from_domain(evaluation.goal),
             copies_needed=evaluation.copies_needed,
             state=evaluation.state.value,
             blocked_by=None if evaluation.blocked_by is None else GoalModel.from_domain(evaluation.blocked_by),
@@ -89,7 +143,7 @@ class ProtectedGoalOutcomeView(BaseModel):
     @classmethod
     def from_domain(cls, outcome: ProtectedGoalOutcome):
         return cls(
-            goal=GoalModel.from_domain(outcome.goal),
+            goal=PlannerGoalView.from_domain(outcome.goal),
             banner=BannerModel.from_domain(outcome.banner),
             budget_at_banner=outcome.budget_at_banner,
             required_wishes=outcome.required_wishes,
@@ -176,7 +230,7 @@ class StrategyStepView(BaseModel):
     def from_domain(cls, step: StrategyStep):
         return cls(
             action=step.action,
-            goal=GoalModel.from_domain(step.goal),
+            goal=PlannerGoalView.from_domain(step.goal),
             banner=BannerModel.from_domain(step.banner),
             reserve_wishes=step.reserve_wishes,
             safe_spend=step.safe_spend,
@@ -207,7 +261,7 @@ class PullStrategyView(BaseModel):
             reserve_goal=(
                 None
                 if strategy.reserve_goal is None
-                else GoalModel.from_domain(strategy.reserve_goal)
+                else PlannerGoalView.from_domain(strategy.reserve_goal)
             ),
             reserve_wishes=strategy.reserve_wishes,
             reserve_probability=strategy.reserve_probability,
@@ -232,7 +286,7 @@ class GoalStandingView(BaseModel):
     @classmethod
     def from_domain(cls, standing: GoalStanding):
         return cls(
-            goal=GoalModel.from_domain(standing.goal),
+            goal=PlannerGoalView.from_domain(standing.goal),
             banner=BannerModel.from_domain(standing.banner),
             probability=standing.probability,
             meets_threshold=standing.meets_threshold,
@@ -325,7 +379,7 @@ class RecommendationView(BaseModel):
             protected_goal=(
                 None
                 if recommendation.protected_goal is None
-                else GoalModel.from_domain(recommendation.protected_goal)
+                else PlannerGoalView.from_domain(recommendation.protected_goal)
             ),
             plan=None if recommendation.plan is None else SpendPlanModel.from_domain(recommendation.plan),
             outcome_probability=recommendation.outcome_probability,
