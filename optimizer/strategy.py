@@ -615,10 +615,17 @@ def build_strategy(
         )
         protected_probability = None
         if protected_goals:
-            protected_probability = min(
-                next(item for item in result.goals if item.goal == protected).probability
-                for protected in protected_goals
-            )
+            # The character simulation only contains goals included in its
+            # joint simulation. Protected weapon goals are intentionally not
+            # simulated there, so do not assume every protected goal has a
+            # matching SimulationGoalResult.
+            probabilities = [
+                item.probability
+                for item in result.goals
+                if item.goal in protected_goals
+            ]
+            if probabilities:
+                protected_probability = min(probabilities)
         reserve = context.account.wishes - spend
         reserve_income = 0
         if protected_goals:
