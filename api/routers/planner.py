@@ -383,11 +383,12 @@ def planner_strategy(
             seed=seed,
             simulation_sink=cache_simulation,
         )
-    except Exception:
-        # TEMPORARY LOCAL DIAGNOSTIC: the browser only exposes a generic 500,
-        # so print the actual planner exception to the uvicorn terminal.
+    except Exception as exc:
+        # TEMPORARY LOCAL DIAGNOSTIC: surface the actual exception in the
+        # development response because the browser otherwise only shows 500.
+        detail = f"{type(exc).__name__}: {exc}"
         traceback.print_exc()
-        raise
+        raise HTTPException(status_code=500, detail=detail) from exc
     return PullStrategyView.from_domain(
         strategy,
         confidence=context.confidence,
