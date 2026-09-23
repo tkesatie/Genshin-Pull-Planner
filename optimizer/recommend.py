@@ -95,7 +95,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Callable
 
-from domain import Banner, Goal, Preference
+from domain import Banner, Goal, Preference, TargetKind, copies_needed_for
 from planner import PlannerContext
 from planner.banners import available_banners
 from planner.banners import current_banner
@@ -652,7 +652,7 @@ def recommend(
             character=goal.character,
             constellation=goal.level,
             rank=goal.priority,
-            target=goal.target if goal.target.kind.value == "weapon" else None,
+            target=goal.target if goal.target.kind is TargetKind.WEAPON else None,
         )
         diagnostic = _evaluate_cap(
             context,
