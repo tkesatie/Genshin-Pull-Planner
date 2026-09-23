@@ -1527,15 +1527,14 @@ function refreshHeroAccountState() {
   const weapon = account.weapon_state || {};
   $("hero-wishes").textContent = account.wishes ?? 0;
   $("hero-pity").textContent = account.current_pity ?? 0;
-  $("hero-pity-label").textContent =
-    "Character pity · " + (account.character_guarantee ? "Guaranteed" : "50/50");
-  $("hero-guarantee").textContent = weapon.pity ?? 0;
-  $("hero-guarantee-label").textContent =
-    "Weapon pity · " + (weapon.guarantee ? "Guaranteed" : "Rate-up") +
-    " · Fate " + (weapon.fate_points ?? 0);
+  $("hero-pity-label").textContent = "Character Pity";
+  $("hero-guarantee").textContent = account.character_guarantee ? "Guaranteed" : "50/50";
+  $("hero-guarantee-label").textContent = "Character State";
   $("hero-banner-name").textContent = "Account state";
   $("banner-meta").textContent =
-    state.account.settings.current_version + " · Phase " + state.account.settings.current_phase;
+    "Weapon: " + (weapon.pity ?? 0) + " pity · " +
+    (weapon.guarantee ? "Guaranteed" : "Rate-up") +
+    " · Fate " + (weapon.fate_points ?? 0);
 }
 
 /* ---------- account editing ---------- */
