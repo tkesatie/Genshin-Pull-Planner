@@ -727,6 +727,7 @@ def recommend(
             seed=seed,
             discretionary_reason=None,
             account_wishes=context.account.wishes,
+            unsafe_current=unsafe_current,
         )
     reason = _discretionary_reason(
         winner_outcome.label,
@@ -755,4 +756,5 @@ def recommend(
         seed=seed,
         discretionary_reason=reason,
         account_wishes=context.account.wishes,
+        unsafe_current=unsafe_current,
     )
