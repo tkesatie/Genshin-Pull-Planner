@@ -520,9 +520,21 @@ def planner_cached_refresh(
             )
             if conditioned_recommendation is None or conditioned_recommendation.runs < MIN_CONDITIONED_RUNS:
                 refresh_recorder.count_candidate_fallback()
+                # If conditioning produced no retained candidate, reconstruct
+                # the requested outcome from the current banner instead of
+                # dereferencing None. This is the normal path when the
+                # retained sample has no histories matching the observation.
+                if conditioned_recommendation is None:
+                    from optimizer.outcomes import OutcomeOption
+                    outcome_for_refresh = OutcomeOption(
+                        character=character,
+                        constellation=recommendation_constellation,
+                    )
+                else:
+                    outcome_for_refresh = conditioned_recommendation.candidate.outcome
                 fresh_candidate = evaluate_candidate(
                     context,
-                    conditioned_recommendation.candidate.outcome,
+                    outcome_for_refresh,
                     new_budget,
                     banner=current_banner,
                     runs=CONDITIONED_FALLBACK_RUNS,
