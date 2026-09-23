@@ -470,8 +470,8 @@
           </div>
           <div class="plan-resources">
             <div class="resource"><strong id="hero-wishes">—</strong><span>Wishes</span></div>
-            <div class="resource"><strong id="hero-pity">—</strong><span>Pity</span></div>
-            <div class="resource"><strong id="hero-guarantee">—</strong><span>50/50</span></div>
+            <div class="resource"><strong id="hero-pity">—</strong><span id="hero-pity-label">Pity</span></div>
+            <div class="resource"><strong id="hero-guarantee">—</strong><span id="hero-guarantee-label">50/50</span></div>
           </div>
         </div>
       </div>
@@ -896,6 +896,15 @@ function renderRecommendation(rec, strategy) {
 
   $("hero-banner-name").textContent = bannerName(rec.banner);
   $("banner-meta").textContent = "Current banner";
+  const isWeapon = rec.target_kind === "weapon" || rec.banner?.target_kind === "weapon";
+  const accountState = state.account.account;
+  const weaponState = accountState.weapon_state || {};
+  $("hero-pity").textContent = isWeapon ? (weaponState.pity ?? 0) : accountState.current_pity;
+  $("hero-pity-label").textContent = "Pity";
+  $("hero-guarantee").textContent = isWeapon
+    ? (weaponState.guarantee ? "Guaranteed" : "Rate-up")
+    : (accountState.character_guarantee ? "Guaranteed" : "50/50");
+  $("hero-guarantee-label").textContent = isWeapon ? "Guarantee" : "50/50";
   $("decision-label").className = `decision-label ${rec.action}`;
   $("decision-label").textContent = rec.action === "pursue" ? "Pursue" : rec.action === "discretionary" ? "Discretionary" : "Skip";
 
