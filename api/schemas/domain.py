@@ -41,7 +41,7 @@ class WeaponWishStateModel(StrictModel):
 
     pity: int = Field(0, ge=0, lt=80)
     guarantee: bool = False
-    fate_points: int = Field(0, ge=0, le=1)
+    fate_points: int = Field(0, ge=0, le=2)
 
     def to_domain(self):
         from domain import WeaponWishState
