@@ -21,6 +21,10 @@ from domain import (
     Preference,
     VersionIncome,
     WishMechanics,
+    TargetKind,
+    CharacterTarget,
+    WeaponTarget,
+    WeaponWishState,
 )
 
 from api.repository import AccountNotFound, AccountRecord, AccountRepository, PlannerSettings
@@ -46,6 +50,12 @@ def _record_to_dict(record: AccountRecord) -> dict:
             "wishes": record.account.wishes,
             "capturing_radiance_counter": record.account.capturing_radiance_counter,
             "owned_characters": dict(record.account.owned_characters.characters),
+            "owned_weapons": dict(record.account.owned_characters.weapons),
+            "weapon_state": {
+                "pity": record.account.weapon_state.pity,
+                "guarantee": record.account.weapon_state.guarantee,
+                "fate_points": record.account.weapon_state.fate_points,
+            },
         },
         "settings": {
             "current_version": settings.current_version,
@@ -62,11 +72,21 @@ def _record_to_dict(record: AccountRecord) -> dict:
             },
         },
         "goals": [
-            {"character": g.character, "constellation": g.constellation, "priority": g.priority}
+            {
+                "target_kind": g.target.kind.value,
+                "target_name": g.target.name,
+                "level": g.level,
+                "priority": g.priority,
+            }
             for g in record.goals
         ],
         "banners": [
-            {"character": b.character, "version": b.version, "phase": b.phase}
+            {
+                "target_kind": b.target.kind.value,
+                "target_name": b.target.name,
+                "version": b.version,
+                "phase": b.phase,
+            }
             for b in record.banners
         ],
         "preferences": [
@@ -137,17 +157,41 @@ def _record_from_dict(value: dict) -> AccountRecord:
         account=Account(
             current_pity=account["current_pity"],
             character_guarantee=account["character_guarantee"],
-            owned_characters=Ownership(dict(account["owned_characters"])),
+            owned_characters=Ownership(
+                dict(account.get("owned_characters", {})),
+                dict(account.get("owned_weapons", {})),
+            ),
             wishes=account["wishes"],
             capturing_radiance_counter=account.get("capturing_radiance_counter", 0),
+            weapon_state=WeaponWishState(
+                pity=account.get("weapon_state", {}).get("pity", 0),
+                guarantee=account.get("weapon_state", {}).get("guarantee", False),
+                fate_points=account.get("weapon_state", {}).get("fate_points", 0),
+            ),
         ),
         settings=settings,
         goals=tuple(
-            Goal(g["character"], g["constellation"], g["priority"])
+            Goal(
+                target=(
+                    WeaponTarget(g["target_name"])
+                    if g.get("target_kind") == TargetKind.WEAPON.value
+                    else CharacterTarget(g.get("target_name", g.get("character")))
+                ),
+                level=g.get("level", g.get("constellation")),
+                priority=g["priority"],
+            )
             for g in value["goals"]
         ),
         banners=tuple(
-            Banner(b["character"], b["version"], b["phase"])
+            Banner(
+                target=(
+                    WeaponTarget(b["target_name"])
+                    if b.get("target_kind") == TargetKind.WEAPON.value
+                    else CharacterTarget(b.get("target_name", b.get("character")))
+                ),
+                version=b["version"],
+                phase=b["phase"],
+            )
             for b in value["banners"]
         ),
         preferences=tuple(
