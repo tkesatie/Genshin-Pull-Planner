@@ -105,6 +105,7 @@ from optimizer.evaluation import (
     DEFAULT_RUNS,
     CandidateStrategy,
     GoalStanding,
+    _standings,
     evaluate_candidate,
     evaluate_skip_baseline_full,
     SkipBaseline,
@@ -119,6 +120,15 @@ from optimizer.stops import StopConditions, for_discretionary, for_pursue, for_s
 # keeps those future goals safe, is likely enough to present as a normal
 # recommendation rather than a disclosed gamble (module docstring, §14).
 MINIMUM_OUTCOME_PROBABILITY = 0.25
+
+# The unsafe-current roadmap labels are presentation-only diagnostics. They
+# must not make the primary recommendation scan hundreds of full-size Monte
+# Carlo plans: the decision itself still uses the caller's requested ``runs``.
+# Keep the diagnostic large enough for a stable risk label while bounding its
+# worst-case click latency. Its candidates are deliberately not written to the
+# recommendation cache, because their lower run count must never be mistaken
+# for a full-provenance candidate on a later request.
+MAX_UNSAFE_DIAGNOSTIC_RUNS = 200
 
 # Optional recommendation-cache lookup supplied by the API layer.
 CandidateLookup = Callable[[OutcomeOption, int, Banner], "CandidateStrategy | None"]
@@ -135,7 +145,19 @@ class RecommendationAlternative:
 
 @dataclass(frozen=True)
 class UnsafeCurrentGoal:
-    """An unsatisfied current-banner roadmap goal below the recommendation threshold."""
+    """An unsatisfied current-banner roadmap goal below the confidence threshold.
+
+    Attributes:
+        goal: the roadmap goal this diagnostic is about.
+        banner: the currently available banner the goal would be pursued on.
+        budget: the spend cap the probability was measured at - the largest
+            cap at which the goal's higher-priority and protected
+            commitments hold at `context.confidence` (the winner budget
+            when no smaller cap was needed).
+        outcome_probability: the goal's probability under that constrained
+            allocation - never a standalone evaluation against the whole
+            winner budget. Compared against `context.confidence`.
+    """
 
     goal: Goal
     banner: Banner
@@ -392,6 +414,9 @@ def _skip(
         all_goals_probability=baseline.all_goals_probability,
         protected=baseline.protected,
         rejected=rejected,
+        # A skip has no feasible opportunities by definition - that is why
+        # it skips - so the alternatives list is always empty here.
+        alternatives=(),
         skip_reason=reason,
         stops=for_skip(reason),
         runs=runs,
@@ -455,6 +480,178 @@ def _evaluate_cap(
         context, outcome, cap, banner=banner, runs=runs, seed=seed,
         simulation_sink=simulation_sink,
     )
+
+
+def _goal_result_probability(candidate: CandidateStrategy, goal: Goal) -> float | None:
+    """P(`goal`) inside the candidate's shared simulation, or None when the
+    goal is not represented there (weapon goals are never simulated)."""
+    for item in candidate.result.goals:
+        if item.goal == goal:
+            return item.probability
+    return None
+
+
+def _conditional_unsafe_probability(
+    context: PlannerContext,
+    winner: CandidateStrategy,
+    winner_banner: Banner,
+    goal: Goal,
+    runs: int,
+    seed: int | None,
+    simulation_sink,
+    candidate_lookup: CandidateLookup | None,
+) -> tuple[float, int] | None:
+    """P(`goal`) under the winner plan's own constrained allocation (§13 step 5).
+
+    This is the `unsafe_current` diagnostic's shared conditional simulation.
+    It answers: given the SAME spending decision the recommendation is
+    making - the winner plan, whose entries execute in roadmap-priority
+    order (winner outcome first, same-slot sibling banners second, future
+    protected banners last) under a shared current-phase cap no larger than
+    the winner budget - and given every goal that outranks `goal` is honored
+    at the context's confidence threshold, how likely is this currently
+    available goal?
+
+    Caps are scanned downward from `winner.budget` on a bounded diagnostic
+    grid, then the interval around the first crossing is checked at every
+    wish. This is intentionally a presentation-only approximation: it keeps
+    the interactive planner responsive and never affects selection,
+    feasibility, or the reported recommendation cap.
+
+    * every protected goal that outranks `goal` holds at `context.confidence`
+      (`optimizer.protection.constraining_goals` anchored at the goal's own
+      priority, read through `optimizer.evaluation._standings`: simulated
+      character standings, analytic weapon reserves over the pool remainder,
+      future income credited by their own timing), and
+    * the winner outcome itself - the plan's first, higher-priority current
+      pursuit - holds at `context.confidence`
+
+    is the largest allocation compatible with those commitments, and the
+    goal's probability is read from THAT SAME simulation's per-goal
+    results - never from a standalone candidate handed the whole pool, and
+    never from the unconstrained winner plan.
+
+    If no cap honors every commitment, the goal's best achievable chance
+    across the scanned caps is reported (probability first, then the
+    weakest gating floor, then the larger cap) - it is below threshold by
+    construction of the flagging comparison either way.
+
+    Returns (probability, cap), or None when the goal has no standing in the
+    winner plan's character simulation (caller falls back to the per-goal
+    evaluation).
+    """
+    constraining = constraining_goals(
+        context, priority=goal.priority, banner=winner_banner
+
+    )
+    fallback: tuple[tuple[float, float, int], tuple[float, int]] | None = None
+    seen: set[int] = set()
+
+    def inspect(cap: int) -> tuple[float, int] | None:
+        """Inspect one cap, reusing a result within this diagnostic scan."""
+        nonlocal fallback
+        if cap in seen:
+            return None
+        seen.add(cap)
+        candidate = _evaluate_cap(
+            context, winner.outcome, cap, winner_banner, runs, seed,
+            simulation_sink, candidate_lookup,
+        )
+        probability = _goal_result_probability(candidate, goal)
+        if probability is None:
+            return None
+        standings = _standings(
+            context, candidate.result, constraining, banner=winner_banner, spent=cap
+        )
+        gating = [standing for standing in standings if standing.constraining]
+        floor = min((standing.probability for standing in gating), default=1.0)
+        key = (probability, floor, cap)
+        if fallback is None or key > fallback[0]:
+            fallback = (key, (probability, cap))
+        if (
+            all(standing.meets_threshold for standing in gating)
+            and candidate.outcome_probability >= context.confidence
+        ):
+            return probability, cap
+        return None
+
+    # This is a presentation-only diagnostic, not the decision scan. A
+    # bounded descending grid plus exact refinement keeps the common case
+    # fast while retaining the first passing cap once the crossing is located.
+    # If no coarse point passes, the best sampled chance is reported; this
+    # diagnostic never affects the recommendation itself.
+    step = max(1, min(16, winner.budget // 8))
+    grid = list(range(winner.budget, -1, -step))
+    if grid[-1] != 0:
+        grid.append(0)
+
+    previous = winner.budget + 1
+    for coarse_cap in grid:
+        result = inspect(coarse_cap)
+        if result is not None:
+            for cap in range(previous - 1, coarse_cap - 1, -1):
+                result = inspect(cap)
+                if result is not None:
+                    return result
+            return result
+        previous = coarse_cap
+
+    assert fallback is not None  # the cap range always contains winner.budget
+    return fallback[1]
+
+
+def _unsafe_goal_probability(
+    context: PlannerContext,
+    winner: CandidateStrategy,
+    winner_banner: Banner,
+    goal: Goal,
+    diagnostic_outcome: OutcomeOption,
+    goal_banner: Banner,
+    runs: int,
+    seed: int | None,
+    simulation_sink,
+    candidate_lookup: CandidateLookup | None,
+) -> tuple[float, int] | None:
+    """P(`goal`) under the recommendation's own decision, for one unsafe
+    diagnostic: (probability, the cap it was measured at), or None.
+
+    A character goal evaluated alongside a character winner rides the
+    winner-shaped conditional simulation - the shared allocation in which
+    higher-priority pursuits execute first and the goal receives only the
+    residual opportunity. Weapon goals are never character-simulated
+    (Phase 4), and a goal that cannot ride the winner plan keeps the
+    per-goal candidate model: `_evaluate_cap` on the goal's own banner -
+    for a weapon goal the exact weapon probability engine at that cap with
+    the goal's own priority-anchored protection - scanned downward to its
+    first feasible cap. When no cap keeps those commitments, the goal's
+    best chance across the scanned caps is reported (the top cap for a
+    weapon curve, which never decreases with budget).
+    """
+    winner_is_character = winner.outcome is not None and (
+        winner.outcome.target is None
+        or winner.outcome.target.kind is not TargetKind.WEAPON
+    )
+    if goal.target.kind is not TargetKind.WEAPON and winner_is_character:
+        evaluated = _conditional_unsafe_probability(
+            context, winner, winner_banner, goal, runs, seed,
+            simulation_sink, candidate_lookup,
+        )
+        if evaluated is not None:
+            return evaluated
+
+    top: CandidateStrategy | None = None
+    for cap in range(winner.budget, -1, -1):
+        candidate = _evaluate_cap(
+            context, diagnostic_outcome, cap, goal_banner, runs, seed,
+            simulation_sink, candidate_lookup,
+        )
+        if top is None or candidate.outcome_probability > top.outcome_probability:
+            top = candidate  # ties keep the larger cap: caps descend
+        if candidate.feasible:
+            return (candidate.outcome_probability, cap)
+    if top is None:
+        return None
+    return (top.outcome_probability, top.budget)
 
 
 def _caps(context: PlannerContext, budgets: Iterable[int] | None) -> list[int]:
@@ -661,8 +858,12 @@ def recommend(
     )
 
     # Presentation-only diagnostic: roadmap goals on any currently available
-    # banner that are not safe enough to recommend at the selected spend.
-    # This does not participate in selection or protection.
+    # banner whose probability under THIS recommendation's own constrained
+    # allocation falls below the confidence threshold (§1, "not safe now").
+    # Each goal is evaluated conditionally - winner-shaped plan, higher-
+    # priority and protected commitments honored at context.confidence -
+    # never standalone against the full winner budget. This does not
+    # participate in selection or protection.
     winner_target_key = (
         winner_outcome.target.kind.value if winner_outcome.target is not None
         else TargetKind.CHARACTER.value,
@@ -688,26 +889,32 @@ def recommend(
                 rank=goal.priority,
                 target=goal.target if goal.target.kind is TargetKind.WEAPON else None,
             )
-            diagnostic = _evaluate_cap(
+            diagnostic_runs = min(runs, MAX_UNSAFE_DIAGNOSTIC_RUNS)
+            evaluated = _unsafe_goal_probability(
                 context,
-                diagnostic_outcome,
-                winner.budget,
-                banner,
-                runs,
-                seed,
-                None,
-                candidate_lookup,
+                winner=winner,
+                winner_banner=winner_banner,
+                goal=goal,
+                diagnostic_outcome=diagnostic_outcome,
+                goal_banner=banner,
+                runs=diagnostic_runs,
+                seed=seed,
+                simulation_sink=None,
+                candidate_lookup=None,
             )
-            if diagnostic.outcome_probability < minimum_outcome_probability:
+            known_unsafe_keys.add(goal_key)
+            if evaluated is None:
+                continue
+            probability, diagnostic_cap = evaluated
+            if probability < context.confidence:
                 unsafe_items.append(
                     UnsafeCurrentGoal(
                         goal=goal,
                         banner=banner,
-                        budget=winner.budget,
-                        outcome_probability=diagnostic.outcome_probability,
+                        budget=diagnostic_cap,
+                        outcome_probability=probability,
                     )
                 )
-            known_unsafe_keys.add(goal_key)
     unsafe_current = tuple(unsafe_items)
 
     # The presentation check (step 4) settles only how the winner is

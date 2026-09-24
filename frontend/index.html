@@ -1760,14 +1760,9 @@ async function saveAccount() {
     state.planner = null;
     fillAccountForm();
     refreshAccountSummary();
-    $("save-note").textContent = "Saved. Run the planner again.";
     $("confidence").value = state.account.settings.confidence;
-    $("hero-wishes").textContent = state.account.account.wishes;
-    $("hero-pity").textContent = state.account.account.current_pity;
-    $("hero-guarantee").textContent = state.account.account.character_guarantee ? "Guaranteed" : "50/50";
-    $("hero-banner-name").textContent = "Current plan";
-    $("banner-meta").textContent = `${state.account.settings.current_version} · Phase ${state.account.settings.current_phase}`;
     resetVerdict();
+    $("save-note").textContent = "Saved. Run the planner again.";
   } catch (error) {
     $("save-note").textContent = "";
     showError(error.message);

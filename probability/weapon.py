@@ -45,6 +45,7 @@ converge there.
 """
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 
@@ -168,6 +169,73 @@ def _advance(
     return new_state
 
 
+def _weapon_certainty_horizon(
+    copies: int,
+    mechanics: WishMechanics,
+    fate_points_required: int,
+) -> int:
+    """Wishes needed for the exact weapon curve to reach certainty.
+
+    Before a designated weapon can drop, at most ``fate_points_required``
+    non-designated 5-stars can occur.  Each 5-star is bounded by one hard-pity
+    cycle, followed by the designated 5-star, so the safe per-copy bound is
+    ``(fate_points_required + 1) * hard_pity``.  The default one-Fate-Point
+    rule therefore retains the familiar ``2 * hard_pity`` horizon, while the
+    optional pre-5.0 two-point rule remains correct as well.
+    """
+    return copies * (fate_points_required + 1) * mechanics.hard_pity
+
+
+def _weapon_probability_uncached(
+    horizon: int,
+    starting_pity: int,
+    guarantee: bool,
+    starting_fate_points: int,
+    mechanics: WishMechanics,
+    copies: int,
+    fate_points_required: int,
+) -> np.ndarray:
+    """Compute a validated weapon curve without memoization."""
+    moves = _transitions(mechanics)
+    state = np.zeros(
+        (copies, mechanics.hard_pity, 2, fate_points_required + 1)
+    )
+    state[0, starting_pity, int(guarantee), starting_fate_points] = 1.0
+    curve = np.empty(horizon + 1)
+    curve[0] = 0.0
+
+    for wish in range(1, horizon + 1):
+        state = _advance(state, moves, copies, mechanics, fate_points_required)
+        curve[wish] = 1.0 - state.sum()
+
+    return curve
+
+
+@lru_cache(maxsize=128)
+def _cached_weapon_probability(
+    starting_pity: int,
+    guarantee: bool,
+    starting_fate_points: int,
+    mechanics: WishMechanics,
+    copies: int,
+    fate_points_required: int,
+) -> tuple[float, ...]:
+    """Memoize the exact certainty-horizon weapon curve for one state."""
+    horizon = _weapon_certainty_horizon(
+        copies, mechanics, fate_points_required
+    )
+    curve = _weapon_probability_uncached(
+        horizon,
+        starting_pity,
+        guarantee,
+        starting_fate_points,
+        mechanics,
+        copies,
+        fate_points_required,
+    )
+    return tuple(float(value) for value in curve)
+
+
 def weapon_cumulative_probability(
     wishes: int,
     starting_pity: int,
@@ -209,19 +277,21 @@ def weapon_cumulative_probability(
         wishes, starting_pity, starting_fate_points, mechanics, fate_points_required
     )
 
-    moves = _transitions(mechanics)
-    state = np.zeros(
-        (copies, mechanics.hard_pity, 2, fate_points_required + 1)
+    horizon = _weapon_certainty_horizon(
+        copies, mechanics, fate_points_required
     )
-    state[0, starting_pity, int(guarantee), starting_fate_points] = 1.0
-    curve = np.empty(wishes + 1)
-    curve[0] = 0.0
-
-    for wish in range(1, wishes + 1):
-        state = _advance(state, moves, copies, mechanics, fate_points_required)
-        curve[wish] = 1.0 - state.sum()
-
-    return curve
+    curve = _cached_weapon_probability(
+        starting_pity,
+        guarantee,
+        starting_fate_points,
+        mechanics,
+        copies,
+        fate_points_required,
+    )
+    prefix = np.asarray(curve[: min(wishes + 1, horizon + 1)], dtype=float)
+    if wishes <= horizon:
+        return prefix
+    return np.concatenate((prefix, np.ones(wishes - horizon, dtype=float)))
 
 
 def weapon_wishes_for_confidence(
@@ -236,10 +306,11 @@ def weapon_wishes_for_confidence(
 ) -> int:
     """Smallest N with P(copies within N wishes) >= confidence.
 
-    The horizon is ``copies * 2 * hard_pity`` wishes: the worst case for
-    each copy is losing the rate-up roll at hard pity (arms the guarantee
-    and a Fate Point), then reaching the next hard-pity 5-star, which the
-    Fate Point guarantee makes the designated weapon.
+    The search horizon is ``copies * (fate_points_required + 1) * hard_pity``
+    wishes: the worst case for each copy is a sequence of non-designated
+    5-stars filling the Fate Point requirement, followed by the designated
+    5-star.  With the current one-Fate-Point rule this is
+    ``copies * 2 * hard_pity``.
 
     Raises:
         ValueError: if confidence is outside (0, 1], any state argument is
@@ -247,7 +318,9 @@ def weapon_wishes_for_confidence(
     """
     if not 0.0 < confidence <= 1.0:
         raise ValueError(f"confidence must be in (0, 1], got {confidence}")
-    horizon = copies * 2 * mechanics.hard_pity
+    horizon = _weapon_certainty_horizon(
+        copies, mechanics, fate_points_required
+    )
     curve = weapon_cumulative_probability(
         horizon,
         starting_pity,

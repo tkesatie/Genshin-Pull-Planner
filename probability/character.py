@@ -15,6 +15,7 @@ or roadmaps.
 """
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 
@@ -105,38 +106,12 @@ def _validate_radiance(starting_radiance: int) -> None:
         )
 
 
-def cumulative_probability(
+def _validate_character_inputs(
     wishes: int,
     starting_pity: int,
-    guaranteed: bool,
     mechanics: WishMechanics,
-    starting_radiance: int = 0,
-) -> np.ndarray:
-    """P(at least one featured copy within N wishes), for each N (§10.2).
-
-    Returns a float array of length `wishes + 1`:
-
-        result[N] = probability of obtaining the featured copy within N
-        additional wishes
-
-    The result is *cumulative*: `result[N]` is not the probability of
-    succeeding exactly on wish N. Index 0 is always 0.0 and the curve is
-    monotonically non-decreasing.
-
-    Args:
-        wishes: how many additional wishes to look ahead (>= 0).
-        starting_pity: 0-based pulls since the last 5-star
-            (0 <= starting_pity < hard_pity).
-        guaranteed: True when the next 5-star is guaranteed featured.
-        mechanics: mechanics data for the banner type (§17).
-        starting_radiance: the Capturing Radiance loss-streak counter
-            (0-3) to start from. Defaults to 0 (no accumulated streak).
-            Pass the account's actual `capturing_radiance_counter` to get
-            a probability consistent with what the Monte Carlo simulator
-            would produce for the same account state - omitting this for
-            an account that currently carries a nonzero counter understates
-            the true probability.
-    """
+    starting_radiance: int,
+) -> None:
     if wishes < 0:
         raise ValueError(f"wishes must be non-negative, got {wishes}")
     if not 0 <= starting_pity < mechanics.hard_pity:
@@ -146,6 +121,15 @@ def cumulative_probability(
         )
     _validate_radiance(starting_radiance)
 
+
+def _cumulative_probability_uncached(
+    wishes: int,
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int,
+) -> np.ndarray:
+    """Compute a validated character curve without memoization."""
     moves = _transitions(mechanics)
     state = _initial_state(
         starting_pity, guaranteed, starting_radiance, mechanics.hard_pity
@@ -159,6 +143,112 @@ def cumulative_probability(
 
     return curve
 
+
+@lru_cache(maxsize=128)
+def _cached_cumulative_probability(
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int,
+) -> tuple[float, ...]:
+    """Memoize one complete curve; callers receive a sliced copy."""
+    horizon = 2 * mechanics.hard_pity
+    curve = _cumulative_probability_uncached(
+        horizon, starting_pity, guaranteed, mechanics, starting_radiance
+    )
+    return tuple(float(value) for value in curve)
+
+
+def cumulative_probability(
+    wishes: int,
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int = 0,
+) -> np.ndarray:
+    """P(at least one featured copy within N wishes), for each N (§10.2).
+
+    Returns a fresh float array of length ``wishes + 1``. Curves are memoized
+    internally at the deterministic full-cycle horizon and sliced for the
+    requested prefix, so repeated planner cap probes do not repeat the DP.
+    """
+    _validate_character_inputs(wishes, starting_pity, mechanics, starting_radiance)
+    horizon = 2 * mechanics.hard_pity
+    curve = _cached_cumulative_probability(
+        starting_pity, guaranteed, mechanics, starting_radiance
+    )
+    prefix = np.asarray(curve[: min(wishes + 1, horizon + 1)], dtype=float)
+    if wishes <= horizon:
+        return prefix
+    return np.concatenate((prefix, np.ones(wishes - horizon, dtype=float)))
+
+
+
+def _multi_copy_certainty_horizon(
+    copies: int, mechanics: WishMechanics
+) -> int:
+    """Wishes needed for the exact curve to reach certainty."""
+    return 2 * mechanics.hard_pity * copies
+
+
+def _multi_copy_probability_uncached(
+    horizon: int,
+    copies: int,
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int,
+) -> np.ndarray:
+    """Compute a validated multi-copy curve without memoization."""
+    moves = _transitions(mechanics)
+    state = np.zeros((copies, mechanics.hard_pity, 4, 2))
+    state[0, starting_pity, starting_radiance, int(guaranteed)] = 1.0
+    curve = np.empty(horizon + 1)
+    curve[0] = 0.0
+
+    for wish in range(1, horizon + 1):
+        new_state = np.zeros_like(state)
+        new_state[:, 1:, :, :] += (
+            state[:, :-1, :, :] * moves.survive[None, :-1, None, None]
+        )
+
+        for copy_count in range(copies):
+            for radiance in range(4):
+                rate = moves.rates
+                guaranteed_mass = state[copy_count, :, radiance, 1] * rate
+                if copy_count + 1 < copies:
+                    new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
+
+                nonguaranteed = state[copy_count, :, radiance, 0]
+                featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
+                if copy_count + 1 < copies:
+                    next_radiance = 0 if radiance <= 1 else 1
+                    new_state[copy_count + 1, 0, next_radiance, 0] += featured_mass.sum()
+
+                lost_mass = nonguaranteed * rate * (1.0 - moves.featured[:, radiance])
+                next_radiance = min(3, radiance + 1)
+                new_state[copy_count, 0, next_radiance, 1] += lost_mass.sum()
+
+        state = new_state
+        curve[wish] = 1.0 - state.sum()
+
+    return curve
+
+
+@lru_cache(maxsize=128)
+def _cached_multi_copy_probability(
+    copies: int,
+    starting_pity: int,
+    guaranteed: bool,
+    mechanics: WishMechanics,
+    starting_radiance: int,
+) -> tuple[float, ...]:
+    """Memoize the exact certainty-horizon curve for one starting state."""
+    horizon = 2 * mechanics.hard_pity * copies
+    curve = _multi_copy_probability_uncached(
+        horizon, copies, starting_pity, guaranteed, mechanics, starting_radiance
+    )
+    return tuple(float(value) for value in curve)
 
 
 def multi_copy_cumulative_probability(
@@ -198,53 +288,16 @@ def multi_copy_cumulative_probability(
         raise ValueError(f"copies must be non-negative, got {copies}")
     if copies == 0:
         return np.ones(wishes + 1)
-    if not 0 <= starting_pity < mechanics.hard_pity:
-        raise ValueError(
-            f"starting_pity must satisfy 0 <= starting_pity < "
-            f"{mechanics.hard_pity}, got {starting_pity}"
-        )
-    _validate_radiance(starting_radiance)
+    _validate_character_inputs(wishes, starting_pity, mechanics, starting_radiance)
 
-    moves = _transitions(mechanics)
-    # state[c, p, r, g]: survival mass with c completed copies,
-    # pity p, Radiance r, and guarantee g.
-    state = np.zeros((copies, mechanics.hard_pity, 4, 2))
-    state[0, starting_pity, starting_radiance, int(guaranteed)] = 1.0
-    curve = np.empty(wishes + 1)
-    curve[0] = 0.0
-
-    for wish in range(1, wishes + 1):
-        new_state = np.zeros_like(state)
-        # Mass at pity p advances to pity p+1 with P(no 5-star at pity p) =
-        # moves.survive[p], so the per-pity weights must be sliced down to the
-        # pities that can actually advance (all but the last, where the rate
-        # is 1.0). Without the slice the (hard_pity,) weights cannot broadcast
-        # against the (hard_pity - 1,) source pities.
-        new_state[:, 1:, :, :] += (
-            state[:, :-1, :, :] * moves.survive[None, :-1, None, None]
-        )
-
-        for copy_count in range(copies):
-            for radiance in range(4):
-                rate = moves.rates
-                guaranteed_mass = state[copy_count, :, radiance, 1] * rate
-                if copy_count + 1 < copies:
-                    new_state[copy_count + 1, 0, radiance, 0] += guaranteed_mass.sum()
-
-                nonguaranteed = state[copy_count, :, radiance, 0]
-                featured_mass = nonguaranteed * rate * moves.featured[:, radiance]
-                if copy_count + 1 < copies:
-                    next_radiance = 0 if radiance <= 1 else 1
-                    new_state[copy_count + 1, 0, next_radiance, 0] += featured_mass.sum()
-
-                lost_mass = nonguaranteed * rate * (1.0 - moves.featured[:, radiance])
-                next_radiance = min(3, radiance + 1)
-                new_state[copy_count, 0, next_radiance, 1] += lost_mass.sum()
-
-        state = new_state
-        curve[wish] = 1.0 - state.sum()
-
-    return curve
+    horizon = _multi_copy_certainty_horizon(copies, mechanics)
+    curve = _cached_multi_copy_probability(
+        copies, starting_pity, guaranteed, mechanics, starting_radiance
+    )
+    prefix = np.asarray(curve[: min(wishes + 1, horizon + 1)], dtype=float)
+    if wishes <= horizon:
+        return prefix
+    return np.concatenate((prefix, np.ones(wishes - horizon, dtype=float)))
 
 
 def multi_copy_wishes_for_confidence(
